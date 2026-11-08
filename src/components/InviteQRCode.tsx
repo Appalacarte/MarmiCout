@@ -4,7 +4,7 @@ import { Copy, Check, Share2 } from 'lucide-react';
 
 export const InviteQRCode: React.FC = () => {
   const [copied, setCopied] = useState(false);
-  const appUrl = 'https://marmi-cout.vercel.app/';
+  const appUrl = 'https://marmicout.vercel.app/';
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(appUrl);

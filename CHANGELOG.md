@@ -4,6 +4,15 @@ Toutes les modifications notables apportées à ce projet sont documentées dans
 
 ---
 
+## [2.0.31] - 2026-11-08
+
+### Modifié
+- **Lien du QR Code et bouton de partage** :
+  - Mise à jour de l'URL cible générée par le composant `InviteQRCode.tsx` vers l'adresse officielle de production directe : `https://marmicout.vercel.app/`.
+  - Le scan du QR code et le bouton « Copier le lien » / « Partager » redirigent désormais vers `https://marmicout.vercel.app/`.
+- **Synchronisation de version** :
+  - Incrémentation SemVer vers `2.0.31` dans `package.json`, `package-lock.json`, `src/version.ts` et `CHANGELOG.md`.
+
 ## [2.0.30] - 2026-11-08
 
 ### Modifié
