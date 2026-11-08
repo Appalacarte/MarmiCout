@@ -4,6 +4,15 @@ Toutes les modifications notables apportées à ce projet sont documentées dans
 
 ---
 
+## [2.0.35] - 2026-11-08
+
+### Modifié
+- **Support des paramètres URL `?tab=...` pour captures d'écran et accès direct** :
+  - Ajout de la prise en charge de `window.location.search` (`?tab=Produits`, `?tab=Recettes`, etc.) en complément de `window.location.hash`.
+  - Permet aux outils de capture automatisée et aux liens marketing de charger directement le bon écran sans délai.
+- **Synchronisation de version** :
+  - Incrémentation SemVer vers `2.0.35` dans `package.json`, `src/version.ts` et `CHANGELOG.md`.
+
 ## [2.0.34] - 2026-11-08
 
 ### Ajouté

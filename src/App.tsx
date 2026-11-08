@@ -43,12 +43,29 @@ import { APP_VERSION } from './version';
 type Tab = 'Dashboard' | 'Produits' | 'Achats' | 'Recettes' | 'Production' | 'Ventes' | 'Magasins' | 'Paramètres' | 'Suggestions' | 'Devis' | 'Contact' | 'QR Code' | 'Mentions Légales';
 
 const getInitialTab = (): Tab => {
-  if (typeof window !== 'undefined' && window.location.hash) {
-    const raw = window.location.hash.replace('#', '');
-    const decoded = decodeURIComponent(raw).trim();
-    const validTabs: Tab[] = ['Dashboard', 'Produits', 'Achats', 'Recettes', 'Production', 'Ventes', 'Magasins', 'Paramètres', 'Suggestions', 'Devis', 'Contact', 'QR Code', 'Mentions Légales'];
-    const found = validTabs.find(t => t.toLowerCase() === decoded.toLowerCase());
-    if (found) return found;
+  if (typeof window !== 'undefined') {
+    try {
+      const search = window.location.search;
+      if (search) {
+        const params = new URLSearchParams(search);
+        const tabParam = params.get('tab');
+        if (tabParam) {
+          const decoded = decodeURIComponent(tabParam).trim();
+          const validTabs: Tab[] = ['Dashboard', 'Produits', 'Achats', 'Recettes', 'Production', 'Ventes', 'Magasins', 'Paramètres', 'Suggestions', 'Devis', 'Contact', 'QR Code', 'Mentions Légales'];
+          const found = validTabs.find(t => t.toLowerCase() === decoded.toLowerCase());
+          if (found) return found;
+        }
+      }
+    } catch {
+      // ignore
+    }
+    if (window.location.hash) {
+      const raw = window.location.hash.replace('#', '');
+      const decoded = decodeURIComponent(raw).trim();
+      const validTabs: Tab[] = ['Dashboard', 'Produits', 'Achats', 'Recettes', 'Production', 'Ventes', 'Magasins', 'Paramètres', 'Suggestions', 'Devis', 'Contact', 'QR Code', 'Mentions Légales'];
+      const found = validTabs.find(t => t.toLowerCase() === decoded.toLowerCase());
+      if (found) return found;
+    }
   }
   return 'Dashboard';
 };
