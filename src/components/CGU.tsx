@@ -126,7 +126,7 @@ export const CGU: React.FC<CGUProps> = ({ onBack }) => {
               Les conditions contractuelles régissant les prestations sur-mesure, les abonnements professionnels personnalisés et l'assistance éditeur sont communiquées lors de l'établissement des devis ou adressées sur simple demande écrite :
             </p>
             <div style={{ padding: '12px 16px', backgroundColor: 'var(--color-light)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border)' }}>
-              <strong>App à la Carte — Hervé CHAMPAGNE EI</strong><br />
+              <strong>App à la Carte</strong><br />
               Email de contact officiel :{' '}
               <a href="mailto:contact@appalacarte.fr" style={{ color: 'var(--color-primary)', fontWeight: '600' }}>
                 contact@appalacarte.fr
@@ -165,12 +165,16 @@ export const CGU: React.FC<CGUProps> = ({ onBack }) => {
           lineHeight: '1.8'
         }}>
           <div>
-            <strong>App à la Carte — Hervé CHAMPAGNE EI</strong> | SIREN : 132 021 098 | v{APP_VERSION} |{' '}
+            © 2026 App à la Carte ·{' '}
             <a href="/mentions-legales" style={{ color: 'var(--color-primary)', textDecoration: 'underline' }}>Mentions légales</a>
-            {' '}|{' '}
+            {' · '}
             <a href="/confidentialite" style={{ color: 'var(--color-primary)', textDecoration: 'underline' }}>Confidentialité</a>
-            {' '}|{' '}
+            {' · '}
             <a href="/cgu" style={{ color: 'var(--color-primary)', textDecoration: 'underline', fontWeight: '700' }}>CGU</a>
+            {' · '}
+            <a href="mailto:contact@appalacarte.fr" style={{ color: 'var(--color-primary)', textDecoration: 'underline' }}>Contact</a>
+            {' · '}
+            <span>v{APP_VERSION}</span>
           </div>
         </footer>
       </div>

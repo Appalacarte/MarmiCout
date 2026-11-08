@@ -178,6 +178,30 @@ for (const f of allSrcFiles) {
   }
 }
 
+// AVERTISSEMENT si le nom de l'éditeur, le SIREN, le SIRET, l'adresse ou « 293 B » apparaissent dans un composant autre que la page Mentions légales
+for (const f of allSrcFiles) {
+  const rel = path.relative(rootDir, f).replace(/\\/g, '/');
+  // Seules la page Mentions légales et la configuration légale dédiée sont autorisées à contenir ces informations
+  if (rel === 'src/components/MentionsLegales.tsx' || rel === 'src/config/legalConfig.ts' || rel === 'src/utils/legalValidator.ts') {
+    continue;
+  }
+  const content = fs.readFileSync(f, 'utf-8');
+  if (/Herv[ée]\s+CHAMPAGNE/i.test(content)) {
+    warnings.push(`Le nom de l'éditeur « Hervé CHAMPAGNE » apparaît dans ${rel} (doit être réservé à la page Mentions légales).`);
+  }
+  if (/132\s*021\s*098/.test(content)) {
+    warnings.push(`Le numéro SIREN/SIRET « 132 021 098 » apparaît dans ${rel} (doit être réservé à la page Mentions légales).`);
+  }
+  if (/Courcelles/i.test(content)) {
+    warnings.push(`L'adresse professionnelle (« Courcelles ») apparaît dans ${rel} (doit être réservée à la page Mentions légales).`);
+  }
+  // Exclure les codes hex de couleur comme #1e293b
+  const contentWithoutHexColors = content.replace(/#[0-9a-fA-F]{6}/g, '');
+  if (/293\s*B/i.test(contentWithoutHexColors)) {
+    warnings.push(`La mention fiscale « 293 B » apparaît dans ${rel} (doit être réservée à la page Mentions légales).`);
+  }
+}
+
 // AVERTISSEMENT si /confidentialite ou /cgu affiche encore « en cours de rédaction »
 if (fs.existsSync(confidentialitePath)) {
   const confContent = fs.readFileSync(confidentialitePath, 'utf-8');

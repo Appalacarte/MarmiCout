@@ -8,8 +8,6 @@ import {
   Check,
   FileText,
   AlertTriangle,
-  Building2,
-  ShieldCheck,
   Trash2
 } from 'lucide-react';
 import { dbService } from '../services/db';
@@ -743,33 +741,13 @@ export const Settings: React.FC = () => {
           </div>
 
           {/* Éditeur de l'application & Informations Légales */}
-          <div className="card" style={{ borderLeft: '4px solid var(--color-primary)' }}>
-            <h3 className="card-title">
-              <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Building2 size={20} style={{ color: 'var(--color-primary)' }} />
-                Éditeur Officiel de l'Application
-              </span>
-            </h3>
-            <div style={{ fontSize: '13px', lineHeight: '1.6', color: 'var(--color-dark)' }}>
-              <div style={{ fontWeight: '700', fontSize: '14px', marginBottom: '4px' }}>
-                App à la Carte — Hervé CHAMPAGNE EI
-              </div>
-              <div style={{ color: 'var(--color-dark-light)', fontSize: '12px' }}>
-                Entrepreneur individuel • SIREN : 132 021 098 (SIRET : 132 021 098 00018)
-              </div>
-              <div style={{ color: 'var(--color-dark-light)', fontSize: '12px', marginTop: '2px' }}>
-                173 rue de Courcelles, 75017 Paris, France
-              </div>
-              <div style={{ marginTop: '8px', fontSize: '12px' }}>
-                <strong>Contact :</strong>{' '}
-                <a href="mailto:contact@appalacarte.fr" style={{ color: 'var(--color-primary)', fontWeight: '600', textDecoration: 'none' }}>
-                  contact@appalacarte.fr
-                </a>
-              </div>
-              <div style={{ marginTop: '4px', fontSize: '11px', color: 'var(--color-dark-light)' }}>
-                TVA non applicable, art. 293 B du CGI • Version {APP_VERSION}
-              </div>
-            </div>
+          <div className="card" style={{ padding: '16px', textAlign: 'center', fontSize: '12px', color: 'var(--color-dark-light)' }}>
+            Application éditée par App à la Carte — Version {APP_VERSION} ·{' '}
+            <a href="/mentions-legales" style={{ color: 'var(--color-primary)', textDecoration: 'underline', fontWeight: '600' }}>Mentions légales</a>
+            {' · '}
+            <a href="/confidentialite" style={{ color: 'var(--color-primary)', textDecoration: 'underline', fontWeight: '600' }}>Confidentialité</a>
+            {' · '}
+            <a href="/cgu" style={{ color: 'var(--color-primary)', textDecoration: 'underline', fontWeight: '600' }}>CGU</a>
           </div>
 
           {/* Zone de Danger : Démarrage à zéro ou Démo */}

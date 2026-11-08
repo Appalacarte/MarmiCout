@@ -165,12 +165,16 @@ export const Confidentialite: React.FC<ConfidentialiteProps> = ({ onBack }) => {
           lineHeight: '1.8'
         }}>
           <div>
-            <strong>App à la Carte — Hervé CHAMPAGNE EI</strong> | SIREN : 132 021 098 | v{APP_VERSION} |{' '}
+            © 2026 App à la Carte ·{' '}
             <a href="/mentions-legales" style={{ color: 'var(--color-primary)', textDecoration: 'underline' }}>Mentions légales</a>
-            {' '}|{' '}
+            {' · '}
             <a href="/confidentialite" style={{ color: 'var(--color-primary)', textDecoration: 'underline', fontWeight: '700' }}>Confidentialité</a>
-            {' '}|{' '}
+            {' · '}
             <a href="/cgu" style={{ color: 'var(--color-primary)', textDecoration: 'underline' }}>CGU</a>
+            {' · '}
+            <a href="mailto:contact@appalacarte.fr" style={{ color: 'var(--color-primary)', textDecoration: 'underline' }}>Contact</a>
+            {' · '}
+            <span>v{APP_VERSION}</span>
           </div>
         </footer>
       </div>

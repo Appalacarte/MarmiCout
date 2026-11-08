@@ -398,7 +398,7 @@ function App() {
         {/* Rendu du composant React actif */}
         {renderActiveView()}
 
-        {/* Pied de page global conforme avec informations éditeur et mentions légales */}
+        {/* Pied de page global sobre conforme */}
         <footer style={{
           textAlign: 'center',
           padding: '24px 16px 40px',
@@ -409,7 +409,7 @@ function App() {
           lineHeight: '1.8'
         }}>
           <div>
-            <strong>App à la Carte — Hervé CHAMPAGNE EI</strong> | SIREN : 132 021 098 | v{APP_VERSION} |{' '}
+            © 2026 App à la Carte ·{' '}
             <a
               href="/mentions-legales"
               onClick={(e) => {
@@ -425,7 +425,7 @@ function App() {
             >
               Mentions légales
             </a>
-            {' '}|{' '}
+            {' · '}
             <a
               href="/confidentialite"
               onClick={(e) => {
@@ -441,7 +441,7 @@ function App() {
             >
               Confidentialité
             </a>
-            {' '}|{' '}
+            {' · '}
             <a
               href="/cgu"
               onClick={(e) => {
@@ -457,7 +457,7 @@ function App() {
             >
               CGU
             </a>
-            {' '}|{' '}
+            {' · '}
             <button
               type="button"
               onClick={() => handleNavigate('Contact')}
@@ -475,9 +475,8 @@ function App() {
             >
               Contact
             </button>
-          </div>
-          <div style={{ fontSize: '11px', color: 'var(--color-dark-light)', marginTop: '4px' }}>
-            MarmiCout — Gestion locale de recettes, coûts & stocks culinaires • TVA non applicable, art. 293 B du CGI
+            {' · '}
+            <span>v{APP_VERSION}</span>
           </div>
         </footer>
       </main>

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Send, Mail, Copy, Check, Info, Building2, MapPin, ShieldCheck } from 'lucide-react';
+import { Send, Mail, Copy, Check, Info, Phone, Building2 } from 'lucide-react';
 
 export const Contact: React.FC = () => {
   const [name, setName] = useState('');
@@ -98,29 +98,27 @@ Généré depuis l'application MarmiCout`;
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 color: 'var(--color-secondary)', flexShrink: 0
               }}>
-                <Building2 size={16} />
+                <Phone size={16} />
               </div>
               <div>
-                <div style={{ fontSize: '12px', color: 'var(--color-dark-light)' }}>Éditeur</div>
-                <div style={{ fontSize: '14px', fontWeight: '600' }}>App à la Carte — Hervé CHAMPAGNE EI</div>
-                <div style={{ fontSize: '11px', color: 'var(--color-dark-light)' }}>SIREN : 132 021 098</div>
+                <div style={{ fontSize: '12px', color: 'var(--color-dark-light)' }}>Téléphone</div>
+                <a href="tel:+33769590470" style={{ fontSize: '14px', fontWeight: '600', color: 'var(--color-dark)', textDecoration: 'none' }}>
+                  07 69 59 04 70
+                </a>
               </div>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
-              <div style={{
-                width: '32px', height: '32px', borderRadius: '50%',
-                backgroundColor: 'var(--color-warning-light)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                color: 'var(--color-warning)', flexShrink: 0
-              }}>
-                <MapPin size={16} />
-              </div>
-              <div>
-                <div style={{ fontSize: '12px', color: 'var(--color-dark-light)' }}>Adresse Professionnelle</div>
-                <div style={{ fontSize: '13px', fontWeight: '600' }}>173 rue de Courcelles</div>
-                <div style={{ fontSize: '12px', color: 'var(--color-dark-light)' }}>75017 Paris, France</div>
-              </div>
+            <div style={{
+              fontSize: '12px',
+              color: 'var(--color-dark-light)',
+              paddingTop: '12px',
+              borderTop: '1px solid var(--color-border)',
+              marginTop: '4px'
+            }}>
+              Informations légales de l'éditeur : voir les{' '}
+              <a href="/mentions-legales" style={{ color: 'var(--color-primary)', fontWeight: '600', textDecoration: 'underline' }}>
+                Mentions légales
+              </a>
             </div>
           </div>
 

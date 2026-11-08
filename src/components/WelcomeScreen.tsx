@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { ChefHat } from 'lucide-react';
+import { APP_VERSION } from '../version';
 
 /**
  * Écran de bienvenue affiché quand aucun ?code= n'est présent dans l'URL.
@@ -140,13 +141,17 @@ export const WelcomeScreen: React.FC = () => {
           color: '#94a3b8',
           lineHeight: '1.8'
         }}>
-          <div>App à la Carte — Hervé CHAMPAGNE EI | SIREN : 132 021 098</div>
-          <div style={{ marginTop: '4px' }}>
-            <a href="/mentions-legales" style={{ color: '#6366f1', textDecoration: 'underline', margin: '0 6px' }}>Mentions légales</a>
-            |
-            <a href="/confidentialite" style={{ color: '#6366f1', textDecoration: 'underline', margin: '0 6px' }}>Confidentialité</a>
-            |
-            <a href="/cgu" style={{ color: '#6366f1', textDecoration: 'underline', margin: '0 6px' }}>CGU</a>
+          <div>
+            © 2026 App à la Carte ·{' '}
+            <a href="/mentions-legales" style={{ color: '#6366f1', textDecoration: 'underline' }}>Mentions légales</a>
+            {' · '}
+            <a href="/confidentialite" style={{ color: '#6366f1', textDecoration: 'underline' }}>Confidentialité</a>
+            {' · '}
+            <a href="/cgu" style={{ color: '#6366f1', textDecoration: 'underline' }}>CGU</a>
+            {' · '}
+            <a href="mailto:contact@appalacarte.fr" style={{ color: '#6366f1', textDecoration: 'underline' }}>Contact</a>
+            {' · '}
+            <span>v{APP_VERSION}</span>
           </div>
         </div>
       </div>

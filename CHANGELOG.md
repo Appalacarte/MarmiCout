@@ -4,6 +4,20 @@ Toutes les modifications notables apportées à ce projet sont documentées dans
 
 ---
 
+## [2.0.39] - 2026-11-08
+
+### Modifié
+- **Centralisation stricte des mentions légales détaillées sur `/mentions-legales`** :
+  - **Pied de page global** : remplacement des lignes détaillées par une seule ligne sobre : `« © 2026 App à la Carte · Mentions légales · Confidentialité · CGU · Contact · v2.0.39 »`. Suppression du nom de l'éditeur, du SIREN et de la mention TVA partout hors de la page dédiée.
+  - **Page Contact (`Contact.tsx`)** : suppression des blocs d'identification détaillée (nom, SIREN, adresse professionnelle). Conservation de l'email officiel (`contact@appalacarte.fr`), du numéro de téléphone obligatoire (`07 69 59 04 70`) et ajout de la mention avec lien : *« Informations légales de l'éditeur : voir les Mentions légales »*.
+  - **Page Paramètres & Sync (`Settings.tsx`)** : suppression du bloc étendu de l'éditeur officiel, remplacé par une ligne sobre : *« Application éditée par App à la Carte — Version 2.0.39 · Mentions légales · Confidentialité · CGU »*.
+  - **Écrans pré-authentification (`WelcomeScreen`, `ExpiredScreen`) & Documents légaux (`CGU`, `Confidentialite`)** : uniformisation des pieds de page vers la formule sobre et centralisée.
+- **Mise à jour du script de contrôle automatique (`scripts/verify-legal.mjs`)** :
+  - Ajout du contrôle avec AVERTISSEMENT si le nom de l'éditeur, le SIREN, le SIRET, l'adresse professionnelle ou la mention fiscale « 293 B » apparaissent dans un composant autre que `MentionsLegales.tsx`.
+  - Maintien du contrôle bloquant (ERREUR) en cas d'absence du lien « Mentions légales » dans le pied de page global ou sur l'écran d'accueil/connexion.
+- **Synchronisation de version** :
+  - Incrémentation SemVer vers `2.0.39` dans `package.json`, `src/version.ts` et `CHANGELOG.md`.
+
 ## [2.0.38] - 2026-11-08
 
 ### Modifié
