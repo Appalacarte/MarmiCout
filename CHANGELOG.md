@@ -4,6 +4,15 @@ Toutes les modifications notables apportées à ce projet sont documentées dans
 
 ---
 
+## [2.0.32] - 2026-11-08
+
+### Modifié
+- **Harmonisation des supports marketing (flyers)** :
+  - Mise à jour des QR codes d'essai dans `flyer_marmicout.html` et `flyer_marmicout2.html` pointant directement vers `https://marmicout.vercel.app/`.
+  - Harmonisation du domaine affiché (`marmicout.vercel.app`) et de l'email officiel `contact@appalacarte.fr`.
+- **Synchronisation de version** :
+  - Incrémentation SemVer vers `2.0.32` dans `package.json`, `package-lock.json`, `src/version.ts` et `CHANGELOG.md`.
+
 ## [2.0.31] - 2026-11-08
 
 ### Modifié
