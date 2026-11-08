@@ -1,11 +1,48 @@
-import React from 'react';
-import { ShieldCheck, Building2, User, Mail, Phone, Server, Globe, FileText, Lock } from 'lucide-react';
+import React, { useEffect } from 'react';
+import { ShieldCheck, Building2, User, Mail, Phone, Server, Globe, FileText, Lock, ArrowLeft } from 'lucide-react';
 import { APP_VERSION } from '../version';
 import { LEGAL_CONFIG } from '../config/legalConfig';
 
-export const MentionsLegales: React.FC = () => {
+interface MentionsLegalesProps {
+  onBack?: () => void;
+}
+
+export const MentionsLegales: React.FC<MentionsLegalesProps> = ({ onBack }) => {
+  useEffect(() => {
+    const prevTitle = document.title;
+    document.title = 'Mentions légales – App à la Carte';
+    return () => {
+      document.title = prevTitle;
+    };
+  }, []);
+
+  const handleReturn = () => {
+    if (onBack) {
+      onBack();
+    } else if (typeof window !== 'undefined' && window.history.length > 1) {
+      window.history.back();
+    } else if (typeof window !== 'undefined') {
+      window.location.href = '/';
+    }
+  };
+
   return (
-    <div style={{ maxWidth: '900px', margin: '0 auto' }}>
+    <div style={{ maxWidth: '900px', margin: '0 auto', padding: '16px' }}>
+      {/* Bouton retour si affichage autonome */}
+      {onBack && (
+        <div style={{ marginBottom: '16px' }}>
+          <button
+            type="button"
+            onClick={handleReturn}
+            className="btn btn-secondary"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}
+          >
+            <ArrowLeft size={16} />
+            Retour à l'application
+          </button>
+        </div>
+      )}
+
       {/* En-tête */}
       <div className="page-header" style={{ marginBottom: '24px' }}>
         <div>
@@ -326,6 +363,21 @@ export const MentionsLegales: React.FC = () => {
                 {LEGAL_CONFIG.editor.email}
               </a>.
             </p>
+            <div style={{ marginTop: '8px' }}>
+              <a
+                href="/confidentialite"
+                style={{
+                  color: 'var(--color-primary)',
+                  fontWeight: '600',
+                  textDecoration: 'underline',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                }}
+              >
+                Consulter la page Politique de Confidentialité dédiée →
+              </a>
+            </div>
           </div>
         </div>
 
@@ -358,8 +410,43 @@ export const MentionsLegales: React.FC = () => {
             <p style={{ color: 'var(--color-dark-light)' }}>
               <strong>Conditions contractuelles applicables :</strong> L'application est mise à disposition pour une utilisation professionnelle selon les modalités d'accès souscrites. Les Conditions Générales d'Utilisation (CGU) et Conditions Générales de Vente (CGV) régissant les abonnements personnalisés ou prestations sur-mesure sont communiquées lors de l'établissement des devis ou accessibles sur demande à <code>contact@appalacarte.fr</code>.
             </p>
+            <div style={{ marginTop: '8px' }}>
+              <a
+                href="/cgu"
+                style={{
+                  color: 'var(--color-primary)',
+                  fontWeight: '600',
+                  textDecoration: 'underline',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                }}
+              >
+                Consulter la page CGU / CGV dédiée →
+              </a>
+            </div>
           </div>
         </div>
+
+        {/* Pied de page */}
+        <footer style={{
+          textAlign: 'center',
+          padding: '24px 16px',
+          fontSize: '12px',
+          color: 'var(--color-dark-light)',
+          borderTop: '1px solid var(--color-border)',
+          marginTop: '20px',
+          lineHeight: '1.8'
+        }}>
+          <div>
+            <strong>App à la Carte — Hervé CHAMPAGNE EI</strong> | SIREN : 132 021 098 | v{APP_VERSION} |{' '}
+            <a href="/mentions-legales" style={{ color: 'var(--color-primary)', textDecoration: 'underline', fontWeight: '700' }}>Mentions légales</a>
+            {' '}|{' '}
+            <a href="/confidentialite" style={{ color: 'var(--color-primary)', textDecoration: 'underline' }}>Confidentialité</a>
+            {' '}|{' '}
+            <a href="/cgu" style={{ color: 'var(--color-primary)', textDecoration: 'underline' }}>CGU</a>
+          </div>
+        </footer>
 
       </div>
     </div>

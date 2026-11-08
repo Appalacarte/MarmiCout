@@ -2,7 +2,6 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
-import { WelcomeScreen } from './components/WelcomeScreen.tsx'
 
 /**
  * Correctif global décimal : accepte la virgule (,) comme séparateur décimal
@@ -70,13 +69,8 @@ function setupDecimalFix() {
 
 setupDecimalFix();
 
-// Si aucun ?code= n'est présent dans l'URL, afficher l'écran de bienvenue
-// pour que l'utilisateur crée sa propre session personnalisée
-const params = new URLSearchParams(window.location.search);
-const hasCode = params.has('code') && params.get('code')!.trim().length > 0;
-
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    {hasCode ? <App /> : <WelcomeScreen />}
+    <App />
   </StrictMode>,
-)
+);

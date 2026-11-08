@@ -35,6 +35,9 @@ import { Contact } from './components/Contact';
 import { QRCodePage } from './components/QRCodePage';
 import { ExpiredScreen } from './components/ExpiredScreen';
 import { MentionsLegales } from './components/MentionsLegales';
+import { Confidentialite } from './components/Confidentialite';
+import { CGU } from './components/CGU';
+import { WelcomeScreen } from './components/WelcomeScreen';
 
 import { dbService, getActiveTesterCode } from './services/db';
 import { markTesterCodeIssued, isTesterCodeExpired, getTesterCodeExpiryDate } from './services/testerCodes';
@@ -42,8 +45,48 @@ import { APP_VERSION } from './version';
 
 type Tab = 'Dashboard' | 'Produits' | 'Achats' | 'Recettes' | 'Production' | 'Ventes' | 'Magasins' | 'Paramètres' | 'Suggestions' | 'Devis' | 'Contact' | 'QR Code' | 'Mentions Légales';
 
-const getInitialTab = (): Tab => {
+type LegalRoute = '/mentions-legales' | '/confidentialite' | '/cgu';
+
+type RouteState =
+  | { type: 'legal'; path: LegalRoute }
+  | { type: 'app'; tab: Tab };
+
+const resolveCurrentRoute = (): RouteState => {
   if (typeof window !== 'undefined') {
+    // 1. Rediriger l'ancienne adresse « #Mentions Légales » (et ses variantes encodées)
+    if (window.location.hash) {
+      const raw = window.location.hash.replace('#', '');
+      const decoded = decodeURIComponent(raw).trim().toLowerCase();
+      if (decoded === 'mentions légales' || decoded === 'mentions-legales' || decoded === 'mentions legales') {
+        const search = window.location.search || '';
+        window.history.replaceState(null, '', `/mentions-legales${search}`);
+        return { type: 'legal', path: '/mentions-legales' };
+      }
+      if (decoded === 'confidentialite' || decoded === 'confidentialité') {
+        const search = window.location.search || '';
+        window.history.replaceState(null, '', `/confidentialite${search}`);
+        return { type: 'legal', path: '/confidentialite' };
+      }
+      if (decoded === 'cgu' || decoded === 'cgv') {
+        const search = window.location.search || '';
+        window.history.replaceState(null, '', `/cgu${search}`);
+        return { type: 'legal', path: '/cgu' };
+      }
+    }
+
+    // 2. Vérifier les URL propres dédiées
+    const pathname = window.location.pathname.toLowerCase().replace(/\/$/, '') || '/';
+    if (pathname === '/mentions-legales') {
+      return { type: 'legal', path: '/mentions-legales' };
+    }
+    if (pathname === '/confidentialite') {
+      return { type: 'legal', path: '/confidentialite' };
+    }
+    if (pathname === '/cgu') {
+      return { type: 'legal', path: '/cgu' };
+    }
+
+    // 3. Paramètre ?tab=
     try {
       const search = window.location.search;
       if (search) {
@@ -51,37 +94,49 @@ const getInitialTab = (): Tab => {
         const tabParam = params.get('tab');
         if (tabParam) {
           const decoded = decodeURIComponent(tabParam).trim();
+          if (decoded.toLowerCase() === 'mentions légales' || decoded.toLowerCase() === 'mentions-legales') {
+            const cleanSearch = search.replace(/[?&]tab=[^&]*/, '').replace(/^&/, '?');
+            window.history.replaceState(null, '', `/mentions-legales${cleanSearch}`);
+            return { type: 'legal', path: '/mentions-legales' };
+          }
           const validTabs: Tab[] = ['Dashboard', 'Produits', 'Achats', 'Recettes', 'Production', 'Ventes', 'Magasins', 'Paramètres', 'Suggestions', 'Devis', 'Contact', 'QR Code', 'Mentions Légales'];
           const found = validTabs.find(t => t.toLowerCase() === decoded.toLowerCase());
-          if (found) return found;
+          if (found) return { type: 'app', tab: found };
         }
       }
     } catch {
       // ignore
     }
+
+    // 4. Hash standard pour les onglets applicatifs
     if (window.location.hash) {
       const raw = window.location.hash.replace('#', '');
       const decoded = decodeURIComponent(raw).trim();
       const validTabs: Tab[] = ['Dashboard', 'Produits', 'Achats', 'Recettes', 'Production', 'Ventes', 'Magasins', 'Paramètres', 'Suggestions', 'Devis', 'Contact', 'QR Code', 'Mentions Légales'];
       const found = validTabs.find(t => t.toLowerCase() === decoded.toLowerCase());
-      if (found) return found;
+      if (found) return { type: 'app', tab: found };
     }
   }
-  return 'Dashboard';
+
+  return { type: 'app', tab: 'Dashboard' };
 };
 
 function App() {
-  const [activeTab, setActiveTab] = useState<Tab>(getInitialTab);
+  const [routeState, setRouteState] = useState<RouteState>(resolveCurrentRoute);
   const [tabExtraData, setTabExtraData] = useState<Record<string, unknown> | null>(null);
   const [lowStockCount, setLowStockCount] = useState(0);
   const [isMobileActionOpen, setIsMobileActionOpen] = useState(false);
 
   useEffect(() => {
-    const handleHashChange = () => {
-      setActiveTab(getInitialTab());
+    const handleLocationChange = () => {
+      setRouteState(resolveCurrentRoute());
     };
-    window.addEventListener('hashchange', handleHashChange);
-    return () => window.removeEventListener('hashchange', handleHashChange);
+    window.addEventListener('popstate', handleLocationChange);
+    window.addEventListener('hashchange', handleLocationChange);
+    return () => {
+      window.removeEventListener('popstate', handleLocationChange);
+      window.removeEventListener('hashchange', handleLocationChange);
+    };
   }, []);
 
   const testerCode = getActiveTesterCode();
@@ -91,6 +146,17 @@ function App() {
     if (testerCode) markTesterCodeIssued(testerCode);
   }, [testerCode]);
 
+  // Navigation vers une URL propre dédiée
+  const navigateToPath = (path: LegalRoute | '/') => {
+    if (typeof window !== 'undefined') {
+      const search = window.location.search;
+      const target = path === '/' ? (search ? `/${search}` : '/') : (search ? `${path}${search}` : path);
+      window.history.pushState(null, '', target);
+      setRouteState(resolveCurrentRoute());
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
+
   // Mettre à jour le nombre d'alertes de stock
   const updateAlerts = () => {
     const products = dbService.getProducts();
@@ -98,20 +164,25 @@ function App() {
     setLowStockCount(lowStock);
   };
 
+  const activeTab = routeState.type === 'app' ? routeState.tab : 'Dashboard';
+
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     updateAlerts();
-    // Rafraîchir toutes les 5 secondes ou à chaque changement d'onglet
     const interval = setInterval(updateAlerts, 5000);
     return () => clearInterval(interval);
   }, [activeTab]);
 
   // Gérer la navigation inter-onglets avec paramètres
   const handleNavigate = (tab: string, extraData?: Record<string, unknown>) => {
-    setActiveTab(tab as Tab);
-    if (typeof window !== 'undefined') {
-      window.location.hash = encodeURIComponent(tab);
+    if (tab === 'Mentions Légales') {
+      navigateToPath('/mentions-legales');
+      return;
     }
+    const search = typeof window !== 'undefined' ? window.location.search : '';
+    const target = search ? `/${search}#${encodeURIComponent(tab)}` : `/#${encodeURIComponent(tab)}`;
+    window.history.pushState(null, '', target);
+    setRouteState({ type: 'app', tab: tab as Tab });
     if (extraData) {
       setTabExtraData(extraData);
     } else {
@@ -127,6 +198,27 @@ function App() {
       setTabExtraData(null);
     }
   }, [tabExtraData]);
+
+  // Si l'utilisateur est sur une route légale publique dédiée, l'afficher directement
+  if (routeState.type === 'legal') {
+    if (routeState.path === '/mentions-legales') {
+      return <MentionsLegales onBack={() => navigateToPath('/')} />;
+    }
+    if (routeState.path === '/confidentialite') {
+      return <Confidentialite onBack={() => navigateToPath('/')} />;
+    }
+    if (routeState.path === '/cgu') {
+      return <CGU onBack={() => navigateToPath('/')} />;
+    }
+  }
+
+  // Vérifier la présence d'un code utilisateur actif / création d'espace
+  const urlParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+  const hasCode = urlParams ? (urlParams.has('code') && urlParams.get('code')!.trim().length > 0) : false;
+
+  if (!hasCode) {
+    return <WelcomeScreen />;
+  }
 
   if (isExpired && testerCode) {
     return <ExpiredScreen code={testerCode} expiryDate={getTesterCodeExpiryDate(testerCode)} />;
@@ -145,7 +237,7 @@ function App() {
     { id: 'Suggestions', label: 'Suggestions', icon: MessageSquare },
     { id: 'Devis', label: 'Demande de devis', icon: FileText },
     { id: 'Contact', label: 'Contact', icon: Mail },
-    { id: 'Mentions Légales', label: 'Mentions Légales', icon: ShieldCheck },
+    { id: 'Mentions Légales', label: 'Mentions Légales', icon: ShieldCheck, path: '/mentions-legales' as const },
     { id: 'QR Code', label: 'QR Code', icon: QrCode }
   ];
 
@@ -222,11 +314,15 @@ function App() {
               return (
                 <li key={item.id} className="menu-item">
                   <a
-                    href={`#${item.id}`}
+                    href={'path' in item && item.path ? item.path : `#${item.id}`}
                     className={`menu-link ${isActive ? 'active' : ''}`}
                     onClick={(e) => {
                       e.preventDefault();
-                      handleNavigate(item.id);
+                      if ('path' in item && item.path) {
+                        navigateToPath(item.path as LegalRoute);
+                      } else {
+                        handleNavigate(item.id);
+                      }
                     }}
                   >
                     <IconComponent size={20} />
@@ -314,23 +410,53 @@ function App() {
         }}>
           <div>
             <strong>App à la Carte — Hervé CHAMPAGNE EI</strong> | SIREN : 132 021 098 | v{APP_VERSION} |{' '}
-            <button
-              type="button"
-              onClick={() => handleNavigate('Mentions Légales')}
+            <a
+              href="/mentions-legales"
+              onClick={(e) => {
+                e.preventDefault();
+                navigateToPath('/mentions-legales');
+              }}
               style={{
-                background: 'none',
-                border: 'none',
                 color: 'var(--color-primary)',
-                cursor: 'pointer',
                 fontWeight: '600',
                 textDecoration: 'underline',
                 padding: '0 4px',
-                fontSize: 'inherit',
-                fontFamily: 'inherit'
               }}
             >
               Mentions légales
-            </button>
+            </a>
+            {' '}|{' '}
+            <a
+              href="/confidentialite"
+              onClick={(e) => {
+                e.preventDefault();
+                navigateToPath('/confidentialite');
+              }}
+              style={{
+                color: 'var(--color-primary)',
+                fontWeight: '600',
+                textDecoration: 'underline',
+                padding: '0 4px',
+              }}
+            >
+              Confidentialité
+            </a>
+            {' '}|{' '}
+            <a
+              href="/cgu"
+              onClick={(e) => {
+                e.preventDefault();
+                navigateToPath('/cgu');
+              }}
+              style={{
+                color: 'var(--color-primary)',
+                fontWeight: '600',
+                textDecoration: 'underline',
+                padding: '0 4px',
+              }}
+            >
+              CGU
+            </a>
             {' '}|{' '}
             <button
               type="button"
@@ -518,7 +644,7 @@ function App() {
             style={{ height: '50px', justifyContent: 'flex-start', paddingLeft: '20px' }}
             onClick={() => {
               setIsMobileActionOpen(false);
-              handleNavigate('Mentions Légales');
+              navigateToPath('/mentions-legales');
             }}
           >
             <ShieldCheck size={18} style={{ marginRight: '12px', color: 'var(--color-primary)' }} />

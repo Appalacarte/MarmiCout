@@ -118,11 +118,37 @@ export const WelcomeScreen: React.FC = () => {
           >
             Accéder à mon espace →
           </button>
+
+          <p style={{ fontSize: '12px', color: '#64748b', marginTop: '12px', lineHeight: '1.4' }}>
+            En accédant à votre espace, vos données restent enregistrées localement sur votre appareil. Consultez notre{' '}
+            <a href="/confidentialite" style={{ color: '#6366f1', textDecoration: 'underline' }}>
+              Politique de Confidentialité
+            </a>.
+          </p>
         </form>
 
-        <p style={{ fontSize: '11px', color: '#94a3b8', marginTop: '20px', lineHeight: '1.5' }}>
+        <p style={{ fontSize: '11px', color: '#94a3b8', marginTop: '16px', lineHeight: '1.5' }}>
           Votre prénom sert uniquement à créer un espace de données isolé pour vos tests. Aucune information n'est transmise à un serveur.
         </p>
+
+        {/* Liens légaux visibles avant connexion / création de compte */}
+        <div style={{
+          marginTop: '28px',
+          paddingTop: '16px',
+          borderTop: '1px solid #e2e8f0',
+          fontSize: '11px',
+          color: '#94a3b8',
+          lineHeight: '1.8'
+        }}>
+          <div>App à la Carte — Hervé CHAMPAGNE EI | SIREN : 132 021 098</div>
+          <div style={{ marginTop: '4px' }}>
+            <a href="/mentions-legales" style={{ color: '#6366f1', textDecoration: 'underline', margin: '0 6px' }}>Mentions légales</a>
+            |
+            <a href="/confidentialite" style={{ color: '#6366f1', textDecoration: 'underline', margin: '0 6px' }}>Confidentialité</a>
+            |
+            <a href="/cgu" style={{ color: '#6366f1', textDecoration: 'underline', margin: '0 6px' }}>CGU</a>
+          </div>
+        </div>
       </div>
     </div>
   );

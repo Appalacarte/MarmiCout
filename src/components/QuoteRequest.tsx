@@ -11,6 +11,7 @@ export const QuoteRequest: React.FC = () => {
   const [details, setDetails] = useState('');
   const [copied, setCopied] = useState(false);
   const [sent, setSent] = useState(false);
+  const [acceptTerms, setAcceptTerms] = useState(false);
 
   const testerCode = getActiveTesterCode() || 'Anonyme';
   const recipientEmail = 'contact@appalacarte.fr';
@@ -44,6 +45,10 @@ Généré le ${new Date().toLocaleDateString('fr-FR')} à ${new Date().toLocaleT
       alert("Veuillez renseigner votre nom et les détails de votre demande.");
       return;
     }
+    if (!acceptTerms) {
+      alert("Veuillez accepter les CGU/CGV pour envoyer votre demande.");
+      return;
+    }
 
     const subject = encodeURIComponent(`[MarmiCout Devis] ${eventTypeLabels[eventType]} - ${clientName}`);
     const body = encodeURIComponent(devisText);
@@ -57,6 +62,10 @@ Généré le ${new Date().toLocaleDateString('fr-FR')} à ${new Date().toLocaleT
   const handleCopy = () => {
     if (!clientName.trim() || !details.trim()) {
       alert("Veuillez renseigner votre nom et les détails avant de copier.");
+      return;
+    }
+    if (!acceptTerms) {
+      alert("Veuillez accepter les CGU/CGV pour copier votre demande.");
       return;
     }
 
@@ -200,6 +209,29 @@ Généré le ${new Date().toLocaleDateString('fr-FR')} à ${new Date().toLocaleT
             </div>
           </div>
 
+          <div style={{
+            marginBottom: '20px',
+            padding: '12px 14px',
+            backgroundColor: 'var(--color-light)',
+            borderRadius: 'var(--radius-sm)',
+            border: '1px solid var(--color-border)',
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: '10px'
+          }}>
+            <input
+              type="checkbox"
+              id="quote-cgu-consent"
+              required
+              checked={acceptTerms}
+              onChange={e => setAcceptTerms(e.target.checked)}
+              style={{ marginTop: '3px', cursor: 'pointer' }}
+            />
+            <label htmlFor="quote-cgu-consent" style={{ fontSize: '13px', color: 'var(--color-dark)', cursor: 'pointer', lineHeight: '1.4' }}>
+              J'accepte expressément les <a href="/cgu" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--color-primary)', textDecoration: 'underline', fontWeight: '600' }}>CGU / CGV</a> relatives aux devis et souscriptions d'abonnements. *
+            </label>
+          </div>
+
           <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
             <button
               type="submit"
@@ -220,6 +252,13 @@ Généré le ${new Date().toLocaleDateString('fr-FR')} à ${new Date().toLocaleT
               {copied ? 'Copié !' : 'Copier le texte'}
             </button>
           </div>
+
+          <p style={{ fontSize: '12px', color: 'var(--color-dark-light)', marginTop: '12px', textAlign: 'center', lineHeight: '1.4' }}>
+            Vos données sont traitées pour établir votre proposition commerciale. Consultez notre{' '}
+            <a href="/confidentialite" style={{ color: 'var(--color-primary)', textDecoration: 'underline' }}>
+              Politique de Confidentialité
+            </a>.
+          </p>
         </form>
       </div>
     </div>

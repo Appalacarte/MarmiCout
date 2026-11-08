@@ -47,6 +47,25 @@ export const ExpiredScreen: React.FC<ExpiredScreenProps> = ({ code, expiryDate }
         <p style={{ fontSize: '13px', color: '#94a3b8', lineHeight: '1.5' }}>
           Contactez-nous pour recevoir un nouveau code d'accès.
         </p>
+
+        {/* Liens légaux */}
+        <div style={{
+          marginTop: '28px',
+          paddingTop: '16px',
+          borderTop: '1px solid #e2e8f0',
+          fontSize: '11px',
+          color: '#94a3b8',
+          lineHeight: '1.8'
+        }}>
+          <div>App à la Carte — Hervé CHAMPAGNE EI | SIREN : 132 021 098</div>
+          <div style={{ marginTop: '4px' }}>
+            <a href="/mentions-legales" style={{ color: '#6366f1', textDecoration: 'underline', margin: '0 6px' }}>Mentions légales</a>
+            |
+            <a href="/confidentialite" style={{ color: '#6366f1', textDecoration: 'underline', margin: '0 6px' }}>Confidentialité</a>
+            |
+            <a href="/cgu" style={{ color: '#6366f1', textDecoration: 'underline', margin: '0 6px' }}>CGU</a>
+          </div>
+        </div>
       </div>
     </div>
   );

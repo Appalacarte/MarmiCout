@@ -160,6 +160,13 @@ Généré le ${new Date().toLocaleDateString('fr-FR')} à ${new Date().toLocaleT
               {copied ? 'Copié !' : 'Copier le texte'}
             </button>
           </div>
+
+          <p style={{ fontSize: '12px', color: 'var(--color-dark-light)', marginTop: '12px', textAlign: 'center', lineHeight: '1.4' }}>
+            Vos retours nous aident à améliorer l'application. Consultez notre{' '}
+            <a href="/confidentialite" style={{ color: 'var(--color-primary)', textDecoration: 'underline' }}>
+              Politique de Confidentialité
+            </a>.
+          </p>
         </form>
       </div>
     </div>

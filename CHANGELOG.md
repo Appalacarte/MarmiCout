@@ -4,6 +4,30 @@ Toutes les modifications notables apportées à ce projet sont documentées dans
 
 ---
 
+## [2.0.37] - 2026-11-08
+
+### Ajouté
+- **Routes publiques stables et permanentes pour la conformité juridique** :
+  - `/mentions-legales` : accessible publiquement, sans login/code, rechargement direct (F5) et partageable. Titre d'onglet : *« Mentions légales – App à la Carte »*.
+  - `/confidentialite` : route dédiée pour la politique de confidentialité avec statut *« Document en cours de rédaction »*. Titre d'onglet : *« Politique de confidentialité – App à la Carte »*.
+  - `/cgu` : route dédiée pour les CGU/CGV avec statut *« Document en cours de rédaction »*. Titre d'onglet : *« Conditions Générales d'Utilisation – App à la Carte »*.
+- **Règles de réécriture SPA pour Vercel (`vercel.json`)** :
+  - Support natif des rechargements directs (F5) et accès externes sur `/mentions-legales`, `/confidentialite`, `/cgu` sans erreur 404.
+- **Redirection automatique de compatibilité** :
+  - Détection automatique et redirection propre de l'ancienne adresse `/#Mentions Légales` (et ses variantes encodées) vers `/mentions-legales` avec `window.history.replaceState`.
+- **Intégration systématique des liens légaux** :
+  - Pied de page principal : liens directs cliquables vers `/mentions-legales`, `/confidentialite`, `/cgu`.
+  - Écran de bienvenue / connexion / inscription (`WelcomeScreen`) : liens légaux visibles avant toute création de compte ou saisie de code.
+  - Formulaires (`WelcomeScreen`, `Contact`, `QuoteRequest`, `Suggestions`) : mention d'information sous les boutons d'envoi avec lien vers `/confidentialite`.
+  - Demande de devis & souscription (`QuoteRequest`) : ajout d'une case obligatoire d'acceptation des CGU/CGV pointant vers `/cgu`.
+- **Mise à jour du script de contrôle automatique (`scripts/verify-legal.mjs`)** :
+  - Vérification de l'existence des routes sans prérequis d'authentification.
+  - Contrôle de la présence des règles de réécriture dans `vercel.json`.
+  - Contrôle de la présence des liens dans le footer et sur l'écran de bienvenue.
+  - Détection et avertissement en cas d'anciennes adresses `#Mentions Légales` ou de statut « en cours de rédaction ».
+- **Synchronisation de version** :
+  - Incrémentation SemVer vers `2.0.37` dans `package.json`, `src/version.ts` et `CHANGELOG.md`.
+
 ## [2.0.36] - 2026-11-08
 
 ### Modifié

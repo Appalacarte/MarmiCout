@@ -211,6 +211,13 @@ Généré depuis l'application MarmiCout`;
                 {copied ? 'Copié !' : 'Copier le texte'}
               </button>
             </div>
+
+            <p style={{ fontSize: '12px', color: 'var(--color-dark-light)', marginTop: '12px', textAlign: 'center', lineHeight: '1.4' }}>
+              Les informations recueillies sont destinées à traiter votre demande. Consultez notre{' '}
+              <a href="/confidentialite" style={{ color: 'var(--color-primary)', textDecoration: 'underline' }}>
+                Politique de Confidentialité
+              </a>.
+            </p>
           </form>
         </div>
 
