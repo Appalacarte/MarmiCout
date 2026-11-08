@@ -42,11 +42,30 @@ import { APP_VERSION } from './version';
 
 type Tab = 'Dashboard' | 'Produits' | 'Achats' | 'Recettes' | 'Production' | 'Ventes' | 'Magasins' | 'Paramètres' | 'Suggestions' | 'Devis' | 'Contact' | 'QR Code' | 'Mentions Légales';
 
+const getInitialTab = (): Tab => {
+  if (typeof window !== 'undefined' && window.location.hash) {
+    const raw = window.location.hash.replace('#', '');
+    const decoded = decodeURIComponent(raw).trim();
+    const validTabs: Tab[] = ['Dashboard', 'Produits', 'Achats', 'Recettes', 'Production', 'Ventes', 'Magasins', 'Paramètres', 'Suggestions', 'Devis', 'Contact', 'QR Code', 'Mentions Légales'];
+    const found = validTabs.find(t => t.toLowerCase() === decoded.toLowerCase());
+    if (found) return found;
+  }
+  return 'Dashboard';
+};
+
 function App() {
-  const [activeTab, setActiveTab] = useState<Tab>('Dashboard');
+  const [activeTab, setActiveTab] = useState<Tab>(getInitialTab);
   const [tabExtraData, setTabExtraData] = useState<Record<string, unknown> | null>(null);
   const [lowStockCount, setLowStockCount] = useState(0);
   const [isMobileActionOpen, setIsMobileActionOpen] = useState(false);
+
+  useEffect(() => {
+    const handleHashChange = () => {
+      setActiveTab(getInitialTab());
+    };
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, []);
 
   const testerCode = getActiveTesterCode();
   const isExpired = testerCode ? isTesterCodeExpired(testerCode) : false;
@@ -73,6 +92,9 @@ function App() {
   // Gérer la navigation inter-onglets avec paramètres
   const handleNavigate = (tab: string, extraData?: Record<string, unknown>) => {
     setActiveTab(tab as Tab);
+    if (typeof window !== 'undefined') {
+      window.location.hash = encodeURIComponent(tab);
+    }
     if (extraData) {
       setTabExtraData(extraData);
     } else {

@@ -4,6 +4,15 @@ Toutes les modifications notables apportées à ce projet sont documentées dans
 
 ---
 
+## [2.0.34] - 2026-11-08
+
+### Ajouté
+- **Support de la navigation par hash URL pour les captures et accès direct aux onglets** :
+  - Support de `window.location.hash` (`#Dashboard`, `#Produits`, `#Achats`, `#Recettes`, `#Production`, `#Ventes`, `#Magasins`, `#Paramètres`, `#Mentions Légales`).
+  - Synchronisation de l'URL hash lors du changement d'onglet dans la barre latérale pour faciliter le partage et les tutoriels vidéo.
+- **Synchronisation de version** :
+  - Incrémentation SemVer vers `2.0.34` dans `package.json`, `src/version.ts` et `CHANGELOG.md`.
+
 ## [2.0.33] - 2026-11-08
 
 ### Ajouté
