@@ -1,6 +1,7 @@
 import React from 'react';
-import { ShieldCheck, Building2, User, Mail, Server, Globe, FileText, Lock } from 'lucide-react';
+import { ShieldCheck, Building2, User, Mail, Phone, Server, Globe, FileText, Lock } from 'lucide-react';
 import { APP_VERSION } from '../version';
+import { LEGAL_CONFIG } from '../config/legalConfig';
 
 export const MentionsLegales: React.FC = () => {
   return (
@@ -9,7 +10,16 @@ export const MentionsLegales: React.FC = () => {
       <div className="page-header" style={{ marginBottom: '24px' }}>
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
-            <span className="badge" style={{ backgroundColor: 'var(--color-primary-light)', color: 'var(--color-primary)', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+            <span
+              className="badge"
+              style={{
+                backgroundColor: 'var(--color-primary-light)',
+                color: 'var(--color-primary)',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px',
+              }}
+            >
               <ShieldCheck size={14} />
               Informations Officielles
             </span>
@@ -18,8 +28,8 @@ export const MentionsLegales: React.FC = () => {
             </span>
           </div>
           <h1 className="page-title">Mentions Légales & Informations Éditeur</h1>
-          <p className="page-subtitle">
-            Conformément aux dispositions des articles 6-III et 19 de la loi n° 2004-575 du 21 juin 2004 pour la Confiance dans l'Économie Numérique (L.C.E.N.).
+          <p className="page-subtitle" style={{ lineHeight: '1.5' }}>
+            {LEGAL_CONFIG.legalBasis}
           </p>
         </div>
       </div>
@@ -29,12 +39,18 @@ export const MentionsLegales: React.FC = () => {
         {/* 1. Éditeur de l'application */}
         <div className="card" style={{ padding: '24px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
-            <div style={{
-              width: '36px', height: '36px', borderRadius: '8px',
-              backgroundColor: 'var(--color-primary-light)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              color: 'var(--color-primary)'
-            }}>
+            <div
+              style={{
+                width: '36px',
+                height: '36px',
+                borderRadius: '8px',
+                backgroundColor: 'var(--color-primary-light)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: 'var(--color-primary)',
+              }}
+            >
               <Building2 size={20} />
             </div>
             <h2 style={{ fontSize: '18px', fontWeight: '700', margin: 0 }}>
@@ -42,106 +58,147 @@ export const MentionsLegales: React.FC = () => {
             </h2>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '16px', fontSize: '14px' }}>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+              gap: '16px',
+              fontSize: '14px',
+            }}
+          >
             <div>
               <div style={{ color: 'var(--color-dark-light)', fontSize: '12px' }}>Nom commercial</div>
-              <div style={{ fontWeight: '600' }}>App à la Carte</div>
+              <div style={{ fontWeight: '600' }}>{LEGAL_CONFIG.editor.commercialName}</div>
             </div>
 
             <div>
-              <div style={{ color: 'var(--color-dark-light)', fontSize: '12px' }}>Entrepreneur</div>
-              <div style={{ fontWeight: '600' }}>Hervé CHAMPAGNE</div>
-            </div>
-
-            <div>
-              <div style={{ color: 'var(--color-dark-light)', fontSize: '12px' }}>Forme juridique</div>
-              <div style={{ fontWeight: '600' }}>Entrepreneur individuel (EI)</div>
+              <div style={{ color: 'var(--color-dark-light)', fontSize: '12px' }}>Éditeur</div>
+              <div style={{ fontWeight: '600' }}>{LEGAL_CONFIG.editor.fullEditorDesignation}</div>
             </div>
 
             <div>
               <div style={{ color: 'var(--color-dark-light)', fontSize: '12px' }}>Adresse professionnelle</div>
-              <div style={{ fontWeight: '600' }}>173 rue de Courcelles, 75017 Paris, France</div>
-            </div>
-
-            <div>
-              <div style={{ color: 'var(--color-dark-light)', fontSize: '12px' }}>Société de domiciliation</div>
-              <div style={{ fontWeight: '600' }}>HelloDom (SIREN : 878 831 312)</div>
+              <div style={{ fontWeight: '600' }}>{LEGAL_CONFIG.editor.address}</div>
             </div>
 
             <div>
               <div style={{ color: 'var(--color-dark-light)', fontSize: '12px' }}>Numéro SIREN</div>
-              <div style={{ fontWeight: '600' }}>132 021 098</div>
+              <div style={{ fontWeight: '600' }}>{LEGAL_CONFIG.editor.siren}</div>
             </div>
 
             <div>
               <div style={{ color: 'var(--color-dark-light)', fontSize: '12px' }}>Numéro SIRET</div>
-              <div style={{ fontWeight: '600' }}>132 021 098 00018</div>
+              <div style={{ fontWeight: '600' }}>{LEGAL_CONFIG.editor.siret}</div>
+            </div>
+
+            {LEGAL_CONFIG.editor.rcs ? (
+              <div>
+                <div style={{ color: 'var(--color-dark-light)', fontSize: '12px' }}>RCS</div>
+                <div style={{ fontWeight: '600' }}>{LEGAL_CONFIG.editor.rcs}</div>
+              </div>
+            ) : null}
+
+            <div>
+              <div style={{ color: 'var(--color-dark-light)', fontSize: '12px' }}>Téléphone officiel</div>
+              <div>
+                <a
+                  href={`tel:${LEGAL_CONFIG.editor.phoneRaw}`}
+                  style={{
+                    fontWeight: '600',
+                    color: 'var(--color-primary)',
+                    textDecoration: 'none',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                  }}
+                >
+                  <Phone size={14} />
+                  {LEGAL_CONFIG.editor.phone}
+                </a>
+              </div>
             </div>
 
             <div>
-              <div style={{ color: 'var(--color-dark-light)', fontSize: '12px' }}>Activité principale (Code APE)</div>
-              <div style={{ fontWeight: '600' }}>6201Z - Programmation informatique</div>
-            </div>
-
-            <div>
-              <div style={{ color: 'var(--color-dark-light)', fontSize: '12px' }}>Immatriculation RNE</div>
-              <div style={{ fontWeight: '600' }}>26 octobre 2026 (Début d'activité : 21/10/2026)</div>
+              <div style={{ color: 'var(--color-dark-light)', fontSize: '12px' }}>Email de contact officiel</div>
+              <div>
+                <a
+                  href={`mailto:${LEGAL_CONFIG.editor.email}`}
+                  style={{
+                    fontWeight: '600',
+                    color: 'var(--color-primary)',
+                    textDecoration: 'none',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                  }}
+                >
+                  <Mail size={14} />
+                  {LEGAL_CONFIG.editor.email}
+                </a>
+              </div>
             </div>
 
             <div>
               <div style={{ color: 'var(--color-dark-light)', fontSize: '12px' }}>Directeur de la publication</div>
-              <div style={{ fontWeight: '600' }}>Hervé CHAMPAGNE (EI)</div>
-            </div>
-
-            <div>
-              <div style={{ color: 'var(--color-dark-light)', fontSize: '12px' }}>Contact électronique officiel</div>
-              <div>
-                <a href="mailto:contact@appalacarte.fr" style={{ fontWeight: '600', color: 'var(--color-primary)', textDecoration: 'none' }}>
-                  contact@appalacarte.fr
-                </a>
-              </div>
+              <div style={{ fontWeight: '600' }}>{LEGAL_CONFIG.editor.publicationDirector}</div>
             </div>
           </div>
         </div>
 
-        {/* 2. Régime Fiscal & TVA */}
+        {/* 2. Mention TVA */}
         <div className="card" style={{ padding: '24px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
-            <div style={{
-              width: '36px', height: '36px', borderRadius: '8px',
-              backgroundColor: 'var(--color-secondary-light)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              color: 'var(--color-secondary)'
-            }}>
+            <div
+              style={{
+                width: '36px',
+                height: '36px',
+                borderRadius: '8px',
+                backgroundColor: 'var(--color-secondary-light)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: 'var(--color-secondary)',
+              }}
+            >
               <FileText size={20} />
             </div>
             <h2 style={{ fontSize: '18px', fontWeight: '700', margin: 0 }}>
-              2. Régime Fiscal & Mention TVA
+              2. TVA
             </h2>
           </div>
 
           <div style={{ fontSize: '14px', lineHeight: '1.6' }}>
-            <p style={{ marginBottom: '8px' }}>
-              <strong>Régime fiscal :</strong> Micro-BIC (sans option versement libératoire).
-            </p>
-            <p style={{ marginBottom: '8px' }}>
-              <strong>Régime social :</strong> Micro-social simplifié (versement trimestriel).
-            </p>
-            <p style={{ padding: '12px 16px', backgroundColor: 'var(--color-light)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border)', fontWeight: '600', color: 'var(--color-dark)' }}>
-              Mention légale TVA : « TVA non applicable, article 293 B du CGI » (Franchise en base de TVA).
+            <p
+              style={{
+                padding: '12px 16px',
+                backgroundColor: 'var(--color-light)',
+                borderRadius: 'var(--radius-sm)',
+                border: '1px solid var(--color-border)',
+                fontWeight: '600',
+                color: 'var(--color-dark)',
+                margin: 0,
+              }}
+            >
+              {LEGAL_CONFIG.tva.mention}
             </p>
           </div>
         </div>
 
-        {/* 3. Hébergement & Nom de Domaine */}
+        {/* 3. Hébergement & Infrastructure */}
         <div className="card" style={{ padding: '24px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
-            <div style={{
-              width: '36px', height: '36px', borderRadius: '8px',
-              backgroundColor: 'rgba(52, 199, 89, 0.1)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              color: '#34c759'
-            }}>
+            <div
+              style={{
+                width: '36px',
+                height: '36px',
+                borderRadius: '8px',
+                backgroundColor: 'rgba(52, 199, 89, 0.1)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#34c759',
+              }}
+            >
               <Server size={20} />
             </div>
             <h2 style={{ fontSize: '18px', fontWeight: '700', margin: 0 }}>
@@ -149,30 +206,81 @@ export const MentionsLegales: React.FC = () => {
             </h2>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px', fontSize: '14px' }}>
-            <div style={{ padding: '12px', backgroundColor: 'var(--color-light)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border)' }}>
-              <div style={{ fontWeight: '700', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+              gap: '16px',
+              fontSize: '14px',
+            }}
+          >
+            <div
+              style={{
+                padding: '14px',
+                backgroundColor: 'var(--color-light)',
+                borderRadius: 'var(--radius-sm)',
+                border: '1px solid var(--color-border)',
+              }}
+            >
+              <div style={{ fontWeight: '700', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <Server size={16} /> Hébergeur Web
               </div>
-              <div><strong>Vercel Inc.</strong></div>
-              <div style={{ color: 'var(--color-dark-light)', fontSize: '13px' }}>440 N Barranca Ave #4133</div>
-              <div style={{ color: 'var(--color-dark-light)', fontSize: '13px' }}>Covina, CA 91723, USA</div>
-              <div style={{ fontSize: '12px', marginTop: '4px' }}>
-                <a href="https://vercel.com" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--color-primary)' }}>
+              <div style={{ fontWeight: '600' }}>{LEGAL_CONFIG.host.name}</div>
+              <div style={{ color: 'var(--color-dark-light)', fontSize: '13px', marginTop: '2px' }}>
+                {LEGAL_CONFIG.host.address}
+              </div>
+              <div style={{ fontSize: '13px', marginTop: '6px' }}>
+                <span style={{ color: 'var(--color-dark-light)' }}>Téléphone : </span>
+                <a
+                  href={`tel:${LEGAL_CONFIG.host.phoneRaw}`}
+                  style={{ color: 'var(--color-primary)', fontWeight: '600', textDecoration: 'none' }}
+                >
+                  {LEGAL_CONFIG.host.phone}
+                </a>
+              </div>
+              <div style={{ fontSize: '13px', marginTop: '4px' }}>
+                <a
+                  href={LEGAL_CONFIG.host.website}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ color: 'var(--color-primary)' }}
+                >
                   vercel.com
                 </a>
               </div>
             </div>
 
-            <div style={{ padding: '12px', backgroundColor: 'var(--color-light)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border)' }}>
-              <div style={{ fontWeight: '700', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <div
+              style={{
+                padding: '14px',
+                backgroundColor: 'var(--color-light)',
+                borderRadius: 'var(--radius-sm)',
+                border: '1px solid var(--color-border)',
+              }}
+            >
+              <div style={{ fontWeight: '700', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <Globe size={16} /> Registrar Domaines / DNS
               </div>
-              <div><strong>OVHcloud (OVH SAS)</strong></div>
-              <div style={{ color: 'var(--color-dark-light)', fontSize: '13px' }}>2 rue Kellermann</div>
-              <div style={{ color: 'var(--color-dark-light)', fontSize: '13px' }}>59100 Roubaix, France</div>
-              <div style={{ fontSize: '12px', marginTop: '4px' }}>
-                <a href="https://www.ovhcloud.com" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--color-primary)' }}>
+              <div style={{ fontWeight: '600' }}>{LEGAL_CONFIG.registrar.name}</div>
+              <div style={{ color: 'var(--color-dark-light)', fontSize: '13px', marginTop: '2px' }}>
+                {LEGAL_CONFIG.registrar.address}
+              </div>
+              <div style={{ fontSize: '13px', marginTop: '6px' }}>
+                <span style={{ color: 'var(--color-dark-light)' }}>Téléphone : </span>
+                <a
+                  href={`tel:${LEGAL_CONFIG.registrar.phoneRaw}`}
+                  style={{ color: 'var(--color-primary)', fontWeight: '600', textDecoration: 'none' }}
+                >
+                  {LEGAL_CONFIG.registrar.phone}
+                </a>
+              </div>
+              <div style={{ fontSize: '13px', marginTop: '4px' }}>
+                <a
+                  href={LEGAL_CONFIG.registrar.website}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ color: 'var(--color-primary)' }}
+                >
                   ovhcloud.com
                 </a>
               </div>
@@ -180,57 +288,77 @@ export const MentionsLegales: React.FC = () => {
           </div>
         </div>
 
-        {/* 4. Données Personnelles & Confidentialité Locale */}
+        {/* 4. Données Personnelles & Confidentialité (RGPD) */}
         <div className="card" style={{ padding: '24px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
-            <div style={{
-              width: '36px', height: '36px', borderRadius: '8px',
-              backgroundColor: 'var(--color-warning-light)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              color: 'var(--color-warning)'
-            }}>
+            <div
+              style={{
+                width: '36px',
+                height: '36px',
+                borderRadius: '8px',
+                backgroundColor: 'var(--color-warning-light)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: 'var(--color-warning)',
+              }}
+            >
               <Lock size={20} />
             </div>
             <h2 style={{ fontSize: '18px', fontWeight: '700', margin: 0 }}>
-              4. Respect de la Vie Privée & Stockage Local (RGPD)
+              4. Politique de Confidentialité & Protection des Données (RGPD)
             </h2>
           </div>
 
           <div style={{ fontSize: '14px', lineHeight: '1.6', display: 'flex', flexDirection: 'column', gap: '12px' }}>
             <p>
-              <strong>Architecture locale & Zéro fuite de données :</strong> L'application <em>MarmiCout</em> fonctionne selon une logique de stockage local autonome (dans la mémoire de votre navigateur via <code>localStorage</code>). Vos recettes secrètes, listes d'ingrédients, prix de revient, coefficients de marge et registres de ventes restent enregistrés <strong>exclusivement sur votre appareil</strong> (ordinateur, tablette ou smartphone).
+              <strong>Stockage local autonome :</strong> L'application <em>MarmiCout</em> est conçue selon un principe de confidentialité maximale. Les recettes, ingrédients, coûts de revient, coefficients de marge et registres de ventes sont conservés <strong>exclusivement sur votre équipement</strong> dans la mémoire locale de votre navigateur (<code>localStorage</code>). Aucune donnée métier n'est transmise ni stockée sur des serveurs distants sans action volontaire de synchronisation de votre part.
             </p>
             <p>
-              Aucun cookie publicitaire, aucun traceur de profilage commercial et aucune base de données centrale ne collecte vos données culinaires sans votre accord formel.
+              <strong>Gestion des traceurs et cookies :</strong> Ce site n'utilise aucun cookie publicitaire, aucun traceur de profilage commercial et aucun outil intrusif de pistage tiers. Seuls des traceurs strictement techniques nécessaires au maintien de session et à l'exécution de l'application web peuvent être employés, conformément aux recommandations de la CNIL.
             </p>
             <p>
-              <strong>Formulaires de contact et devis :</strong> Lorsque vous transmettez un message ou une suggestion via le formulaire de contact, les informations communiquées (nom, email, message) sont destinées exclusivement au traitement de votre demande par Hervé CHAMPAGNE (EI) et ne sont en aucun cas cédées ni vendues à des tiers. Conformément au RGPD, vous disposez d'un droit d'accès, de rectification et d'effacement de vos coordonnées en écrivant à :{' '}
-              <a href="mailto:contact@appalacarte.fr" style={{ color: 'var(--color-primary)', fontWeight: '600' }}>
-                contact@appalacarte.fr
+              <strong>Transferts de données hors UE et infrastructure Vercel :</strong> L'hébergement et la distribution du code statique de l'application sont assurés par la société <strong>Vercel Inc.</strong> (États-Unis). Les flux éventuels de données techniques de routage et d'accès sont strictement encadrés par le cadre transatlantique de protection des données (<strong>Data Privacy Framework - DPF UE-États-Unis</strong>) approuvé par la Commission Européenne, garantissant un niveau de sécurité et de conformité équivalent au RGPD.
+            </p>
+            <p>
+              <strong>Droits des utilisateurs :</strong> Conformément au RGPD et à la loi Informatique et Libertés, pour toute demande d'information, d'accès ou d'effacement de données transmises lors de demandes de contact ou devis, vous pouvez contacter le responsable à l'adresse suivante :{' '}
+              <a href={`mailto:${LEGAL_CONFIG.editor.email}`} style={{ color: 'var(--color-primary)', fontWeight: '600' }}>
+                {LEGAL_CONFIG.editor.email}
               </a>.
             </p>
           </div>
         </div>
 
-        {/* 5. Propriété Intellectuelle */}
+        {/* 5. Conditions Générales (CGU / CGV) & Propriété Intellectuelle */}
         <div className="card" style={{ padding: '24px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
-            <div style={{
-              width: '36px', height: '36px', borderRadius: '8px',
-              backgroundColor: 'var(--color-primary-light)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              color: 'var(--color-primary)'
-            }}>
+            <div
+              style={{
+                width: '36px',
+                height: '36px',
+                borderRadius: '8px',
+                backgroundColor: 'var(--color-primary-light)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: 'var(--color-primary)',
+              }}
+            >
               <User size={20} />
             </div>
             <h2 style={{ fontSize: '18px', fontWeight: '700', margin: 0 }}>
-              5. Propriété Intellectuelle
+              5. Conditions Générales d'Utilisation (CGU / CGV) & Propriété Intellectuelle
             </h2>
           </div>
 
-          <p style={{ fontSize: '14px', lineHeight: '1.6', margin: 0 }}>
-            L'ensemble des composants de l'application <em>MarmiCout</em> (architecture logicielle, code source, interfaces graphiques, ergonomie, logos, marques et fiches techniques) sont protégés par les lois françaises et internationales relatives à la propriété intellectuelle. Toute reproduction, représentation, adaptation ou exploitation non autorisée, intégrale ou partielle, est strictement interdite sans accord écrit préalable de l'éditeur <strong>App à la Carte — Hervé CHAMPAGNE EI</strong>.
-          </p>
+          <div style={{ fontSize: '14px', lineHeight: '1.6', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <p>
+              <strong>Propriété intellectuelle :</strong> L'ensemble des éléments de l'application <em>MarmiCout</em> (architecture, code source, design d'interface, algorithmes de calcul de marges, graphismes et marques) sont la propriété exclusive de <strong>App à la Carte — Hervé CHAMPAGNE EI</strong>. Toute reproduction intégrale ou partielle sans autorisation expresse est prohibée.
+            </p>
+            <p style={{ color: 'var(--color-dark-light)' }}>
+              <strong>Conditions contractuelles applicables :</strong> L'application est mise à disposition pour une utilisation professionnelle selon les modalités d'accès souscrites. Les Conditions Générales d'Utilisation (CGU) et Conditions Générales de Vente (CGV) régissant les abonnements personnalisés ou prestations sur-mesure sont communiquées lors de l'établissement des devis ou accessibles sur demande à <code>contact@appalacarte.fr</code>.
+            </p>
+          </div>
         </div>
 
       </div>
