@@ -4,6 +4,16 @@ Toutes les modifications notables apportées à ce projet sont documentées dans
 
 ---
 
+## [2.0.30] - 2026-11-08
+
+### Modifié
+- **Déploiement Vercel & configuration domaine** :
+  - Déploiement en production de l'application sur Vercel avec le domaine officiel direct `https://marmicout.vercel.app` (et conservation de l'alias de secours `https://marmi-cout.vercel.app`).
+  - Configuration du dépôt distant GitHub vers l'organisation officielle App à la Carte : `https://github.com/Appalacarte/MarmiCout.git`.
+  - Ajout de l'exclusion `.vercel` dans `.gitignore`.
+- **Synchronisation de version** :
+  - Incrémentation SemVer vers `2.0.30` dans `package.json`, `package-lock.json`, `src/version.ts` et `CHANGELOG.md`.
+
 ## [2.0.29] - 2026-11-08
 
 ### Ajouté
