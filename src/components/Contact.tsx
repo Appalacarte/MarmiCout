@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Send, Mail, Copy, Check, Info, MessageCircle, MapPin } from 'lucide-react';
+import { Send, Mail, Copy, Check, Info, Building2, MapPin, ShieldCheck } from 'lucide-react';
 
 export const Contact: React.FC = () => {
   const [name, setName] = useState('');
@@ -9,7 +9,7 @@ export const Contact: React.FC = () => {
   const [copied, setCopied] = useState(false);
   const [sent, setSent] = useState(false);
 
-  const recipientEmail = 'contact.marmicout@gmail.com';
+  const recipientEmail = 'contact@appalacarte.fr';
 
   const contactText = `✉️ MESSAGE DE CONTACT MARMICOUT
 ---------------------------------------
@@ -21,6 +21,7 @@ export const Contact: React.FC = () => {
 ${message}
 
 ---------------------------------------
+Destinataire : App à la Carte (contact@appalacarte.fr)
 Généré depuis l'application MarmiCout`;
 
   const handleSendEmail = (e: React.FormEvent) => {
@@ -56,9 +57,9 @@ Généré depuis l'application MarmiCout`;
       {/* En-tête */}
       <div className="page-header">
         <div>
-          <h1 className="page-title">Contact</h1>
+          <h1 className="page-title">Contact & Support Éditeur</h1>
           <p className="page-subtitle">
-            Une question, une remarque ou besoin d'assistance ? Écrivez-nous directement.
+            Une question, une remarque ou besoin d'une assistance technique ? Contactez App à la Carte.
           </p>
         </div>
       </div>
@@ -68,8 +69,9 @@ Généré depuis l'application MarmiCout`;
         {/* Colonne Gauche : Infos de contact */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           <div className="card" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <h3 style={{ fontSize: '16px', fontWeight: '700', margin: '0 0 8px 0' }}>
-              Coordonnées
+            <h3 style={{ fontSize: '16px', fontWeight: '700', margin: '0 0 8px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Building2 size={18} style={{ color: 'var(--color-primary)' }} />
+              Coordonnées Éditeur
             </h3>
             
             <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
@@ -82,7 +84,7 @@ Généré depuis l'application MarmiCout`;
                 <Mail size={16} />
               </div>
               <div>
-                <div style={{ fontSize: '12px', color: 'var(--color-dark-light)' }}>Email Direct</div>
+                <div style={{ fontSize: '12px', color: 'var(--color-dark-light)' }}>Email Officiel</div>
                 <a href={`mailto:${recipientEmail}`} style={{ fontSize: '14px', fontWeight: '600', color: 'var(--color-primary)', textDecoration: 'none' }}>
                   {recipientEmail}
                 </a>
@@ -92,15 +94,16 @@ Généré depuis l'application MarmiCout`;
             <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
               <div style={{
                 width: '32px', height: '32px', borderRadius: '50%',
-                backgroundColor: 'rgba(52, 199, 89, 0.1)',
+                backgroundColor: 'var(--color-secondary-light)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                color: '#34c759', flexShrink: 0
+                color: 'var(--color-secondary)', flexShrink: 0
               }}>
-                <MessageCircle size={16} />
+                <Building2 size={16} />
               </div>
               <div>
-                <div style={{ fontSize: '12px', color: 'var(--color-dark-light)' }}>WhatsApp & SMS</div>
-                <div style={{ fontSize: '14px', fontWeight: '600' }}>Disponible via Copie de texte</div>
+                <div style={{ fontSize: '12px', color: 'var(--color-dark-light)' }}>Éditeur</div>
+                <div style={{ fontSize: '14px', fontWeight: '600' }}>App à la Carte — Hervé CHAMPAGNE EI</div>
+                <div style={{ fontSize: '11px', color: 'var(--color-dark-light)' }}>SIREN : 132 021 098</div>
               </div>
             </div>
 
@@ -114,8 +117,9 @@ Généré depuis l'application MarmiCout`;
                 <MapPin size={16} />
               </div>
               <div>
-                <div style={{ fontSize: '12px', color: 'var(--color-dark-light)' }}>Localisation</div>
-                <div style={{ fontSize: '14px', fontWeight: '600' }}>France</div>
+                <div style={{ fontSize: '12px', color: 'var(--color-dark-light)' }}>Adresse Professionnelle</div>
+                <div style={{ fontSize: '13px', fontWeight: '600' }}>173 rue de Courcelles</div>
+                <div style={{ fontSize: '12px', color: 'var(--color-dark-light)' }}>75017 Paris, France</div>
               </div>
             </div>
           </div>
@@ -124,7 +128,7 @@ Généré depuis l'application MarmiCout`;
             <div style={{ display: 'flex', gap: '8px' }}>
               <Info size={16} style={{ color: 'var(--color-dark-light)', flexShrink: 0, marginTop: '2px' }} />
               <div style={{ fontSize: '11px', lineHeight: '1.4' }}>
-                L'application MarmiCout est un outil de gestion local. Pour toute demande d'assistance technique ou d'adaptation sur-mesure de l'application, contactez le développeur via ce formulaire.
+                L'application MarmiCout est un outil de gestion local édité par App à la Carte. Pour toute demande d'assistance technique ou de développement sur-mesure, utilisez ce formulaire direct.
               </div>
             </div>
           </div>

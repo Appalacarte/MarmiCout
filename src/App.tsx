@@ -14,7 +14,8 @@ import {
   MessageSquare,
   FileText,
   Mail,
-  QrCode
+  QrCode,
+  ShieldCheck
 } from 'lucide-react';
 import './App.css'; // Nous allons vider ce fichier pour éviter les conflits
 
@@ -33,12 +34,13 @@ import { QuoteRequest } from './components/QuoteRequest';
 import { Contact } from './components/Contact';
 import { QRCodePage } from './components/QRCodePage';
 import { ExpiredScreen } from './components/ExpiredScreen';
+import { MentionsLegales } from './components/MentionsLegales';
 
 import { dbService, getActiveTesterCode } from './services/db';
 import { markTesterCodeIssued, isTesterCodeExpired, getTesterCodeExpiryDate } from './services/testerCodes';
 import { APP_VERSION } from './version';
 
-type Tab = 'Dashboard' | 'Produits' | 'Achats' | 'Recettes' | 'Production' | 'Ventes' | 'Magasins' | 'Paramètres' | 'Suggestions' | 'Devis' | 'Contact' | 'QR Code';
+type Tab = 'Dashboard' | 'Produits' | 'Achats' | 'Recettes' | 'Production' | 'Ventes' | 'Magasins' | 'Paramètres' | 'Suggestions' | 'Devis' | 'Contact' | 'QR Code' | 'Mentions Légales';
 
 function App() {
   const [activeTab, setActiveTab] = useState<Tab>('Dashboard');
@@ -104,6 +106,7 @@ function App() {
     { id: 'Suggestions', label: 'Suggestions', icon: MessageSquare },
     { id: 'Devis', label: 'Demande de devis', icon: FileText },
     { id: 'Contact', label: 'Contact', icon: Mail },
+    { id: 'Mentions Légales', label: 'Mentions Légales', icon: ShieldCheck },
     { id: 'QR Code', label: 'QR Code', icon: QrCode }
   ];
 
@@ -149,6 +152,8 @@ function App() {
         return <QuoteRequest />;
       case 'Contact':
         return <Contact />;
+      case 'Mentions Légales':
+        return <MentionsLegales />;
       case 'QR Code':
         return <QRCodePage />;
       default:
@@ -202,7 +207,10 @@ function App() {
         <div className="sidebar-footer">
           <div>{currentSettings.businessName}</div>
           <div style={{ fontSize: '11px', color: 'var(--color-dark-light)', marginTop: '2px' }}>
-            MarmiCout V.{APP_VERSION}
+            MarmiCout v{APP_VERSION}
+          </div>
+          <div style={{ fontSize: '10px', color: 'var(--color-dark-light)', marginTop: '2px' }}>
+            Édité par App à la Carte
           </div>
           {(() => {
             const code = getActiveTesterCode();
@@ -255,17 +263,57 @@ function App() {
         {/* Rendu du composant React actif */}
         {renderActiveView()}
 
-        {/* Pied de page global avec version */}
+        {/* Pied de page global conforme avec informations éditeur et mentions légales */}
         <footer style={{
           textAlign: 'center',
-          padding: '24px 0 40px',
-          fontSize: '11px',
+          padding: '24px 16px 40px',
+          fontSize: '12px',
           color: 'var(--color-dark-light)',
           borderTop: '1px solid var(--color-border)',
-          marginTop: '40px'
+          marginTop: '40px',
+          lineHeight: '1.8'
         }}>
-          <div>© {new Date().getFullYear()} MarmiCout — Logiciel de gestion Traiteur & Plats Cuisinés</div>
-          <div style={{ marginTop: '4px', fontWeight: 'bold' }}>Version V.{APP_VERSION}</div>
+          <div>
+            <strong>App à la Carte — Hervé CHAMPAGNE EI</strong> | SIREN : 132 021 098 | v{APP_VERSION} |{' '}
+            <button
+              type="button"
+              onClick={() => handleNavigate('Mentions Légales')}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: 'var(--color-primary)',
+                cursor: 'pointer',
+                fontWeight: '600',
+                textDecoration: 'underline',
+                padding: '0 4px',
+                fontSize: 'inherit',
+                fontFamily: 'inherit'
+              }}
+            >
+              Mentions légales
+            </button>
+            {' '}|{' '}
+            <button
+              type="button"
+              onClick={() => handleNavigate('Contact')}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: 'var(--color-primary)',
+                cursor: 'pointer',
+                fontWeight: '600',
+                textDecoration: 'underline',
+                padding: '0 4px',
+                fontSize: 'inherit',
+                fontFamily: 'inherit'
+              }}
+            >
+              Contact
+            </button>
+          </div>
+          <div style={{ fontSize: '11px', color: 'var(--color-dark-light)', marginTop: '4px' }}>
+            MarmiCout — Gestion locale de recettes, coûts & stocks culinaires • TVA non applicable, art. 293 B du CGI
+          </div>
         </footer>
       </main>
 
@@ -424,6 +472,18 @@ function App() {
           >
             <Mail size={18} style={{ marginRight: '12px', color: 'var(--color-primary)' }} />
             Contact
+          </button>
+
+          <button
+            className="btn btn-secondary"
+            style={{ height: '50px', justifyContent: 'flex-start', paddingLeft: '20px' }}
+            onClick={() => {
+              setIsMobileActionOpen(false);
+              handleNavigate('Mentions Légales');
+            }}
+          >
+            <ShieldCheck size={18} style={{ marginRight: '12px', color: 'var(--color-primary)' }} />
+            Mentions Légales
           </button>
 
           <button

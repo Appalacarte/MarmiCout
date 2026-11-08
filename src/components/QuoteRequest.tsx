@@ -13,7 +13,7 @@ export const QuoteRequest: React.FC = () => {
   const [sent, setSent] = useState(false);
 
   const testerCode = getActiveTesterCode() || 'Anonyme';
-  const recipientEmail = 'contact.marmicout@gmail.com';
+  const recipientEmail = 'contact@appalacarte.fr';
 
   const eventTypeLabels: Record<string, string> = {
     repas_assis: 'Repas assis',
