@@ -4,6 +4,18 @@ Toutes les modifications notables apportées à ce projet sont documentées dans
 
 ---
 
+## [2.0.33] - 2026-11-08
+
+### Ajouté
+- **Dossier Marketing Complet & Guide Vidéo PC Écran par Écran (`Marketing_MarmiCout_Guide_Video_PC.md`)** :
+  - Création du script de formation vidéo PC complet écran par écran (Tableau de bord, Produits & Stocks, Achats & Factures OCR, Recettes & Marges, Productions Lot, Ventes & Profits, Fournisseurs, Paramètres & Synchronisation, Utilitaires).
+  - Rédaction des 10 slogans stratégiques avec scores d'impact et cas d'usage.
+  - Structure de la Landing Page de vente avec placeholders administrables Appalacarte.
+  - Fiches de soumission App Store et Google Play conformes ASO.
+  - Catalogue des 20 visuels et médias administrables.
+- **Synchronisation de version** :
+  - Incrémentation SemVer vers `2.0.33` dans `package.json`, `src/version.ts` et `CHANGELOG.md`.
+
 ## [2.0.32] - 2026-11-08
 
 ### Modifié
