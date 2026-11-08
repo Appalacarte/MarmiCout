@@ -236,6 +236,24 @@ export const dbService = {
     initDB();
   },
 
+  clearAllData(): void {
+    const current = this.getSettings();
+    const cleanSettings: Settings = {
+      ...current,
+      businessName: current.businessName === 'Les Délices de Marmie' ? 'Mon Atelier Culinaire' : current.businessName
+    };
+    localStorage.setItem(KEYS.SETTINGS, JSON.stringify(cleanSettings));
+    localStorage.setItem(KEYS.STORES, JSON.stringify([]));
+    localStorage.setItem(KEYS.PRODUCTS, JSON.stringify([]));
+    localStorage.setItem(KEYS.PURCHASES, JSON.stringify([]));
+    localStorage.setItem(KEYS.RECIPES, JSON.stringify([]));
+    localStorage.setItem(KEYS.RECIPE_INGREDIENTS, JSON.stringify([]));
+    localStorage.setItem(KEYS.RECIPE_PACKAGING, JSON.stringify([]));
+    localStorage.setItem(KEYS.PRODUCTIONS, JSON.stringify([]));
+    localStorage.setItem(KEYS.SALES, JSON.stringify([]));
+    localStorage.setItem(KEYS.STOCK_MOVEMENTS, JSON.stringify([]));
+  },
+
   // --- PARAMÈTRES (SETTINGS) ---
   getSettings(): Settings {
     initDB();

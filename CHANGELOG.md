@@ -4,6 +4,16 @@ Toutes les modifications notables apportées à ce projet sont documentées dans
 
 ---
 
+## [2.0.29] - 2026-11-08
+
+### Ajouté
+- **Fonctionnalité « Démarrer de zéro (Base 100% vierge) » dans la Zone de Danger** :
+  - Ajout d'une touche dédiée avec dialogue de confirmation explicatif permettant d'effacer tous les produits, recettes, achats, productions, ventes et fournisseurs de démo.
+  - Implémentation du service `clearAllData()` dans `dbService` réinitialisant les tables locales tout en préservant les paramètres de calcul généraux (unités, devises, coefficient de marge).
+  - Clarification visuelle et rédactionnelle de la Zone de Danger dans `Settings.tsx` avec distinction nette entre :
+    1. « Démarrer de zéro » pour les professionnels qui souhaitent démarrer immédiatement leur propre catalogue ;
+    2. « Recharger les données de démo » pour tester l'application avec les exemples prédéfinis de Marmie.
+
 ## [2.0.28] - 2026-11-08
 
 ### Ajouté

@@ -9,7 +9,8 @@ import {
   FileText,
   AlertTriangle,
   Building2,
-  ShieldCheck
+  ShieldCheck,
+  Trash2
 } from 'lucide-react';
 import { dbService } from '../services/db';
 import { Settings as SettingsType } from '../types';
@@ -267,8 +268,22 @@ export const Settings: React.FC = () => {
 
   // Réinitialiser la base de données aux valeurs de démo
   const handleResetData = () => {
-    if (window.confirm("⚠️ Attention : cela écrasera toutes vos modifications actuelles pour restaurer les recettes et produits de démonstration. Continuer ?")) {
+    if (window.confirm("⚠️ Attention : cela écrasera toutes vos modifications actuelles pour restaurer les recettes et produits de démonstration de Marmie. Continuer ?")) {
       dbService.resetToDefault();
+      window.location.reload();
+    }
+  };
+
+  // Vider toute la base pour démarrer l'application à zéro (base 100% vierge)
+  const handleClearAllData = () => {
+    const confirmation = window.confirm(
+      "⚠️ DÉMARRAGE À ZÉRO (BASE VIERGE)\n\n" +
+      "Cette action va effacer TOUS les ingrédients, recettes, achats, productions, ventes et fournisseurs (y compris les données d'exemple).\n\n" +
+      "Votre application sera totalement vierge et prête pour vos propres créations culinaires.\n\n" +
+      "Souhaitez-vous vraiment vider toute la base de données ?"
+    );
+    if (confirmation) {
+      dbService.clearAllData();
       window.location.reload();
     }
   };
@@ -757,21 +772,64 @@ export const Settings: React.FC = () => {
             </div>
           </div>
 
-          {/* Réinitialisation de sécurité */}
-          <div className="card" style={{ borderColor: 'rgba(255, 75, 75, 0.2)' }}>
-            <h3 className="card-title" style={{ color: 'var(--color-danger)' }}>
+          {/* Zone de Danger : Démarrage à zéro ou Démo */}
+          <div className="card" style={{ borderColor: 'rgba(255, 75, 75, 0.3)', backgroundColor: 'rgba(255, 75, 75, 0.02)' }}>
+            <h3 className="card-title" style={{ color: 'var(--color-danger)', marginBottom: '8px' }}>
               <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <AlertTriangle size={20} />
-                Zone de Danger
+                Zone de Danger — Gestion des Données
               </span>
             </h3>
-            <p style={{ fontSize: '13px', color: 'var(--color-dark-light)', marginBottom: '16px' }}>
-              Vous pouvez réinitialiser l'application pour effacer vos données et remettre les données de démonstration de tartes et confitures de Marmie.
+
+            <p style={{ fontSize: '12px', color: 'var(--color-dark-light)', marginBottom: '16px' }}>
+              Ces actions modifient définitivement le contenu stocké dans votre appareil. Assurez-vous d'avoir exporté vos données au format CSV ci-dessus si vous souhaitez en conserver une copie.
             </p>
-            <button type="button" className="btn btn-danger" style={{ width: '100%' }} onClick={handleResetData}>
-              <RotateCcw size={16} style={{ marginRight: '6px' }} />
-              Réinitialiser les données de démo
-            </button>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              {/* Option 1 : Vider toute la base pour démarrer à zéro */}
+              <div style={{ padding: '14px', borderRadius: 'var(--radius-sm)', backgroundColor: 'var(--color-white)', border: '1px solid rgba(255, 75, 75, 0.25)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                  <Trash2 size={16} style={{ color: 'var(--color-danger)' }} />
+                  <strong style={{ fontSize: '13px', color: 'var(--color-danger)' }}>
+                    Démarrer de zéro (Base 100% vierge)
+                  </strong>
+                </div>
+                <p style={{ fontSize: '12px', color: 'var(--color-dark)', lineHeight: '1.5', marginBottom: '12px' }}>
+                  <strong>Prêt à lancer votre propre activité ?</strong> Cette touche efface l'intégralité des matières premières, recettes, achats, productions et ventes (y compris les exemples préinstallés). Vous repartez avec un atelier culinaire totalement propre et vierge, prêt pour vos vraies fiches techniques. Vos unités de mesure et préférences de calcul sont préservées.
+                </p>
+                <button
+                  type="button"
+                  className="btn btn-danger"
+                  style={{ width: '100%', height: '42px', fontWeight: '600' }}
+                  onClick={handleClearAllData}
+                >
+                  <Trash2 size={16} style={{ marginRight: '6px' }} />
+                  Vider toute la base et démarrer à 0
+                </button>
+              </div>
+
+              {/* Option 2 : Restaurer les données de démonstration */}
+              <div style={{ padding: '14px', borderRadius: 'var(--radius-sm)', backgroundColor: 'var(--color-white)', border: '1px solid var(--color-border)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                  <RotateCcw size={16} style={{ color: 'var(--color-primary)' }} />
+                  <strong style={{ fontSize: '13px', color: 'var(--color-dark)' }}>
+                    Restaurer l'exemple de démonstration
+                  </strong>
+                </div>
+                <p style={{ fontSize: '12px', color: 'var(--color-dark-light)', lineHeight: '1.5', marginBottom: '12px' }}>
+                  Réinjecte les recettes types (tartes, confitures), les ingrédients de test, ainsi qu'un historique d'achats et de ventes simulés. Idéal pour explorer toutes les fonctions de calcul de marge et de décompte de stock de MarmiCout avant de saisir vos propres données.
+                </p>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  style={{ width: '100%', height: '40px' }}
+                  onClick={handleResetData}
+                >
+                  <RotateCcw size={16} style={{ marginRight: '6px' }} />
+                  Recharger les données de démo (Marmie)
+                </button>
+              </div>
+            </div>
           </div>
 
         </div>
