@@ -56,7 +56,7 @@ export const LEGAL_CONFIG: LegalConfig = {
     address: "173 rue de Courcelles, 75017 Paris, France (domiciliation HelloDom)",
     siren: "132 021 098",
     siret: "132 021 098 00018",
-    rcs: "", // À compléter si inscrit (ex: "RCS Paris 132 021 098"), sinon laisser vide
+    rcs: "", // Certifié par l'attestation RNE (INPI) du 28/10/2026 : Non inscrit au RCS (activité libérale non réglementée). Champ vide conforme.
     phone: "07 69 59 04 70",
     phoneRaw: "+33769590470",
     email: "contact@appalacarte.fr",

@@ -4,6 +4,17 @@ Toutes les modifications notables apportées à ce projet sont documentées dans
 
 ---
 
+## [2.0.38] - 2026-11-08
+
+### Modifié
+- **Certification officielle des données d'entreprise (Source RNE / INPI du 28/10/2026)** :
+  - Validation et confirmation des données d'identification issues de l'attestation RNE (`D:\Aplli\Mon Compte entreprise\Sedomicilier\Siren.pdf`).
+  - Confirmation définitive du statut RCS : non applicable (activité libérale non réglementée, immatriculation exclusive au RNE de l'INPI — champ RCS maintenu vide sans mention superflue).
+  - Validation de l'objet d'activité officiel complet enregistré au Guichet Unique.
+  - Mise à jour des règles globales éditeur (`GEMINI.md`) et de la compétence globale `mentions-legales`.
+- **Synchronisation de version** :
+  - Incrémentation SemVer vers `2.0.38` dans `package.json`, `src/version.ts` et `CHANGELOG.md`.
+
 ## [2.0.37] - 2026-11-08
 
 ### Ajouté
