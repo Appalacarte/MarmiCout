@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { parseDecimalInput } from '../utils';
 import { 
   Settings as SettingsIcon, 
@@ -16,6 +16,7 @@ import { dbService } from '../services/db';
 import { Settings as SettingsType } from '../types';
 import { APP_VERSION } from '../version';
 import { SubscriptionSettings } from './SubscriptionSettings';
+import { pwaService } from '../services/pwaService';
 
 interface SettingsProps {
   initialSubTab?: 'general' | 'subscription';
@@ -25,6 +26,27 @@ export const Settings: React.FC<SettingsProps> = ({ initialSubTab = 'general' })
   const [activeSubTab, setActiveSubTab] = useState<'general' | 'subscription'>(initialSubTab);
   const [settings, setSettings] = useState<SettingsType>(dbService.getSettings());
   const [saveSuccess, setSaveSuccess] = useState(false);
+
+  // État PWA pour l'installation sur PC / Mobile
+  const [canInstall, setCanInstall] = useState(() => pwaService.canInstall());
+  const [isInstalled, setIsInstalled] = useState(() => pwaService.isInstalled());
+
+  useEffect(() => {
+    const handlePwaState = () => {
+      setCanInstall(pwaService.canInstall());
+      setIsInstalled(pwaService.isInstalled());
+    };
+    window.addEventListener('marmicout_pwa_state_change', handlePwaState);
+    return () => window.removeEventListener('marmicout_pwa_state_change', handlePwaState);
+  }, []);
+
+  const handleInstallClick = async () => {
+    const installed = await pwaService.promptInstall();
+    if (installed) {
+      setIsInstalled(true);
+      setCanInstall(false);
+    }
+  };
 
   // États pour l'importateur CSV
   const [importTable, setImportTable] = useState<string>('PRODUCTS');
@@ -360,6 +382,49 @@ export const Settings: React.FC<SettingsProps> = ({ initialSubTab = 'general' })
           <span>Mon Abonnement & Quotas</span>
         </button>
       </div>
+
+      {/* Bannière d'installation PWA sur PC / Mobile */}
+      {canInstall && !isInstalled && (
+        <div className="card" style={{
+          border: '2px solid #2F6B4F',
+          background: 'linear-gradient(135deg, #ffffff 0%, #f4f7f2 100%)',
+          marginBottom: '20px',
+          padding: '18px 24px'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '16px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+              <img src="/brand/icon.svg" alt="MarmiCout" width={42} height={42} style={{ borderRadius: '10px' }} />
+              <div>
+                <h4 style={{ margin: '0 0 4px', fontSize: '16px', fontWeight: '800', color: '#1e1b4b' }}>
+                  Installer l'application sur votre PC
+                </h4>
+                <p style={{ margin: 0, fontSize: '13px', color: '#64748b' }}>
+                  Accédez à MarmiCout comme un logiciel de bureau : raccourci sur votre bureau ou barre des tâches, sans barre d'adresse et navigation ultra-rapide.
+                </p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleInstallClick}
+              className="btn btn-primary"
+              style={{
+                backgroundColor: '#2F6B4F',
+                borderColor: '#2F6B4F',
+                padding: '12px 20px',
+                fontSize: '14px',
+                fontWeight: '700',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}
+            >
+              <Download size={18} />
+              Installer l'application
+            </button>
+          </div>
+        </div>
+      )}
 
       {activeSubTab === 'subscription' ? (
         <SubscriptionSettings />

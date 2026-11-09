@@ -300,7 +300,16 @@ function App() {
       {/* --- SIDEBAR LATÉRALE (PC / TABLETTE HORIZONTALE) --- */}
       <aside className="sidebar">
         <div className="sidebar-header">
-          <ChefHat size={28} style={{ color: 'var(--color-primary)' }} />
+          <picture>
+            <source media="(prefers-color-scheme: dark)" srcSet="/brand/logo-marmicout-fond-sombre.svg" />
+            <img 
+              src="/brand/icon.svg" 
+              alt="MarmiCout" 
+              width={32} 
+              height={32} 
+              style={{ display: 'inline-block', verticalAlign: 'middle', borderRadius: '8px' }} 
+            />
+          </picture>
           <span className="logo-text">MarmiCout</span>
         </div>
 

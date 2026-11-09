@@ -4,6 +4,26 @@ Toutes les modifications notables apportées à ce projet sont documentées dans
 
 ---
 
+## [2.0.42] - 2026-11-09
+
+### Ajouté
+- **Identité visuelle officielle et icônes (« La marmite qui monte »)** :
+  - Déploiement complet des icônes dans `public/icons/` (favicon.svg, favicon-16, favicon-32, favicon-48, apple-touch-icon, icon-192, icon-512, icon-192-maskable, icon-512-maskable).
+  - Déploiement du favicon multi-résolution `public/favicon.ico` et des logos officiels dans `public/brand/` et `src/assets/brand/` (`logo-marmicout.svg`, `logo-marmicout-fond-sombre.svg`, `icon.svg`).
+  - Remplacement de l'ancienne toque dans la barre latérale par `icon.svg` (32 px) avec support du thème sombre (`logo-marmicout-fond-sombre.svg`) et attribut `alt="MarmiCout"`.
+- **Installabilité PWA sur PC / Mac / Mobile (Chrome & Edge)** :
+  - Intégration du manifest officiel `site.webmanifest` (`display: standalone`, couleurs de marque `#2F6B4F`, icônes maskable).
+  - Ajout du Service Worker `public/sw.js` pour la mise en cache de l'app shell et le respect des critères stricts d'installabilité PWA.
+  - Création du service PWA (`src/services/pwaService.ts`) avec détection automatique du mode autonome et écoute de `beforeinstallprompt`.
+  - Bouton interactif « Installer l'application sur ce PC » dans l'écran Paramètres, visible uniquement lorsque l'installation est disponible et masqué une fois l'application installée.
+- **Optimisation du cache navigateur & Balises `<head>`** :
+  - Mise à jour de `index.html` avec le snippet complet d'icônes, incluant le paramètre de version `?v=2` pour forcer le rafraîchissement immédiat du cache navigateur.
+  - Titre d'onglet officiel : `<title>MarmiCout — Coûts de revient & marges</title>`.
+- **Synchronisation de version** :
+  - Incrémentation SemVer vers `2.0.42` dans `package.json`, `src/version.ts` et `CHANGELOG.md`.
+
+---
+
 ## [2.0.41] - 2026-11-09
 
 ### Ajouté

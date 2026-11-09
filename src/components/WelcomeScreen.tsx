@@ -93,25 +93,20 @@ export const WelcomeScreen: React.FC = () => {
           justifyContent: 'space-between',
           gap: '16px'
         }}>
-          {/* Logo */}
+          {/* Logo officiel MarmiCout */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <div style={{
-              width: '40px',
-              height: '40px',
-              borderRadius: '12px',
-              background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              boxShadow: '0 4px 12px rgba(99,102,241,0.25)'
-            }}>
-              <ChefHat size={22} color="white" />
-            </div>
+            <img
+              src="/brand/icon.svg"
+              alt="MarmiCout"
+              width={38}
+              height={38}
+              style={{ display: 'block', borderRadius: '10px' }}
+            />
             <div>
               <span style={{ fontSize: '18px', fontWeight: '900', color: '#1e1b4b', letterSpacing: '-0.3px' }}>
                 MarmiCout
               </span>
-              <span style={{ fontSize: '11px', color: '#6366f1', fontWeight: '700', marginLeft: '6px' }}>
+              <span style={{ fontSize: '11px', color: '#2F6B4F', fontWeight: '700', marginLeft: '6px' }}>
                 v{APP_VERSION}
               </span>
             </div>
