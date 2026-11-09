@@ -276,7 +276,7 @@ function App() {
       case 'Magasins':
         return <Stores />;
       case 'Paramètres':
-        return <Settings />;
+        return <Settings initialSubTab={extra?.subTab as any} />;
       case 'Suggestions':
         return <Suggestions />;
       case 'Devis':

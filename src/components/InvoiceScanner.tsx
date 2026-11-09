@@ -6,6 +6,7 @@ import { parseDecimalInput } from '../utils';
 import { Camera, Upload, RefreshCw, Check, ArrowLeft, Trash2, Link as LinkIcon, Info, FileText, Plus } from 'lucide-react';
 import { Product, Purchase, Store, Settings } from '../types';
 import { dbService } from '../services/db';
+import { subscriptionService } from '../services/subscriptionService';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 
@@ -370,6 +371,8 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({ onClose, onSave,
   // Termine l'analyse d'une facture : parse le texte extrait (OCR, PDF ou .txt)
   // et tente de relier chaque ligne détectée à un produit du stock.
   const finishAnalysis = (fileName: string, text: string, imageBase64: string | null, ocrConfidence: number | null) => {
+    // Décompte du quota mensuel de scan
+    subscriptionService.recordScanUsage();
     setRawOcrText(text);
     const parsed = parseInvoiceFromText(text);
 
@@ -630,6 +633,18 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({ onClose, onSave,
     const file = e.target.files?.[0];
     if (!file) return;
     e.target.value = '';
+
+    // Vérification du quota mensuel de scans OCR
+    if (!subscriptionService.canScan()) {
+      const quota = subscriptionService.getCurrentScanQuota();
+      alert(
+        `Quota mensuel de scans atteint (${quota} / ${quota} scans utilisés ce mois-ci).\n\n` +
+        "Vos données existantes restent 100% accessibles et consultables.\n" +
+        "Le quota se réinitialisera automatiquement le 1er du mois prochain.\n\n" +
+        "Pour débloquer davantage de scans immédiatement, vous pouvez passer à la formule supérieure dans Paramètres > Abonnement."
+      );
+      return;
+    }
 
     const fileName = file.name.toLowerCase();
 

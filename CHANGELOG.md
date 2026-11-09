@@ -4,6 +4,55 @@ Toutes les modifications notables apportées à ce projet sont documentées dans
 
 ---
 
+## [2.0.41] - 2026-11-09
+
+### Ajouté
+- **Configuration tarifaire centralisée (`src/config/pricing.ts`)** :
+  - Source unique de vérité pour toutes les formules : Essai gratuit (14 jours, 0 €), Essentiel (14,90 €/mois, 149 €/an), Pro (24,90 €/mois, 249 €/an), Pro Cloud (34,90 €/mois, 349 €/an - feature flag `cloudSyncEnabled: false`), et Offre Fondateur (249 € la 1ʳᵉ année, tarif Pro Cloud garanti à vie).
+  - Gestion des feature flags : `cloudSyncEnabled: false`, `founderOfferEnabled: true`, `founderSeatsLeft: null`.
+  - Intégration de l'argumentaire complet et exact : « Un abonnement remboursé dès votre première fournée », « Le calcul qui convainc », « Pourquoi choisir le Cloud ? », « Positionnement » (sans citation de concurrents), et bandeau de réassurance.
+  - Conformité fiscale : affichage systématique de « Prix nets, TVA non applicable (art. 293 B du CGI) ».
+  - Tableau comparatif détaillé repliable (« Comparer toutes les fonctionnalités ») et FAQ tarifs interactive en accordéon.
+- **Service d'abonnement & gestion des quotas (`src/services/subscriptionService.ts`)** :
+  - Suivi local de la formule active, calcul des jours d'essai restants (sur 14 jours).
+  - Mémorisation du choix d'intervalle de facturation (Annuel par défaut avec 2 mois offerts).
+  - Gestion automatique des quotas de scans OCR avec réinitialisation le 1er de chaque mois et protection d'accès aux données existantes.
+  - Système d'inscription liste d'attente email « Être prévenu » pour la future sortie de la sauvegarde Cloud.
+- **Section Tarifs réutilisable (`src/components/PricingSection.tsx`)** :
+  - Composant responsive 4 cartes en desktop (Essai, Essentiel, Pro, Pro Cloud ⭐ Recommandé), empilement vertical sur mobile avec affichage de Pro Cloud en tête (`order: -1`).
+  - Bandeau dédié pour l'Offre Fondateur avec compteur de places masqué si `null`.
+  - Modale interactive de collecte d'email pour l'option « Être prévenu du lancement » du Pro Cloud.
+- **Écran « Paramètres > Abonnement » (`src/components/SubscriptionSettings.tsx`)** :
+  - Affichage clair de la formule actuelle, jours d'essai restants, et barre de progression du quota mensuel de scans.
+  - Changement de formule immédiat et bouton de résiliation en un clic sans aucun frais.
+- **Page d'accueil / Landing Page enrichie (`src/components/WelcomeScreen.tsx`)** :
+  - Intégration harmonieuse de la section Tarifs sous le formulaire d'accès direct atelier.
+  - Header de navigation avec ancre `#tarifs` et accès rapide.
+
+### Modifié
+- **Scanner de factures (`src/components/InvoiceScanner.tsx`)** :
+  - Décompte automatique du quota mensuel de scans OCR lors d'une analyse réussie.
+  - Alerte amicale et non bloquante en cas de quota atteint avec invitation à faire évoluer la formule.
+- **Paramètres (`src/components/Settings.tsx`)** :
+  - Ajout des sous-onglets « Configuration & Google Sheets » et « Mon Abonnement & Quotas ».
+- **Synchronisation de version** :
+  - Incrémentation SemVer vers `2.0.41` dans `package.json`, `src/version.ts` et `CHANGELOG.md`.
+
+### Ajouté
+- **Sauvegardes automatiques quotidiennes Supabase via GitHub Actions** :
+  - Création du workflow `.github/workflows/supabase-backup.yml` planifié quotidiennement à 03h00 UTC et déclenchable manuellement avec paramètre `force`.
+  - Condition d'exécution au niveau du job (`vars.BACKUP_ENABLED == 'true' || inputs.force == true`).
+  - Dumps complets via la Supabase CLI : `roles.sql` (`--role-only`), `schema.sql`, et `data.sql` (`--use-copy --data-only`).
+  - Compression en archive tar.gz horodatée (`backup-YYYY-MM-DD.tar.gz`) et upload d'artefact GitHub Actions conservé pendant 30 jours.
+- **Script de contrôle GitHub CLI (`scripts/backup.sh`)** :
+  - Sous-commandes `on`, `off`, `status`, `run`, `download` avec vérification de l'installation et de l'authentification de `gh`.
+  - Ajout des raccourcis correspondants dans `package.json` (`npm run backup:on`, etc.).
+- **Protection et Documentation** :
+  - Ajout des dossiers `backups/` et `backups-local/` ainsi que `*.tar.gz` au `.gitignore`.
+  - Rédaction du guide complet `docs/BACKUP.md`.
+- **Synchronisation de version** :
+  - Incrémentation SemVer vers `2.0.40` dans `package.json`, `src/version.ts` et `CHANGELOG.md`.
+
 ## [2.0.39] - 2026-11-08
 
 ### Modifié

@@ -181,8 +181,13 @@ for (const f of allSrcFiles) {
 // AVERTISSEMENT si le nom de l'éditeur, le SIREN, le SIRET, l'adresse ou « 293 B » apparaissent dans un composant autre que la page Mentions légales
 for (const f of allSrcFiles) {
   const rel = path.relative(rootDir, f).replace(/\\/g, '/');
-  // Seules la page Mentions légales et la configuration légale dédiée sont autorisées à contenir ces informations
-  if (rel === 'src/components/MentionsLegales.tsx' || rel === 'src/config/legalConfig.ts' || rel === 'src/utils/legalValidator.ts') {
+  // Seules la page Mentions légales, la configuration légale et la tarification officielle sont autorisées à contenir ces mentions
+  if (
+    rel === 'src/components/MentionsLegales.tsx' || 
+    rel === 'src/config/legalConfig.ts' || 
+    rel === 'src/utils/legalValidator.ts' ||
+    rel === 'src/config/pricing.ts'
+  ) {
     continue;
   }
   const content = fs.readFileSync(f, 'utf-8');

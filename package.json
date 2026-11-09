@@ -1,14 +1,19 @@
 {
   "name": "appli-marmicout",
   "private": true,
-  "version": "2.0.39",
+  "version": "2.0.41",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "check:legal": "node scripts/verify-legal.mjs",
     "build": "node scripts/verify-legal.mjs && tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "backup:on": "bash scripts/backup.sh on",
+    "backup:off": "bash scripts/backup.sh off",
+    "backup:status": "bash scripts/backup.sh status",
+    "backup:run": "bash scripts/backup.sh run",
+    "backup:download": "bash scripts/backup.sh download"
   },
   "dependencies": {
     "html5-qrcode": "^2.3.8",

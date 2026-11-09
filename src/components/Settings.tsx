@@ -8,13 +8,21 @@ import {
   Check,
   FileText,
   AlertTriangle,
-  Trash2
+  Trash2,
+  CreditCard,
+  Sliders
 } from 'lucide-react';
 import { dbService } from '../services/db';
 import { Settings as SettingsType } from '../types';
 import { APP_VERSION } from '../version';
+import { SubscriptionSettings } from './SubscriptionSettings';
 
-export const Settings: React.FC = () => {
+interface SettingsProps {
+  initialSubTab?: 'general' | 'subscription';
+}
+
+export const Settings: React.FC<SettingsProps> = ({ initialSubTab = 'general' }) => {
+  const [activeSubTab, setActiveSubTab] = useState<'general' | 'subscription'>(initialSubTab);
   const [settings, setSettings] = useState<SettingsType>(dbService.getSettings());
   const [saveSuccess, setSaveSuccess] = useState(false);
 
@@ -289,14 +297,74 @@ export const Settings: React.FC = () => {
   return (
     <div>
       {/* En-tête */}
-      <div className="page-header">
+      <div className="page-header" style={{ marginBottom: '16px' }}>
         <div>
-          <h1 className="page-title">Paramètres & Google Sheets</h1>
-          <p className="page-subtitle">Configurez votre application culinaire et synchronisez vos données avec Google Sheets</p>
+          <h1 className="page-title">Paramètres & Abonnement</h1>
+          <p className="page-subtitle">Configurez votre atelier culinaire, gérez vos formules d'abonnement et synchronisez vos données</p>
         </div>
       </div>
 
-      <div className="grid-cols-details">
+      {/* Barre de navigation des sous-onglets Paramètres */}
+      <div style={{
+        display: 'flex',
+        gap: '8px',
+        borderBottom: '2px solid var(--color-border)',
+        marginBottom: '24px',
+        paddingBottom: '2px'
+      }}>
+        <button
+          type="button"
+          onClick={() => setActiveSubTab('general')}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            padding: '10px 18px',
+            borderRadius: '10px 10px 0 0',
+            border: 'none',
+            borderBottom: activeSubTab === 'general' ? '3px solid var(--color-primary)' : '3px solid transparent',
+            backgroundColor: activeSubTab === 'general' ? 'var(--color-white)' : 'transparent',
+            color: activeSubTab === 'general' ? 'var(--color-primary)' : 'var(--color-dark-light)',
+            fontSize: '14px',
+            fontWeight: activeSubTab === 'general' ? '700' : '600',
+            cursor: 'pointer',
+            transition: 'all 0.2s ease',
+            outline: 'none'
+          }}
+        >
+          <Sliders size={18} />
+          <span>Configuration & Google Sheets</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveSubTab('subscription')}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            padding: '10px 18px',
+            borderRadius: '10px 10px 0 0',
+            border: 'none',
+            borderBottom: activeSubTab === 'subscription' ? '3px solid var(--color-primary)' : '3px solid transparent',
+            backgroundColor: activeSubTab === 'subscription' ? 'var(--color-white)' : 'transparent',
+            color: activeSubTab === 'subscription' ? 'var(--color-primary)' : 'var(--color-dark-light)',
+            fontSize: '14px',
+            fontWeight: activeSubTab === 'subscription' ? '700' : '600',
+            cursor: 'pointer',
+            transition: 'all 0.2s ease',
+            outline: 'none'
+          }}
+        >
+          <CreditCard size={18} />
+          <span>Mon Abonnement & Quotas</span>
+        </button>
+      </div>
+
+      {activeSubTab === 'subscription' ? (
+        <SubscriptionSettings />
+      ) : (
+        <div className="grid-cols-details">
         
         {/* --- FORMULAIRE DES PARAMÈTRES --- */}
         <div className="card">
@@ -813,6 +881,7 @@ export const Settings: React.FC = () => {
         </div>
 
       </div>
+      )}
     </div>
   );
 };
