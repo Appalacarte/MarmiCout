@@ -6,7 +6,7 @@
 
 export type BillingInterval = 'month' | 'year';
 
-export type PlanId = 'trial' | 'essentiel' | 'pro' | 'pro_cloud' | 'fondateur';
+export type PlanId = 'trial' | 'essentiel' | 'pro' | 'pro_cloud';
 
 export interface PlanPrice {
   amount: number;
@@ -46,8 +46,6 @@ export interface ComparisonRow {
 export interface PricingConfig {
   flags: {
     cloudSyncEnabled: boolean;
-    founderOfferEnabled: boolean;
-    founderSeatsLeft: number | null; // Pilote le compteur : masquer si null, aucun chiffre inventé
   };
   copy: {
     title: string;
@@ -68,17 +66,6 @@ export interface PricingConfig {
     };
   };
   plans: PricingPlan[];
-  founderOffer: {
-    id: 'fondateur';
-    name: string;
-    badge: string;
-    storage: string;
-    priceFormatted: string;
-    priceDetails: string;
-    stripePriceId: string | null;
-    ctaText: string;
-    features: string[];
-  };
   comparison: ComparisonRow[];
   faq: Array<{
     question: string;
@@ -89,8 +76,6 @@ export interface PricingConfig {
 export const PRICING_CONFIG: PricingConfig = {
   flags: {
     cloudSyncEnabled: false, // Tant que le backend cloud n'est pas en production
-    founderOfferEnabled: true,
-    founderSeatsLeft: null // Pilote le compteur : si null, le compteur est masqué
   },
 
   copy: {
@@ -240,24 +225,6 @@ export const PRICING_CONFIG: PricingConfig = {
       }
     }
   ],
-
-  founderOffer: {
-    id: "fondateur",
-    name: "Offre Fondateur",
-    badge: "Limitée aux 100 premiers clients",
-    storage: "Sauvegarde en ligne",
-    priceFormatted: "249\u00A0€",
-    priceDetails: "la 1ʳᵉ année, puis tarif Pro Cloud garanti à vie au prix de lancement",
-    stripePriceId: null,
-    ctaText: "Devenir membre fondateur",
-    features: [
-      "Formule Pro Cloud complète incluse",
-      "Sauvegarde en ligne automatique quotidienne & synchronisation multi-appareils",
-      "150 scans de factures (OCR) par mois",
-      "Tarif de lancement de 249\u00A0€/an garanti à vie tant que votre abonnement reste actif",
-      "Support prioritaire direct avec les concepteurs de MarmiCout"
-    ]
-  },
 
   comparison: [
     {

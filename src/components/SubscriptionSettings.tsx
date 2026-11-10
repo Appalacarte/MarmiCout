@@ -33,7 +33,7 @@ export const SubscriptionSettings: React.FC = () => {
   const remainingTrialDays = subscriptionService.getRemainingTrialDays();
   const currentPlan = PRICING_CONFIG.plans.find(p => p.id === subscription.planId) || {
     id: subscription.planId,
-    name: subscription.planId === 'fondateur' ? 'Offre Fondateur' : 'Formule personnalisée',
+    name: 'Formule personnalisée',
     storage: 'Sauvegarde en ligne',
     scanQuota: 150
   };

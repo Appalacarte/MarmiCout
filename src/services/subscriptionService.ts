@@ -155,9 +155,6 @@ export const subscriptionService = {
     if (plan && plan.scanQuota !== null) {
       return plan.scanQuota;
     }
-    if (sub.planId === 'fondateur') {
-      return 150;
-    }
     return 150; // Quota par défaut de l'essai
   },
 

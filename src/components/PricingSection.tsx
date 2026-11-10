@@ -75,16 +75,6 @@ export const PricingSection: React.FC<PricingSectionProps> = ({
     }
   };
 
-  const handleFounderCta = () => {
-    if (!PRICING_CONFIG.flags.cloudSyncEnabled) {
-      setIsWaitlistOpen(true);
-      return;
-    }
-    if (onSelectPlan) {
-      onSelectPlan('fondateur', 'year');
-    }
-  };
-
   const handleWaitlistSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const result = subscriptionService.registerWaitlistEmail(waitlistEmail, 'Pro Cloud');
@@ -503,86 +493,6 @@ export const PricingSection: React.FC<PricingSectionProps> = ({
         })}
       </div>
 
-      {/* 4. Bandeau séparé pour l'Offre Fondateur */}
-      {PRICING_CONFIG.flags.founderOfferEnabled && (
-        <div style={{
-          position: 'relative',
-          borderRadius: '20px',
-          padding: '24px 28px',
-          background: 'linear-gradient(135deg, #1e1b4b 0%, #312e81 100%)',
-          color: '#ffffff',
-          marginBottom: '24px',
-          boxShadow: '0 12px 30px rgba(30,27,75,0.25)',
-          display: 'flex',
-          flexWrap: 'wrap',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: '20px'
-        }}>
-          <div style={{ maxWidth: '640px' }}>
-            <div style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '6px',
-              backgroundColor: '#f59e0b',
-              color: '#78350f',
-              padding: '3px 12px',
-              borderRadius: '9999px',
-              fontSize: '11px',
-              fontWeight: '800',
-              textTransform: 'uppercase',
-              letterSpacing: '0.5px',
-              marginBottom: '10px'
-            }}>
-              <Star size={13} fill="#78350f" color="#78350f" />
-              {PRICING_CONFIG.founderOffer.badge}
-              {PRICING_CONFIG.flags.founderSeatsLeft !== null && (
-                <span>— Plus que {PRICING_CONFIG.flags.founderSeatsLeft} places</span>
-              )}
-            </div>
-
-            <h3 style={{ fontSize: '22px', fontWeight: '800', margin: '0 0 6px', color: '#ffffff' }}>
-              {PRICING_CONFIG.founderOffer.name} — {PRICING_CONFIG.founderOffer.priceFormatted} la 1ʳᵉ année
-            </h3>
-
-            <p style={{ fontSize: '13px', color: '#cbd5e1', margin: '0 0 12px', lineHeight: '1.5' }}>
-              Profitez immédiatement de la formule Pro Cloud complète et verrouillez votre tarif de lancement garanti à vie au renouvellement.
-            </p>
-
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '14px', fontSize: '12px', color: '#e0e7ff' }}>
-              <span>✓ Sauvegarde en ligne + synchronisation</span>
-              <span>✓ 150 scans factures/mois</span>
-              <span>✓ Tarif Pro Cloud garanti à vie</span>
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '8px' }}>
-            <button
-              type="button"
-              onClick={handleFounderCta}
-              style={{
-                padding: '14px 26px',
-                borderRadius: '12px',
-                border: 'none',
-                background: 'linear-gradient(135deg, #f59e0b, #d97706)',
-                color: '#ffffff',
-                fontSize: '15px',
-                fontWeight: '800',
-                cursor: 'pointer',
-                boxShadow: '0 6px 18px rgba(245,158,11,0.4)',
-                whiteSpace: 'nowrap',
-                transition: 'opacity 0.2s',
-                outline: 'none'
-              }}
-            >
-              {PRICING_CONFIG.founderOffer.ctaText} →
-            </button>
-            <span style={{ fontSize: '11px', color: '#94a3b8' }}>
-              Sauvegarde en ligne — Accès prioritaire
-            </span>
-          </div>
-        </div>
-      )}
 
       {/* 5. Bandeau de réassurance et Mention légale fiscale */}
       <div style={{
