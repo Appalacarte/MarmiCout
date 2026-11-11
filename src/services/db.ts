@@ -30,22 +30,25 @@ export function isCloudMode(): boolean {
       last.status === 'demo_active'
     );
   }
-  // Sécurité renforcée : si l'utilisateur est authentifié avec une session Supabase active,
-  // il est obligatoirement en mode Cloud (zéro écriture locale clandestine)
-  if (typeof window !== 'undefined') {
-    const rawAuth = localStorage.getItem('marmicout_supabase_auth_token');
-    if (rawAuth) {
-      try {
-        const parsed = JSON.parse(rawAuth);
-        if (parsed?.access_token || parsed?.currentSession?.access_token) {
-          return true;
-        }
-      } catch (e) {
-        // ignorer
-      }
-    }
+  return false;
+}
+
+export function isLocalMode(): boolean {
+  const last = accessVerificationService.getLastResult();
+  if (last && last.hasAccess) {
+    return last.planCode === 'essentiel';
   }
   return false;
+}
+
+export function isAccessKnown(): boolean {
+  return accessVerificationService.getLastResult() !== null;
+}
+
+export function assertAccessKnown(): void {
+  if (!isAccessKnown()) {
+    throw new Error("Impossible d'enregistrer : vérification des droits d'accès en cours.");
+  }
 }
 
 // Détection du code testeur dans l'URL (ex: ?code=cook1 ou ?code=michel)
@@ -244,6 +247,69 @@ const initDB = () => {
 
 initDB();
 
+// --- CACHE MÉMOIRE LIÉ À INDEXEDDB (MODE CLOUD & HORS LIGNE) ---
+export const inMemoryCache: Record<string, any[]> = {
+  products: [],
+  stores: [],
+  purchases: [],
+  recipes: [],
+  recipe_ingredients: [],
+  recipe_packaging: [],
+  productions: [],
+  sales: [],
+  stock_movements: [],
+};
+let inMemorySettings: Settings | null = null;
+
+export async function loadCacheFromIndexedDb(): Promise<void> {
+  try {
+    const [
+      products,
+      stores,
+      purchases,
+      recipes,
+      recipe_ingredients,
+      recipe_packaging,
+      productions,
+      sales,
+      stock_movements,
+      settingsItems,
+    ] = await Promise.all([
+      indexedDbService.getAll<Product>('products'),
+      indexedDbService.getAll<Store>('stores'),
+      indexedDbService.getAll<Purchase>('purchases'),
+      indexedDbService.getAll<Recipe>('recipes'),
+      indexedDbService.getAll<RecipeIngredient>('recipe_ingredients'),
+      indexedDbService.getAll<RecipePackaging>('recipe_packaging'),
+      indexedDbService.getAll<Production>('productions'),
+      indexedDbService.getAll<Sale>('sales'),
+      indexedDbService.getAll<StockMovement>('stock_movements'),
+      indexedDbService.getAll<any>('settings'),
+    ]);
+
+    inMemoryCache.products = products || [];
+    inMemoryCache.stores = stores || [];
+    inMemoryCache.purchases = purchases || [];
+    inMemoryCache.recipes = recipes || [];
+    inMemoryCache.recipe_ingredients = recipe_ingredients || [];
+    inMemoryCache.recipe_packaging = recipe_packaging || [];
+    inMemoryCache.productions = productions || [];
+    inMemoryCache.sales = sales || [];
+    inMemoryCache.stock_movements = stock_movements || [];
+
+    const appSettings = (settingsItems || []).find((s) => s.key === 'app_settings');
+    if (appSettings && appSettings.value) {
+      inMemorySettings = appSettings.value;
+    }
+  } catch (err) {
+    console.warn('[db.ts] Erreur loadCacheFromIndexedDb:', err);
+  }
+}
+
+if (typeof window !== 'undefined') {
+  void loadCacheFromIndexedDb();
+}
+
 // --- SERVICES DE BASE (HELPERS INTERNES) ---
 function getTable<T>(key: string): T[] {
   initDB();
@@ -251,7 +317,21 @@ function getTable<T>(key: string): T[] {
   return data ? JSON.parse(data) : [];
 }
 
+function getTableData<T>(storeName: string, legacyKey: string): T[] {
+  if (isCloudMode()) {
+    // Mode cloud : les données proviennent EXCLUSIVEMENT d'IndexedDB / cache mémoire, JAMAIS de localStorage (Point 6)
+    return (inMemoryCache[storeName] || []) as T[];
+  }
+  // Mode Essentiel local : utilise le cache mémoire si disponible, sinon fallback localStorage
+  if (inMemoryCache[storeName] && inMemoryCache[storeName].length > 0) {
+    return inMemoryCache[storeName] as T[];
+  }
+  return getTable<T>(legacyKey);
+}
+
 function saveTable<T>(key: string, data: T[]): void {
+  // En mode cloud, aucune écriture dans localStorage pour les données métier (Point 6)
+  if (isCloudMode()) return;
   localStorage.setItem(key, JSON.stringify(data));
 }
 
@@ -296,28 +376,34 @@ export const dbService = {
     if (!isCloudMode()) return;
     try {
       const data = await cloudDbService.syncAllFromCloud();
-      saveTable(KEYS.RECIPES, data.recipes || []);
-      saveTable(KEYS.PRODUCTS, data.products || []);
-      saveTable(KEYS.STORES, data.stores || []);
-      saveTable(KEYS.PURCHASES, data.purchases || []);
-      saveTable(KEYS.PRODUCTIONS, data.productions || []);
-      saveTable(KEYS.SALES, data.sales || []);
-      saveTable(KEYS.STOCK_MOVEMENTS, data.stockMovements || []);
-      saveTable(KEYS.RECIPE_INGREDIENTS, data.recipeIngredients || []);
-      saveTable(KEYS.RECIPE_PACKAGING, data.recipePackaging || []);
+      // Point 6 : En mode cloud, AUCUNE écriture dans localStorage pour les données métier.
+      // Stockage local STRICTEMENT dans IndexedDB et le cache mémoire.
+      await Promise.all([
+        indexedDbService.setAll('recipes', data.recipes || []),
+        indexedDbService.setAll('products', data.products || []),
+        indexedDbService.setAll('stores', data.stores || []),
+        indexedDbService.setAll('purchases', data.purchases || []),
+        indexedDbService.setAll('productions', data.productions || []),
+        indexedDbService.setAll('sales', data.sales || []),
+        indexedDbService.setAll('stock_movements', data.stockMovements || []),
+        indexedDbService.setAll('recipe_ingredients', data.recipeIngredients || []),
+        indexedDbService.setAll('recipe_packaging', data.recipePackaging || []),
+      ]);
       if (data.settings) {
-        localStorage.setItem(KEYS.SETTINGS, JSON.stringify(data.settings));
+        await indexedDbService.put('settings', { key: 'app_settings', value: data.settings });
       }
-      // Miroir complet dans IndexedDB
-      await indexedDbService.setAll('recipes', data.recipes || []);
-      await indexedDbService.setAll('products', data.products || []);
-      await indexedDbService.setAll('stores', data.stores || []);
-      await indexedDbService.setAll('purchases', data.purchases || []);
-      await indexedDbService.setAll('productions', data.productions || []);
-      await indexedDbService.setAll('sales', data.sales || []);
-      await indexedDbService.setAll('stock_movements', data.stockMovements || []);
-      await indexedDbService.setAll('recipe_ingredients', data.recipeIngredients || []);
-      await indexedDbService.setAll('recipe_packaging', data.recipePackaging || []);
+
+      inMemoryCache.recipes = data.recipes || [];
+      inMemoryCache.products = data.products || [];
+      inMemoryCache.stores = data.stores || [];
+      inMemoryCache.purchases = data.purchases || [];
+      inMemoryCache.productions = data.productions || [];
+      inMemoryCache.sales = data.sales || [];
+      inMemoryCache.stock_movements = data.stockMovements || [];
+      inMemoryCache.recipe_ingredients = data.recipeIngredients || [];
+      inMemoryCache.recipe_packaging = data.recipePackaging || [];
+      if (data.settings) inMemorySettings = data.settings;
+
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('marmicout-data-synced'));
       }
@@ -329,12 +415,16 @@ export const dbService = {
 
   // --- PARAMÈTRES (SETTINGS) ---
   getSettings(): Settings {
+    if (isCloudMode() && inMemorySettings) {
+      return inMemorySettings;
+    }
     initDB();
     const data = localStorage.getItem(KEYS.SETTINGS);
     return data ? JSON.parse(data) : INITIAL_SETTINGS;
   },
 
   async saveSettings(settings: Settings): Promise<void> {
+    assertAccessKnown();
     if (isCloudMode()) {
       try {
         await cloudDbService.saveSettings(settings);
@@ -342,14 +432,19 @@ export const dbService = {
         notifyCloudError('Enregistrement paramètres cloud refusé', err.message || String(err));
         throw err;
       }
+      inMemorySettings = settings;
+      await indexedDbService.put('settings', { key: 'app_settings', value: settings });
+      return;
     }
+    // Mode local (Essentiel)
+    inMemorySettings = settings;
     localStorage.setItem(KEYS.SETTINGS, JSON.stringify(settings));
     await indexedDbService.put('settings', { key: 'app_settings', value: settings });
   },
 
   // --- MAGASINS (STORES) ---
   getStores(): Store[] {
-    return getTable<Store>(KEYS.STORES);
+    return getTableData<Store>('stores', KEYS.STORES);
   },
 
   getStore(id: string): Store | undefined {
@@ -357,6 +452,7 @@ export const dbService = {
   },
 
   async saveStore(store: Store): Promise<void> {
+    assertAccessKnown();
     if (!isUUID(store.id)) {
       store.id = generateUUID();
     }
@@ -367,6 +463,11 @@ export const dbService = {
         notifyCloudError('Enregistrement magasin cloud refusé', err.message || String(err));
         throw err;
       }
+      const stores = inMemoryCache.stores.filter(s => s.id !== store.id);
+      stores.push(store);
+      inMemoryCache.stores = stores;
+      await indexedDbService.put('stores', store);
+      return;
     }
     const stores = this.getStores();
     const index = stores.findIndex(s => s.id === store.id);
@@ -375,11 +476,13 @@ export const dbService = {
     } else {
       stores.push(store);
     }
+    inMemoryCache.stores = stores;
     saveTable(KEYS.STORES, stores);
     await indexedDbService.put('stores', store);
   },
 
   async deleteStore(id: string): Promise<void> {
+    assertAccessKnown();
     if (isCloudMode()) {
       try {
         await cloudDbService.deleteStore(id);
@@ -387,23 +490,29 @@ export const dbService = {
         notifyCloudError('Suppression magasin cloud refusée', err.message || String(err));
         throw err;
       }
+      inMemoryCache.stores = inMemoryCache.stores.filter(s => s.id !== id);
+      await indexedDbService.delete('stores', id);
+      return;
     }
     const stores = this.getStores().filter(s => s.id !== id);
+    inMemoryCache.stores = stores;
     saveTable(KEYS.STORES, stores);
     await indexedDbService.delete('stores', id);
   },
 
   setStores(stores: Store[]): void {
+    inMemoryCache.stores = stores;
     saveTable(KEYS.STORES, stores);
     indexedDbService.setAll('stores', stores);
   },
 
   // --- PRODUITS (PRODUCTS) ---
   getProducts(): Product[] {
-    return getTable<Product>(KEYS.PRODUCTS);
+    return getTableData<Product>('products', KEYS.PRODUCTS);
   },
 
   setProducts(products: Product[]): void {
+    inMemoryCache.products = products;
     saveTable(KEYS.PRODUCTS, products);
     indexedDbService.setAll('products', products);
   },
@@ -418,6 +527,7 @@ export const dbService = {
   },
 
   async saveProduct(product: Product): Promise<void> {
+    assertAccessKnown();
     if (!isUUID(product.id)) {
       product.id = generateUUID();
     }
@@ -428,6 +538,11 @@ export const dbService = {
         notifyCloudError('Enregistrement produit cloud refusé', err.message || String(err));
         throw err;
       }
+      const products = inMemoryCache.products.filter(p => p.id !== product.id);
+      products.push(product);
+      inMemoryCache.products = products;
+      await indexedDbService.put('products', product);
+      return;
     }
     const products = this.getProducts();
     const index = products.findIndex(p => p.id === product.id);
@@ -436,11 +551,13 @@ export const dbService = {
     } else {
       products.push(product);
     }
+    inMemoryCache.products = products;
     saveTable(KEYS.PRODUCTS, products);
     await indexedDbService.put('products', product);
   },
 
   async deleteProduct(id: string): Promise<void> {
+    assertAccessKnown();
     if (isCloudMode()) {
       try {
         await cloudDbService.deleteProduct(id);
@@ -448,23 +565,29 @@ export const dbService = {
         notifyCloudError('Suppression produit cloud refusée', err.message || String(err));
         throw err;
       }
+      inMemoryCache.products = inMemoryCache.products.filter(p => p.id !== id);
+      await indexedDbService.delete('products', id);
+      return;
     }
     const products = this.getProducts().filter(p => p.id !== id);
+    inMemoryCache.products = products;
     saveTable(KEYS.PRODUCTS, products);
     await indexedDbService.delete('products', id);
   },
 
   // --- ACHATS (PURCHASES) ---
   getPurchases(): Purchase[] {
-    return getTable<Purchase>(KEYS.PURCHASES);
+    return getTableData<Purchase>('purchases', KEYS.PURCHASES);
   },
 
   setPurchases(purchases: Purchase[]): void {
+    inMemoryCache.purchases = purchases;
     saveTable(KEYS.PURCHASES, purchases);
     indexedDbService.setAll('purchases', purchases);
   },
 
   async addPurchase(purchase: Purchase): Promise<void> {
+    assertAccessKnown();
     if (!isUUID(purchase.id)) {
       purchase.id = generateUUID();
     }
@@ -475,11 +598,17 @@ export const dbService = {
         notifyCloudError('Enregistrement achat cloud refusé', err.message || String(err));
         throw err;
       }
+      const purchases = inMemoryCache.purchases.filter(p => p.id !== purchase.id);
+      purchases.push(purchase);
+      inMemoryCache.purchases = purchases;
+      await indexedDbService.put('purchases', purchase);
+    } else {
+      const purchases = this.getPurchases();
+      purchases.push(purchase);
+      inMemoryCache.purchases = purchases;
+      saveTable(KEYS.PURCHASES, purchases);
+      await indexedDbService.put('purchases', purchase);
     }
-    const purchases = this.getPurchases();
-    purchases.push(purchase);
-    saveTable(KEYS.PURCHASES, purchases);
-    await indexedDbService.put('purchases', purchase);
 
     // Mettre à jour le stock et le prix moyen du produit
     const products = this.getProducts();
@@ -518,6 +647,7 @@ export const dbService = {
   },
 
   async deletePurchase(id: string): Promise<void> {
+    assertAccessKnown();
     if (isCloudMode()) {
       try {
         await cloudDbService.deletePurchase(id);
@@ -525,6 +655,8 @@ export const dbService = {
         notifyCloudError('Suppression achat cloud refusée', err.message || String(err));
         throw err;
       }
+      inMemoryCache.purchases = inMemoryCache.purchases.filter(p => p.id !== id);
+      await indexedDbService.delete('purchases', id);
     }
     const purchases = this.getPurchases();
     const purchase = purchases.find(p => p.id === id);
@@ -540,24 +672,29 @@ export const dbService = {
     }
 
     const updatedPurchases = purchases.filter(p => p.id !== id);
+    inMemoryCache.purchases = updatedPurchases;
     saveTable(KEYS.PURCHASES, updatedPurchases);
     await indexedDbService.delete('purchases', id);
 
     const movements = this.getStockMovements().filter(m => !(m.type === 'ACHAT' && m.refId === id));
+    inMemoryCache.stock_movements = movements;
     saveTable(KEYS.STOCK_MOVEMENTS, movements);
+    await indexedDbService.setAll('stock_movements', movements);
   },
 
   // --- MOUVEMENTS DE STOCK (STOCK MOVEMENTS) ---
   getStockMovements(): StockMovement[] {
-    return getTable<StockMovement>(KEYS.STOCK_MOVEMENTS);
+    return getTableData<StockMovement>('stock_movements', KEYS.STOCK_MOVEMENTS);
   },
 
   setStockMovements(movements: StockMovement[]): void {
+    inMemoryCache.stock_movements = movements;
     saveTable(KEYS.STOCK_MOVEMENTS, movements);
     indexedDbService.setAll('stock_movements', movements);
   },
 
   async addStockMovement(movement: StockMovement): Promise<void> {
+    assertAccessKnown();
     if (!isUUID(movement.id)) {
       movement.id = generateUUID();
     }
@@ -568,9 +705,15 @@ export const dbService = {
         notifyCloudError('Enregistrement mouvement stock cloud refusé', err.message || String(err));
         throw err;
       }
+      const movements = inMemoryCache.stock_movements.filter(m => m.id !== movement.id);
+      movements.push(movement);
+      inMemoryCache.stock_movements = movements;
+      await indexedDbService.put('stock_movements', movement);
+      return;
     }
     const movements = this.getStockMovements();
     movements.push(movement);
+    inMemoryCache.stock_movements = movements;
     saveTable(KEYS.STOCK_MOVEMENTS, movements);
     await indexedDbService.put('stock_movements', movement);
   },
@@ -589,10 +732,11 @@ export const dbService = {
 
   // --- RECETTES (RECIPES) ---
   getRecipes(): Recipe[] {
-    return getTable<Recipe>(KEYS.RECIPES);
+    return getTableData<Recipe>('recipes', KEYS.RECIPES);
   },
 
   setRecipes(recipes: Recipe[]): void {
+    inMemoryCache.recipes = recipes;
     saveTable(KEYS.RECIPES, recipes);
     indexedDbService.setAll('recipes', recipes);
   },
@@ -602,27 +746,29 @@ export const dbService = {
   },
 
   getRecipeIngredients(recipeId: string): RecipeIngredient[] {
-    return getTable<RecipeIngredient>(KEYS.RECIPE_INGREDIENTS).filter(ri => ri.recipeId === recipeId);
+    return this.getAllRecipeIngredients().filter(ri => ri.recipeId === recipeId);
   },
 
   getAllRecipeIngredients(): RecipeIngredient[] {
-    return getTable<RecipeIngredient>(KEYS.RECIPE_INGREDIENTS);
+    return getTableData<RecipeIngredient>('recipe_ingredients', KEYS.RECIPE_INGREDIENTS);
   },
 
   setAllRecipeIngredients(ingredients: RecipeIngredient[]): void {
+    inMemoryCache.recipe_ingredients = ingredients;
     saveTable(KEYS.RECIPE_INGREDIENTS, ingredients);
     indexedDbService.setAll('recipe_ingredients', ingredients);
   },
 
   getRecipePackagings(recipeId: string): RecipePackaging[] {
-    return getTable<RecipePackaging>(KEYS.RECIPE_PACKAGING).filter(rp => rp.recipeId === recipeId);
+    return this.getAllRecipePackagings().filter(rp => rp.recipeId === recipeId);
   },
 
   getAllRecipePackagings(): RecipePackaging[] {
-    return getTable<RecipePackaging>(KEYS.RECIPE_PACKAGING);
+    return getTableData<RecipePackaging>('recipe_packaging', KEYS.RECIPE_PACKAGING);
   },
 
   setAllRecipePackagings(packagings: RecipePackaging[]): void {
+    inMemoryCache.recipe_packaging = packagings;
     saveTable(KEYS.RECIPE_PACKAGING, packagings);
     indexedDbService.setAll('recipe_packaging', packagings);
   },
@@ -632,6 +778,7 @@ export const dbService = {
     ingredients: Omit<RecipeIngredient, 'id' | 'recipeId'>[],
     packagings: Omit<RecipePackaging, 'id' | 'recipeId'>[]
   ): Promise<void> {
+    assertAccessKnown();
     if (!isUUID(recipe.id)) {
       recipe.id = generateUUID();
     }
@@ -645,6 +792,21 @@ export const dbService = {
         // NE PAS MODIFIER LE STOCKAGE LOCAL EN CAS DE REJET
         throw err;
       }
+      const recipes = inMemoryCache.recipes.filter(r => r.id !== recipe.id);
+      recipes.push(recipe);
+      inMemoryCache.recipes = recipes;
+      await indexedDbService.put('recipes', recipe);
+
+      const allIngs = inMemoryCache.recipe_ingredients.filter(ri => ri.recipeId !== recipe.id);
+      const newIngs = ingredients.map(ing => ({ ...ing, id: generateUUID(), recipeId: recipe.id }));
+      inMemoryCache.recipe_ingredients = [...allIngs, ...newIngs];
+      await indexedDbService.setAll('recipe_ingredients', [...allIngs, ...newIngs]);
+
+      const allPacks = inMemoryCache.recipe_packaging.filter(rp => rp.recipeId !== recipe.id);
+      const newPacks = packagings.map(p => ({ ...p, id: generateUUID(), recipeId: recipe.id }));
+      inMemoryCache.recipe_packaging = [...allPacks, ...newPacks];
+      await indexedDbService.setAll('recipe_packaging', [...allPacks, ...newPacks]);
+      return;
     }
 
     // 2. SUPABASE A CONFIRMÉ (OU MODE ESSENTIEL LOCAL) : METTRE À JOUR LE LOCAL
@@ -655,6 +817,7 @@ export const dbService = {
     } else {
       recipes.push(recipe);
     }
+    inMemoryCache.recipes = recipes;
     saveTable(KEYS.RECIPES, recipes);
     await indexedDbService.put('recipes', recipe);
 
@@ -664,6 +827,7 @@ export const dbService = {
       id: generateUUID(),
       recipeId: recipe.id
     }));
+    inMemoryCache.recipe_ingredients = [...allIngredients, ...newIngredients];
     saveTable(KEYS.RECIPE_INGREDIENTS, [...allIngredients, ...newIngredients]);
     await indexedDbService.setAll('recipe_ingredients', [...allIngredients, ...newIngredients]);
 
@@ -673,11 +837,13 @@ export const dbService = {
       id: generateUUID(),
       recipeId: recipe.id
     }));
+    inMemoryCache.recipe_packaging = [...allPackagings, ...newPackagings];
     saveTable(KEYS.RECIPE_PACKAGING, [...allPackagings, ...newPackagings]);
     await indexedDbService.setAll('recipe_packaging', [...allPackagings, ...newPackagings]);
   },
 
   async deleteRecipe(id: string): Promise<void> {
+    assertAccessKnown();
     if (isCloudMode()) {
       try {
         await cloudDbService.deleteRecipe(id);
@@ -685,16 +851,28 @@ export const dbService = {
         notifyCloudError('Suppression recette cloud refusée', err.message || String(err));
         throw err;
       }
+      inMemoryCache.recipes = inMemoryCache.recipes.filter(r => r.id !== id);
+      await indexedDbService.delete('recipes', id);
+
+      inMemoryCache.recipe_ingredients = inMemoryCache.recipe_ingredients.filter(ri => ri.recipeId !== id);
+      await indexedDbService.setAll('recipe_ingredients', inMemoryCache.recipe_ingredients);
+
+      inMemoryCache.recipe_packaging = inMemoryCache.recipe_packaging.filter(rp => rp.recipeId !== id);
+      await indexedDbService.setAll('recipe_packaging', inMemoryCache.recipe_packaging);
+      return;
     }
     const recipes = this.getRecipes().filter(r => r.id !== id);
+    inMemoryCache.recipes = recipes;
     saveTable(KEYS.RECIPES, recipes);
     await indexedDbService.delete('recipes', id);
 
     const ingredients = getTable<RecipeIngredient>(KEYS.RECIPE_INGREDIENTS).filter(ri => ri.recipeId !== id);
+    inMemoryCache.recipe_ingredients = ingredients;
     saveTable(KEYS.RECIPE_INGREDIENTS, ingredients);
     await indexedDbService.setAll('recipe_ingredients', ingredients);
 
     const packagings = getTable<RecipePackaging>(KEYS.RECIPE_PACKAGING).filter(rp => rp.recipeId !== id);
+    inMemoryCache.recipe_packaging = packagings;
     saveTable(KEYS.RECIPE_PACKAGING, packagings);
     await indexedDbService.setAll('recipe_packaging', packagings);
   },
@@ -766,10 +944,11 @@ export const dbService = {
 
   // --- PRODUCTIONS (FABRICATIONS) ---
   getProductions(): Production[] {
-    return getTable<Production>(KEYS.PRODUCTIONS);
+    return getTableData<Production>('productions', KEYS.PRODUCTIONS);
   },
 
   async addProduction(production: Production): Promise<{ success: boolean; error?: string }> {
+    assertAccessKnown();
     const recipe = this.getRecipe(production.recipeId);
     if (!recipe) return { success: false, error: 'Recette non trouvée' };
 
@@ -871,33 +1050,47 @@ export const dbService = {
     const recipeIndex = recipes.findIndex(r => r.id === recipe.id);
     if (recipeIndex >= 0) {
       recipes[recipeIndex].stock += production.portionsProduced;
+      inMemoryCache.recipes = recipes;
       saveTable(KEYS.RECIPES, recipes);
       await indexedDbService.put('recipes', recipes[recipeIndex]);
     }
 
     // 5. Enregistrer la production
-    const productions = this.getProductions();
-    productions.push(production);
-    saveTable(KEYS.PRODUCTIONS, productions);
-    await indexedDbService.put('productions', production);
+    if (isCloudMode()) {
+      const prods = inMemoryCache.productions.filter(p => p.id !== production.id);
+      prods.push(production);
+      inMemoryCache.productions = prods;
+      await indexedDbService.put('productions', production);
+    } else {
+      const productions = this.getProductions();
+      productions.push(production);
+      inMemoryCache.productions = productions;
+      saveTable(KEYS.PRODUCTIONS, productions);
+      await indexedDbService.put('productions', production);
+    }
 
     return { success: true };
   },
 
   setProductions(productions: Production[]): void {
+    inMemoryCache.productions = productions;
     saveTable(KEYS.PRODUCTIONS, productions);
+    indexedDbService.setAll('productions', productions);
   },
 
   // --- VENTES (SALES) ---
   getSales(): Sale[] {
-    return getTable<Sale>(KEYS.SALES);
+    return getTableData<Sale>('sales', KEYS.SALES);
   },
 
   setSales(sales: Sale[]): void {
+    inMemoryCache.sales = sales;
     saveTable(KEYS.SALES, sales);
+    indexedDbService.setAll('sales', sales);
   },
 
   async addSale(sale: Sale): Promise<void> {
+    assertAccessKnown();
     if (!isUUID(sale.id)) {
       sale.id = generateUUID();
     }
@@ -910,12 +1103,17 @@ export const dbService = {
         notifyCloudError('Enregistrement vente cloud refusé', err.message || String(err));
         throw err;
       }
+      const sales = inMemoryCache.sales.filter(s => s.id !== sale.id);
+      sales.push(sale);
+      inMemoryCache.sales = sales;
+      await indexedDbService.put('sales', sale);
+    } else {
+      const sales = this.getSales();
+      sales.push(sale);
+      inMemoryCache.sales = sales;
+      saveTable(KEYS.SALES, sales);
+      await indexedDbService.put('sales', sale);
     }
-
-    const sales = this.getSales();
-    sales.push(sale);
-    saveTable(KEYS.SALES, sales);
-    await indexedDbService.put('sales', sale);
 
     // Déduction automatique du stock de produit fini ou d'ingrédient direct
     if (sale.itemType === 'RECIPE') {
@@ -923,6 +1121,7 @@ export const dbService = {
       const recipe = recipes.find(r => r.id === sale.itemId);
       if (recipe) {
         recipe.stock = Math.max(0, recipe.stock - sale.qtySold);
+        inMemoryCache.recipes = recipes;
         saveTable(KEYS.RECIPES, recipes);
         await indexedDbService.put('recipes', recipe);
       }
@@ -948,6 +1147,7 @@ export const dbService = {
   },
 
   async deleteSale(id: string): Promise<void> {
+    assertAccessKnown();
     if (isCloudMode()) {
       try {
         await cloudDbService.deleteSale(id);
@@ -955,10 +1155,16 @@ export const dbService = {
         notifyCloudError('Suppression vente cloud refusée', err.message || String(err));
         throw err;
       }
+      inMemoryCache.sales = inMemoryCache.sales.filter(s => s.id !== id);
+      await indexedDbService.delete('sales', id);
+    } else {
+      const updatedSales = this.getSales().filter(s => s.id !== id);
+      inMemoryCache.sales = updatedSales;
+      saveTable(KEYS.SALES, updatedSales);
+      await indexedDbService.delete('sales', id);
     }
 
-    const sales = this.getSales();
-    const sale = sales.find(s => s.id === id);
+    const sale = this.getSales().find(s => s.id === id);
     if (!sale) return;
 
     // Rétablir le stock
@@ -967,6 +1173,7 @@ export const dbService = {
       const recipe = recipes.find(r => r.id === sale.itemId);
       if (recipe) {
         recipe.stock += sale.qtySold;
+        inMemoryCache.recipes = recipes;
         saveTable(KEYS.RECIPES, recipes);
         await indexedDbService.put('recipes', recipe);
       }
@@ -980,12 +1187,10 @@ export const dbService = {
 
       // Supprimer le mouvement de stock
       const movements = this.getStockMovements().filter(m => !(m.type === 'VENTE_DIRECTE' && m.refId === id));
+      inMemoryCache.stock_movements = movements;
       saveTable(KEYS.STOCK_MOVEMENTS, movements);
+      await indexedDbService.setAll('stock_movements', movements);
     }
-
-    const updatedSales = sales.filter(s => s.id !== id);
-    saveTable(KEYS.SALES, updatedSales);
-    await indexedDbService.delete('sales', id);
   },
 
   // --- EXPORTATION ET IMPORTATION CSV (GOOGLE SHEETS COMPATIBLE) ---

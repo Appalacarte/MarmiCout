@@ -7,6 +7,7 @@ import { Camera, Upload, RefreshCw, Check, ArrowLeft, Trash2, Link as LinkIcon, 
 import { Product, Purchase, Store, Settings } from '../types';
 import { dbService } from '../services/db';
 import { subscriptionService } from '../services/subscriptionService';
+import { getAccessToken } from '../services/supabaseClient';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 
@@ -16,10 +17,10 @@ interface InvoiceScannerProps {
   products: Product[];
   stores: Store[];
   settings: Settings;
-  useMindee?: boolean;
+  useCloudOcr?: boolean;
 }
 
-export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({ onClose, onSave, products, stores, settings, useMindee = false }) => {
+export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({ onClose, onSave, products, stores, settings, useCloudOcr = false }) => {
   const [step, setStep] = useState<'idle' | 'analyzing' | 'validating'>('idle');
   const [sourceImage, setSourceImage] = useState<string | null>(null);
   const [confidence, setConfidence] = useState(0);
@@ -457,35 +458,8 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({ onClose, onSave,
     });
   };
 
-  // Lecture avec l'API Premium Mindee
-  const analyzeImageWithMindee = async (file: File) => {
-    if (!settings.mindeeApiKey) {
-      alert("Clé API Mindee non configurée dans les paramètres.");
-      return;
-    }
-
-    if (!settings.mindeeModelId) {
-      alert("ID du Modèle Mindee manquant. Veuillez le configurer dans les paramètres pour utiliser l'IA.");
-      return;
-    }
-
-    const currentMonth = new Date().toISOString().substring(0, 7); // YYYY-MM
-    let scansUsed = settings.mindeeMonthlyScans || 0;
-    const lastScanMonth = settings.mindeeLastScanMonth || '';
-
-    if (lastScanMonth !== currentMonth) {
-      scansUsed = 0;
-    }
-
-    if (scansUsed >= 250) {
-      alert(`Vous avez atteint votre quota gratuit de 250 scans ce mois-ci.\nVeuillez contacter le support pour passer à l'abonnement Premium (Logiciel complet + Scans IA en illimité).`);
-      setStep('idle');
-      return;
-    } else if (scansUsed >= 200) {
-      // Affichage silencieux du quota restant
-      console.log(`Attention, il vous reste ${250 - scansUsed} scans gratuits ce mois-ci.`);
-    }
-
+  // Lecture avec l'API Cloud App à la Carte (OCR IA serveur)
+  const analyzeImageWithCloudOcr = async (file: File) => {
     setStep('analyzing');
     setConfidence(0);
 
@@ -495,74 +469,50 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({ onClose, onSave,
       reader.onload = (e) => setSourceImage(e.target?.result as string);
       reader.readAsDataURL(file);
 
+      const token = await getAccessToken();
+      const apiBase = (window as any).__MARMICOUT_APPALACARTE_URL__ || import.meta.env.VITE_APPALACARTE_URL || 'http://localhost:3001';
       const formData = new FormData();
       formData.append("document", file);
 
-      // On utilise l'API Receipt officielle de Mindee (qui autorise les requêtes depuis un navigateur, contrairement aux modèles personnalisés V2)
-      const response = await fetch("https://api.mindee.net/v1/products/mindee/expense_receipts/v5/predict", {
+      const response = await fetch(`${apiBase}/api/marmicout/ocr`, {
         method: "POST",
-        headers: {
-          "Authorization": `Token ${settings.mindeeApiKey}`
-        },
+        headers: token ? {
+          "Authorization": `Bearer ${token}`
+        } : {},
         body: formData
       });
 
+      const json = await response.json().catch(() => ({}));
+
       if (!response.ok) {
-        throw new Error(`Erreur HTTP: ${response.status}`);
+        throw new Error(json.error || `Erreur HTTP: ${response.status}`);
       }
 
-      const json = await response.json();
-      const prediction = json.document.inference.prediction;
-
-      const extractedStore = prediction.supplier_name?.value || '';
-      const extractedDate = prediction.date?.value || new Date().toISOString().split('T')[0];
-      
-      const mappedItems = [];
-      const lineItems = prediction.line_items || [];
-      
-      for (const item of lineItems) {
-        if (!item.description) continue;
-        
-        const qty = item.quantity || 1;
-        const total = item.total_amount || 0;
-        let unitPrice = item.unit_price;
-        
-        if (!unitPrice && total > 0) {
-          unitPrice = total / qty;
-        }
-        
-        if (total === 0 && !unitPrice) continue;
-
-        mappedItems.push({
-          name: item.description,
-          qty: qty,
-          unitPrice: Number((unitPrice || 0).toFixed(2)),
-          unit: 'pièce', // Par défaut
-          productId: autoMapProduct(item.description)
-        });
-      }
-
-      // Sauvegarde du quota
-      dbService.saveSettings({
-        ...settings,
-        mindeeMonthlyScans: scansUsed + 1,
-        mindeeLastScanMonth: currentMonth
-      });
+      const extractedStore = json.store || '';
+      const extractedDate = json.date || new Date().toISOString().split('T')[0];
+      const lineItems = json.items || [];
+      const mappedItems = lineItems.map((item: any) => ({
+        name: item.name,
+        qty: item.qty || 1,
+        unitPrice: Number(item.unitPrice || 0),
+        unit: item.unit || 'pièce',
+        productId: autoMapProduct(item.name)
+      }));
 
       setInvoiceStoreId(stores.find(s => s.name.toLowerCase().includes(extractedStore.toLowerCase()))?.id || stores[0]?.id || '');
       setInvoiceDate(extractedDate);
-      
+
       if (mappedItems.length === 0) {
-        alert("Mindee n'a trouvé aucune ligne d'article sur ce document.");
+        alert("L'analyse intelligente n'a trouvé aucune ligne d'article sur ce document.");
       }
-      
+
       setExtractedItems(mappedItems);
       setStep('validating');
       setConfidence(100);
 
-    } catch (err) {
-      console.error('Erreur Mindee', err);
-      alert("La lecture avec Mindee a échoué. Vérifiez votre clé API et votre connexion internet.");
+    } catch (err: any) {
+      console.error('Erreur OCR IA', err);
+      alert(`La lecture avec l'IA a échoué : ${err.message || err}`);
       setStep('idle');
     }
   };
@@ -659,14 +609,14 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({ onClose, onSave,
       };
       reader.readAsText(file);
     } else if (fileName.endsWith('.pdf') || file.type === 'application/pdf') {
-      if (useMindee) {
-        void analyzeImageWithMindee(file); // Mindee supporte les PDFs natifs
+      if (useCloudOcr) {
+        void analyzeImageWithCloudOcr(file);
       } else {
         void analyzePdf(file);
       }
     } else if (file.type.startsWith('image/')) {
-      if (useMindee) {
-        void analyzeImageWithMindee(file);
+      if (useCloudOcr) {
+        void analyzeImageWithCloudOcr(file);
       } else {
         void analyzeImage(file);
       }

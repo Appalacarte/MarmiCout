@@ -1,5 +1,6 @@
 import { supabase, getAccessToken } from './supabaseClient';
 import { cloudDbService } from './cloudDbService';
+import { indexedDbService } from './indexedDbService';
 
 const APPALACARTE_URL = import.meta.env.VITE_APPALACARTE_URL || 'https://appalacarte.fr';
 
@@ -56,7 +57,20 @@ class AccessVerificationService {
   private checkIntervalId: any = null;
 
   constructor() {
+    this.loadCachedResult();
     this.startPeriodicCheck();
+  }
+
+  private async loadCachedResult() {
+    try {
+      const items = await indexedDbService.getAll<any>('settings');
+      const cached = items.find((i) => i.key === 'last_access_verification');
+      if (cached && cached.value && !this.lastResult) {
+        this.lastResult = cached.value;
+      }
+    } catch (e) {
+      // Ignorer
+    }
   }
 
   public subscribe(callback: (result: AccessVerificationResult) => void): () => void {
@@ -218,10 +232,37 @@ class AccessVerificationService {
         tarifsUrl: `${APPALACARTE_URL}/tarifs?app=marmicout-stock-restauration`,
       };
 
+      // Sauvegarde du dernier forfait connu et droits dans IndexedDB (Point 1)
+      try {
+        await indexedDbService.put('settings', {
+          key: 'last_access_verification',
+          value: successResult,
+          cachedAt: new Date().toISOString(),
+        });
+      } catch (cacheErr) {
+        console.warn('Erreur mise en cache IndexedDB vérification accès:', cacheErr);
+      }
+
       this.notify(successResult);
       return successResult;
     } catch (err: any) {
-      console.error('Erreur verifyAccess:', err);
+      console.warn('Erreur réseau verifyAccess (secours IndexedDB):', err);
+      // Hors connexion : on utilise le dernier forfait connu stocké dans IndexedDB
+      try {
+        const items = await indexedDbService.getAll<any>('settings');
+        const cached = items.find((i) => i.key === 'last_access_verification');
+        if (cached && cached.value) {
+          const cachedResult: AccessVerificationResult = {
+            ...cached.value,
+            alertMessage: cached.value.alertMessage || 'Mode hors-ligne : utilisation de vos droits enregistrés localement.'
+          };
+          this.notify(cachedResult);
+          return cachedResult;
+        }
+      } catch (dbErr) {
+        console.error('Erreur lecture cache IndexedDB:', dbErr);
+      }
+
       const networkErrResult: AccessVerificationResult = {
         hasAccess: false,
         mode: 'error',

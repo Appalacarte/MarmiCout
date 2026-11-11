@@ -4,6 +4,31 @@ Toutes les modifications notables apportées à ce projet sont documentées dans
 
 ---
 
+## [2.0.48] - 2026-11-11
+
+### Sécurisation OCR Serveur, Distinction Forfait Cloud / Essentiel & Cache Local IndexedDB
+- **Sécurisation Mindee & OCR Serveur (Point 4)** :
+  - Suppression intégrale de toute clé Mindee du client Marmicout et de `marmicout_settings` (migration Supabase dédiée).
+  - Déplacement de l'analyse OCR côté backend App à la Carte sur l'endpoint sécurisé `/api/marmicout/ocr` avec contrôle de forfait et quotas (5 démo / 150 Pro).
+  - Suppression de la dépendance npm `mindee` dans Marmicout (`git grep -i mindee` = 0).
+- **Distinction Stricte Mode Cloud vs Essentiel (Points 1 & 2)** :
+  - `isCloudMode()` s'appuie désormais STRICTEMENT sur le forfait renvoyé par `/api/access/verify` (`demo_14j`, `pro`, `pro_cloud`).
+  - Les utilisateurs du forfait `essentiel` écrivent exclusivement en local (IndexedDB) et JAMAIS sur Supabase.
+  - `syncFromCloud()` est strictement interdit et ignoré pour le forfait Essentiel afin de préserver l'intégrité de ses données locales.
+  - Pendant le chargement de la vérification des droits, les écritures sont bloquées avec écran de chargement dédié (`assertAccessKnown`).
+  - En mode hors-ligne, le dernier forfait connu est relu depuis IndexedDB.
+- **Cache Local IndexedDB Pur en Mode Cloud (Point 6)** :
+  - Élimination des écritures de données métier dans `localStorage` en mode cloud pour éviter toute saturation de la limite 5 Mo.
+  - Le cache local hors-ligne en mode cloud s'appuie désormais sur IndexedDB avec projection mémoire instantanée.
+- **Suppression des Fallbacks Silencieux (Point 5)** :
+  - Suppression de la suppression silencieuse de colonnes dans `cloudDbService.ts` : toute anomalie de schéma lève une erreur explicite.
+- **Cycle de Vie Service Worker & En-têtes No-Cache (Points 0 & 7)** :
+  - `/sw.js` servi avec les en-têtes `Cache-Control: no-cache, no-store, must-revalidate`.
+  - Notification automatique et actualisation lors de l'activation d'un nouveau cache shell (`self.clients.claim()`).
+  - Affichage stylisé de la version `v2.0.48` dans le pied de page de Marmicout.
+
+---
+
 ## [2.0.47] - 2026-11-11
 
 ### Neutralisation Service Worker sur Localhost & Renforcement Détection Cloud-First

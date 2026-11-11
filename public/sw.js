@@ -35,20 +35,27 @@ self.addEventListener('install', (event) => {
   self.skipWaiting();
 });
 
-// Activation : nettoyage des anciens caches
+// Activation : nettoyage des anciens caches et notification aux clients ouverts
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) => {
       return Promise.all(
         keys.map((key) => {
           if (key !== CACHE_NAME) {
+            console.log('[Service Worker] Suppression ancien cache :', key);
             return caches.delete(key);
           }
         })
       );
+    }).then(() => self.clients.claim()).then(() => {
+      // Recharger ou notifier les onglets ouverts pour basculer sur la version fraîche
+      return self.clients.matchAll({ type: 'window' }).then((clients) => {
+        clients.forEach((client) => {
+          client.postMessage({ type: 'MARMICOUT_SW_UPDATED', cacheName: CACHE_NAME });
+        });
+      });
     })
   );
-  self.clients.claim();
 });
 
 // Fetch : Stratégie Network-first avec secours sur le cache pour l'App Shell

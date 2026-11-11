@@ -208,7 +208,7 @@ export const Recipes: React.FC<RecipesProps> = ({ initialTriggerAdd, initialView
   };
 
   // Cuisiner depuis le panneau détail : crée une vraie production et déduit les stocks
-  const handleCookFromDetail = () => {
+  const handleCookFromDetail = async () => {
     if (!selectedRecipeDetails) return;
     const costInfo = dbService.calculateRecipeCost(selectedRecipeDetails.id);
     const factor = portionsCible / (selectedRecipeDetails.portions || 1);
@@ -219,7 +219,7 @@ export const Recipes: React.FC<RecipesProps> = ({ initialTriggerAdd, initialView
       portionsProduced: portionsCible,
       calculatedCost: Number((costInfo.totalCost * factor).toFixed(2))
     };
-    const result = dbService.addProduction(prod);
+    const result = await dbService.addProduction(prod);
     if (result.success) {
       setDetailCookResult('success');
       loadData();

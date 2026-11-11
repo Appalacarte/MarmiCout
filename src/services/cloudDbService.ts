@@ -390,21 +390,9 @@ export class CloudDbService {
     if (recipe.videoUrl) payload.video_url = recipe.videoUrl;
     if (recipe.sourceUrl) payload.source_url = recipe.sourceUrl;
 
-    let { error: recipeErr } = await supabase
+    const { error: recipeErr } = await supabase
       .from('marmicout_recipes')
       .upsert(payload, { onConflict: 'id' });
-
-    // Fallback gracieux si les colonnes étendues ne sont pas encore migrées sur Supabase
-    if (recipeErr && (recipeErr.message.includes('column') || recipeErr.code === '42703' || recipeErr.code === 'PGRST204')) {
-      delete payload.original_portions;
-      delete payload.source_image;
-      delete payload.raw_extracted_text;
-      delete payload.external_id;
-      delete payload.video_url;
-      delete payload.source_url;
-      const retry = await supabase.from('marmicout_recipes').upsert(payload, { onConflict: 'id' });
-      recipeErr = retry.error;
-    }
 
     if (recipeErr) {
       notifyCloudError('Enregistrement de la recette refusé', recipeErr.message);
@@ -738,10 +726,6 @@ export class CloudDbService {
       googleSheetId: data.google_sheet_id || undefined,
       googleSheetLink: data.google_sheet_link || undefined,
       googleWebAppUrl: data.google_web_app_url || undefined,
-      mindeeApiKey: data.mindee_api_key || undefined,
-      mindeeModelId: data.mindee_model_id || undefined,
-      mindeeMonthlyScans: data.mindee_monthly_scans ? Number(data.mindee_monthly_scans) : 0,
-      mindeeLastScanMonth: data.mindee_last_scan_month || undefined,
     };
     await indexedDbService.put('settings', { key: 'app_settings', value: settings });
     return settings;
@@ -765,10 +749,6 @@ export class CloudDbService {
       google_sheet_link: settings.googleSheetLink || null,
       google_sheet_id: settings.googleSheetId || null,
       google_web_app_url: settings.googleWebAppUrl || null,
-      mindee_api_key: settings.mindeeApiKey || null,
-      mindee_model_id: settings.mindeeModelId || null,
-      mindee_monthly_scans: settings.mindeeMonthlyScans || 0,
-      mindee_last_scan_month: settings.mindeeLastScanMonth || null,
     };
 
     const { error } = await supabase

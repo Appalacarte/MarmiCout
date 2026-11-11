@@ -60,8 +60,6 @@ export const Settings: React.FC<SettingsProps> = ({ initialSubTab = 'general' })
   const [googleSheetId, setGoogleSheetId] = useState(settings.googleSheetId || '');
   const [googleSheetLink, setGoogleSheetLink] = useState(settings.googleSheetLink || '');
   const [googleWebAppUrl, setGoogleWebAppUrl] = useState(settings.googleWebAppUrl || '');
-  const [mindeeApiKey, setMindeeApiKey] = useState(settings.mindeeApiKey || '');
-  const [mindeeModelId, setMindeeModelId] = useState(settings.mindeeModelId || '');
   
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState('');
@@ -102,9 +100,7 @@ export const Settings: React.FC<SettingsProps> = ({ initialSubTab = 'general' })
       salesLocations: locationsText.split('\n').map(c => c.trim()).filter(c => c.length > 0),
       googleSheetId: googleSheetId.trim(),
       googleSheetLink: googleSheetLink.trim(),
-      googleWebAppUrl: googleWebAppUrl.trim(),
-      mindeeApiKey: mindeeApiKey.trim(),
-      mindeeModelId: mindeeModelId.trim()
+      googleWebAppUrl: googleWebAppUrl.trim()
     };
 
     try {
@@ -555,35 +551,7 @@ export const Settings: React.FC<SettingsProps> = ({ initialSubTab = 'general' })
               </span>
             </div>
 
-            <div className="form-group" style={{ marginTop: '16px', padding: '12px', border: '1px solid rgba(99, 102, 241, 0.3)', borderRadius: 'var(--radius-md)', backgroundColor: 'var(--color-primary-light)' }}>
-              <label className="form-label" style={{ color: 'var(--color-primary)', fontWeight: 'bold' }}>Clé API Mindee (Intelligence Artificielle Premium)</label>
-              <input
-                type="password"
-                className="form-input"
-                placeholder="Ex: md_3qHoBatlJzsWRDEM4wqgWUHFmUHhXo9qXV5ZnpRyhyg"
-                value={mindeeApiKey}
-                onChange={(e) => setMindeeApiKey(e.target.value)}
-                style={{ borderColor: 'var(--color-primary)', opacity: 0.9 }}
-              />
-              <span style={{ fontSize: '11px', color: 'var(--color-dark-light)', marginTop: '6px', display: 'block' }}>
-                💡 Nécessaire pour débloquer le bouton "Scanner une facture avec IA" (limité à 250 scans / mois gratuits via votre compte Mindee).
-              </span>
-            </div>
 
-            <div className="form-group" style={{ marginTop: '10px', padding: '12px', border: '1px solid rgba(99, 102, 241, 0.3)', borderRadius: 'var(--radius-md)', backgroundColor: 'var(--color-primary-light)' }}>
-              <label className="form-label" style={{ color: 'var(--color-primary)', fontWeight: 'bold' }}>ID du Modèle Mindee (V2)</label>
-              <input
-                type="text"
-                className="form-input"
-                placeholder="Ex: 55ece2b2-9027-405c-8e4b-19dae0be801e"
-                value={mindeeModelId}
-                onChange={(e) => setMindeeModelId(e.target.value)}
-                style={{ borderColor: 'var(--color-primary)', opacity: 0.9 }}
-              />
-              <span style={{ fontSize: '11px', color: 'var(--color-dark-light)', marginTop: '6px', display: 'block' }}>
-                💡 Renseignez ici l'ID de votre modèle Mindee personnalisé (ex: Receipt) pour utiliser l'API asynchrone V2.
-              </span>
-            </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginTop: '16px' }}>
               <div className="form-group">

@@ -60,7 +60,7 @@ export const Products: React.FC<ProductsProps> = ({ initialTriggerAdd, onNavigat
   const [stockHistory, setStockHistory] = useState<StockMovement[]>([]);
   const [purchaseHistory, setPurchaseHistory] = useState<Purchase[]>([]);
   const [isInvoiceScannerOpen, setIsInvoiceScannerOpen] = useState(false);
-  const [isMindeeScannerOpen, setIsMindeeScannerOpen] = useState(false);
+  const [isAiScannerOpen, setIsAiScannerOpen] = useState(false);
 
   // Charger les données au montage
   const loadData = () => {
@@ -261,11 +261,11 @@ export const Products: React.FC<ProductsProps> = ({ initialTriggerAdd, onNavigat
           <p className="page-subtitle">Gérez vos matières premières, emballages et stocks</p>
         </div>
         <div className="actions-group">
-          <button className="btn btn-secondary" onClick={() => { setIsMindeeScannerOpen(true); setIsInvoiceScannerOpen(true); }} style={{ borderColor: 'var(--color-primary)', color: 'var(--color-primary)' }}>
+          <button className="btn btn-secondary" onClick={() => { setIsAiScannerOpen(true); setIsInvoiceScannerOpen(true); }} style={{ borderColor: 'var(--color-primary)', color: 'var(--color-primary)' }}>
             <FileText size={18} />
             Scanner une facture avec IA
           </button>
-          <button className="btn btn-secondary" onClick={() => { setIsMindeeScannerOpen(false); setIsInvoiceScannerOpen(true); }}>
+          <button className="btn btn-secondary" onClick={() => { setIsAiScannerOpen(false); setIsInvoiceScannerOpen(true); }}>
             <FileText size={18} />
             Scanner une facture
           </button>
@@ -693,7 +693,7 @@ export const Products: React.FC<ProductsProps> = ({ initialTriggerAdd, onNavigat
 
       {/* Drawer de Scan de Facture */}
       <Drawer
-        title={isMindeeScannerOpen ? "Scanner une facture avec IA" : "Scanner et importer une facture"}
+        title={isAiScannerOpen ? "Scanner une facture avec IA" : "Scanner et importer une facture"}
         isOpen={isInvoiceScannerOpen}
         onClose={() => setIsInvoiceScannerOpen(false)}
         width="1200px"
@@ -704,7 +704,7 @@ export const Products: React.FC<ProductsProps> = ({ initialTriggerAdd, onNavigat
           products={products}
           stores={stores}
           settings={settings}
-          useMindee={isMindeeScannerOpen}
+          useCloudOcr={isAiScannerOpen}
         />
       </Drawer>
     </div>
