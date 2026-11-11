@@ -427,8 +427,16 @@ export const dbService = {
     return getTable<RecipeIngredient>(KEYS.RECIPE_INGREDIENTS).filter(ri => ri.recipeId === recipeId);
   },
 
+  getAllRecipeIngredients(): RecipeIngredient[] {
+    return getTable<RecipeIngredient>(KEYS.RECIPE_INGREDIENTS);
+  },
+
   getRecipePackagings(recipeId: string): RecipePackaging[] {
     return getTable<RecipePackaging>(KEYS.RECIPE_PACKAGING).filter(rp => rp.recipeId === recipeId);
+  },
+
+  getAllRecipePackagings(): RecipePackaging[] {
+    return getTable<RecipePackaging>(KEYS.RECIPE_PACKAGING);
   },
 
   saveRecipe(

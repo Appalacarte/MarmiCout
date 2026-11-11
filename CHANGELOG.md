@@ -4,6 +4,26 @@ Toutes les modifications notables apportées à ce projet sont documentées dans
 
 ---
 
+## [2.0.43] - 2026-11-11
+
+### Corrigé & Amélioré
+- **Sécurisation du SSO Local et Interception de Jeton** :
+  - Dans [`src/components/MarmicoutAccessGate.tsx`](file:///d:/Aplli/Marmicout/Appli%20Marmicout/src/components/MarmicoutAccessGate.tsx), l'interception automatique du jeton de session dans l'ancre `#access_token=...` est désormais strictement conditionnée à un environnement local de développement (`window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'`). En production, aucun fragment d'URL n'est jamais traité.
+- **Correction des URLs d'Authentification Centralisée** :
+  - Remplacement de l'ancien lien en 404 (`/auth/connexion?redirect=...`) par l'URL officielle d'App à la Carte : `${APPALACARTE_URL}/auth/login?next=${encodeURIComponent(window.location.href)}` dans [`src/services/accessVerificationService.ts`](file:///d:/Aplli/Marmicout/Appli%20Marmicout/src/services/accessVerificationService.ts) et dans les boutons d'action de [`MarmicoutAccessGate.tsx`](file:///d:/Aplli/Marmicout/Appli%20Marmicout/src/components/MarmicoutAccessGate.tsx).
+- **Liens Légaux Dynamiques vers la Plateforme Centrale** :
+  - Tous les liens légaux du pied de page des écrans d'accès pointent via la variable d'environnement `VITE_APPALACARTE_URL` vers les pages officielles :
+    - Mentions légales : `${APPALACARTE_URL}/mentions-legales`
+    - Politique de confidentialité : `${APPALACARTE_URL}/politique-de-confidentialite`
+    - CGU / CGV : `${APPALACARTE_URL}/conditions-generales`
+    - Contact : `${APPALACARTE_URL}/contact`
+- **Export Complet des 10 Tables de Données** :
+  - Mise à jour de [`src/utils/exportAllData.ts`](file:///d:/Aplli/Marmicout/Appli%20Marmicout/src/utils/exportAllData.ts) et [`src/services/db.ts`](file:///d:/Aplli/Marmicout/Appli%20Marmicout/src/services/db.ts) pour exporter l'intégralité des 10 collections : `products`, `stores`, `purchases`, `recipes`, `recipe_ingredients`, `recipe_packaging`, `productions`, `sales`, `stock_movements`, `settings`.
+- **Validation Conformité Légale SREN 2024** :
+  - Script `scripts/verify-legal.mjs` validé avec succès (100% conforme).
+
+---
+
 ## [2.0.42] - 2026-11-09
 
 ### Ajouté
@@ -173,8 +193,8 @@ Toutes les modifications notables apportées à ce projet sont documentées dans
 
 ### Modifié
 - **Harmonisation des supports marketing (flyers)** :
-  - Mise à jour des QR codes d'essai dans `flyer_marmicout.html` et `flyer_marmicout2.html` pointant directement vers `https://marmicout.vercel.app/`.
-  - Harmonisation du domaine affiché (`marmicout.vercel.app`) et de l'email officiel `contact@appalacarte.fr`.
+  - Mise à jour des QR codes d'essai dans `flyer_marmicout.html` et `flyer_marmicout2.html` pointant directement vers `https://marmicout.appalacarte.fr/`.
+  - Harmonisation du domaine affiché (`marmicout.appalacarte.fr`) et de l'email officiel `contact@appalacarte.fr`.
 - **Synchronisation de version** :
   - Incrémentation SemVer vers `2.0.32` dans `package.json`, `package-lock.json`, `src/version.ts` et `CHANGELOG.md`.
 
@@ -182,8 +202,8 @@ Toutes les modifications notables apportées à ce projet sont documentées dans
 
 ### Modifié
 - **Lien du QR Code et bouton de partage** :
-  - Mise à jour de l'URL cible générée par le composant `InviteQRCode.tsx` vers l'adresse officielle de production directe : `https://marmicout.vercel.app/`.
-  - Le scan du QR code et le bouton « Copier le lien » / « Partager » redirigent désormais vers `https://marmicout.vercel.app/`.
+  - Mise à jour de l'URL cible générée par le composant `InviteQRCode.tsx` vers l'adresse officielle de production directe : `https://marmicout.appalacarte.fr/`.
+  - Le scan du QR code et le bouton « Copier le lien » / « Partager » redirigent désormais vers `https://marmicout.appalacarte.fr/`.
 - **Synchronisation de version** :
   - Incrémentation SemVer vers `2.0.31` dans `package.json`, `package-lock.json`, `src/version.ts` et `CHANGELOG.md`.
 
@@ -191,7 +211,7 @@ Toutes les modifications notables apportées à ce projet sont documentées dans
 
 ### Modifié
 - **Déploiement Vercel & configuration domaine** :
-  - Déploiement en production de l'application sur Vercel avec le domaine officiel direct `https://marmicout.vercel.app` (et conservation de l'alias de secours `https://marmi-cout.vercel.app`).
+  - Déploiement en production de l'application sur Vercel avec le domaine officiel direct `https://marmicout.appalacarte.fr` (et conservation de l'alias de secours `https://marmi-cout.vercel.app`).
   - Configuration du dépôt distant GitHub vers l'organisation officielle App à la Carte : `https://github.com/Appalacarte/MarmiCout.git`.
   - Ajout de l'exclusion `.vercel` dans `.gitignore`.
 - **Synchronisation de version** :

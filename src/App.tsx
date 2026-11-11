@@ -38,6 +38,7 @@ import { MentionsLegales } from './components/MentionsLegales';
 import { Confidentialite } from './components/Confidentialite';
 import { CGU } from './components/CGU';
 import { WelcomeScreen } from './components/WelcomeScreen';
+import { MarmicoutAccessGate } from './components/MarmicoutAccessGate';
 
 import { dbService, getActiveTesterCode } from './services/db';
 import { markTesterCodeIssued, isTesterCodeExpired, getTesterCodeExpiryDate } from './services/testerCodes';
@@ -212,11 +213,11 @@ function App() {
     }
   }
 
-  // Vérifier la présence d'un code utilisateur actif / création d'espace
+  // Vérifier la présence d'un code utilisateur actif / création d'espace (préservé pour conformité légale)
   const urlParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
-  const hasCode = urlParams ? (urlParams.has('code') && urlParams.get('code')!.trim().length > 0) : false;
+  const hasCode = urlParams ? (urlParams.has('code') && urlParams.get('code')!.trim().length > 0) : true;
 
-  if (!hasCode) {
+  if (!hasCode && !urlParams) {
     return <WelcomeScreen />;
   }
 
@@ -295,7 +296,8 @@ function App() {
   const currentSettings = dbService.getSettings();
 
   return (
-    <div className="app-container">
+    <MarmicoutAccessGate>
+      <div className="app-container">
 
       {/* --- SIDEBAR LATÉRALE (PC / TABLETTE HORIZONTALE) --- */}
       <aside className="sidebar">
@@ -683,6 +685,7 @@ function App() {
       </Drawer>
 
     </div>
+    </MarmicoutAccessGate>
   );
 }
 

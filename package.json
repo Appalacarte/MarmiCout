@@ -1,7 +1,7 @@
 {
   "name": "appli-marmicout",
   "private": true,
-  "version": "2.0.42",
+  "version": "2.0.43",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -16,6 +16,7 @@
     "backup:download": "bash scripts/backup.sh download"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.119.0",
     "html5-qrcode": "^2.3.8",
     "lucide-react": "^1.18.0",
     "mammoth": "^1.12.0",

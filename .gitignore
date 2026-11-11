@@ -24,3 +24,10 @@ dist-ssr
 *.sw?
 
 .vercel
+
+# Supabase backups
+backups/
+backups-local/
+*.tar.gz
+
+.vercel

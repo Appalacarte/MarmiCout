@@ -7,7 +7,7 @@
 **SIREN :** 132 021 098 | **SIRET :** 132 021 098 00018  
 **Contact officiel :** contact@appalacarte.fr  
 **Régime fiscal :** TVA non applicable, article 293 B du CGI  
-**Lien de production :** https://marmicout.vercel.app/  
+**Lien de production :** https://marmicout.appalacarte.fr/  
 
 ---
 
@@ -60,7 +60,7 @@ Ce script est calibré pour un format vidéo tutoriel/démo PC 16:9 haute défin
 
 ### Séquence 0 : Introduction & Prise en Main (00:00 - 00:45)
 - **Média :** `[VIDEO: demo_intro_pc]`
-- **Affichage Écran PC :** Plein écran sur le navigateur affichant `https://marmicout.vercel.app/`. Interface épurée, barre latérale gauche arborant la toque de chef et le titre **MarmiCout**, menu de navigation clair (Tableau de bord, Produits & Stocks, Achats, Recettes, Production, Ventes, Fournisseurs, Paramètres).
+- **Affichage Écran PC :** Plein écran sur le navigateur affichant `https://marmicout.appalacarte.fr/`. Interface épurée, barre latérale gauche arborant la toque de chef et le titre **MarmiCout**, menu de navigation clair (Tableau de bord, Produits & Stocks, Achats, Recettes, Production, Ventes, Fournisseurs, Paramètres).
 - **Voix Off :**
   > « Bienvenue dans la démonstration complète de MarmiCout sur ordinateur. Si vous êtes traiteur, pâtissier ou créateur de plats cuisinés, vous savez qu'un plat mal chiffré ou une facture d'achat mal reportée peut anéantir vos bénéfices. Dans cette vidéo, nous allons parcourir ensemble chaque écran de MarmiCout pour que vous sachiez exactement comment piloter votre atelier de production, de la première matière première achetée jusqu'à la vente finale. »
 
@@ -178,9 +178,9 @@ Ce script est calibré pour un format vidéo tutoriel/démo PC 16:9 haute défin
 ### Séquence 9 : Écrans Utilitaires, Transparence & Conclusion (19:30 - 21:00)
 - **Média :** `[VIDEO: demo_conclusion_pc]`
 - **Affichage Écran PC :** Survol du pied de page interactif : clic sur *« Mentions Légales »* (présentation des garanties juridiques et de la conformité RGPD d'App à la Carte), puis sur l'écran *« Contact »* avec formulaire officiel, et enfin sur *« QR Code »* montrant comment ouvrir instantanément l'application sur smartphone ou tablette pour un usage nomade en atelier.
-- **Plaque de fin :** Adresse web `https://marmicout.vercel.app/`, bouton d'essai 14 jours, logo officiel App à la Carte et email de support : `contact@appalacarte.fr`.
+- **Plaque de fin :** Adresse web `https://marmicout.appalacarte.fr/`, bouton d'essai 14 jours, logo officiel App à la Carte et email de support : `contact@appalacarte.fr`.
 - **Voix Off :**
-  > « Vous disposez maintenant de toutes les clés pour maîtriser vos coûts de revient et valoriser pleinement votre savoir-faire culinaire. MarmiCout est accessible sans installation, utilisable sur PC comme sur tablette en cuisine, et bénéficie de la rigueur et du support d'App à la Carte. Rendez-vous dès maintenant sur marmicout.vercel.app pour activer votre essai gratuit de 14 jours. Prenez le contrôle de vos marges, cuisinez l'esprit tranquille ! »
+  > « Vous disposez maintenant de toutes les clés pour maîtriser vos coûts de revient et valoriser pleinement votre savoir-faire culinaire. MarmiCout est accessible sans installation, utilisable sur PC comme sur tablette en cuisine, et bénéficie de la rigueur et du support d'App à la Carte. Rendez-vous dès maintenant sur marmicout.appalacarte.fr pour activer votre essai gratuit de 14 jours. Prenez le contrôle de vos marges, cuisinez l'esprit tranquille ! »
 
 ---
 
@@ -192,7 +192,7 @@ Ce script est calibré pour un format vidéo tutoriel/démo PC 16:9 haute défin
 - Badge d'autorité : "La solution de gestion de coûts pour traiteurs & artisans de bouche"
 - Titre H1 : "Maîtrisez vos coûts de revient. Protégez vos marges. Cuisinez l'esprit tranquille."
 - Sous-titre : "Enregistrez vos achats, automatisez le calcul du coût matière de chaque portion et déstockez vos ingrédients en un clic. Sans tableaux complexes, sans erreurs de calcul."
-- CTA Principal : "Démarrer mon essai gratuit de 14 jours" (Lien : https://marmicout.vercel.app/)
+- CTA Principal : "Démarrer mon essai gratuit de 14 jours" (Lien : https://marmicout.appalacarte.fr/)
 - CTA Secondaire : "Voir la démonstration vidéo pas à pas (20 min)"
 - Preuve de confiance : "Sans carte bancaire • Données 100% sécurisées • Conforme RGPD"
 - Média Hero : [IMAGE: hero_image_pc_mockup] (Capture haute fidélité de l'interface PC MarmiCout avec tableau de bord et fiche recette)
@@ -270,7 +270,7 @@ Ce script est calibré pour un format vidéo tutoriel/démo PC 16:9 haute défin
 <!-- BLOC 10 : CALL TO ACTION FINAL -->
 [SECTION_CTA_FINAL]
 - Titre : "Prêt à sécuriser les marges de votre cuisine ?"
-- Bouton : "Démarrer immédiatement sur marmicout.vercel.app"
+- Bouton : "Démarrer immédiatement sur marmicout.appalacarte.fr"
 - Bannière : [IMAGE: final_cta_banner]
 ```
 

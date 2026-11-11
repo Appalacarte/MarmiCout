@@ -1,0 +1,67 @@
+name: Supabase Backup
+
+on:
+  schedule:
+    # Exécution quotidienne à 3h00 UTC
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+    inputs:
+      force:
+        description: 'Forcer la sauvegarde même si BACKUP_ENABLED est désactivé'
+        type: boolean
+        default: false
+        required: false
+
+jobs:
+  backup:
+    name: Supabase Database Backup
+    runs-on: ubuntu-latest
+    # Exécution seulement si la variable BACKUP_ENABLED vaut 'true', OU si force est activé manuellement
+    if: vars.BACKUP_ENABLED == 'true' || inputs.force == true
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Run Supabase DB Dumps
+        env:
+          DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          set -e
+          if [ -z "$DB_URL" ]; then
+            echo "::error::Le secret SUPABASE_DB_URL n'est pas défini ou est vide."
+            exit 1
+          fi
+
+          mkdir -p backups
+
+          echo "Dump des rôles (roles.sql)..."
+          supabase db dump --db-url "$DB_URL" -f backups/roles.sql --role-only
+
+          echo "Dump du schéma (schema.sql)..."
+          supabase db dump --db-url "$DB_URL" -f backups/schema.sql
+
+          echo "Dump des données (data.sql)..."
+          supabase db dump --db-url "$DB_URL" -f backups/data.sql --use-copy --data-only
+
+          echo "Dumps terminés avec succès."
+
+      - name: Compress backup archive
+        run: |
+          set -e
+          BACKUP_DATE=$(date +'%Y-%m-%d')
+          echo "BACKUP_DATE=$BACKUP_DATE" >> $GITHUB_ENV
+          tar -czvf "backup-${BACKUP_DATE}.tar.gz" -C backups .
+          echo "Archive backup-${BACKUP_DATE}.tar.gz générée."
+
+      - name: Upload backup artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: supabase-backup-${{ env.BACKUP_DATE }}
+          path: backup-${{ env.BACKUP_DATE }}.tar.gz
+          retention-days: 30
