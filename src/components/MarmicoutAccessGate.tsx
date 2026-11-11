@@ -27,6 +27,20 @@ interface MarmicoutAccessGateProps {
 export const MarmicoutAccessGate: React.FC<MarmicoutAccessGateProps> = ({ children }) => {
   const [accessState, setAccessState] = useState<AccessVerificationResult | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
+  const [isOffline, setIsOffline] = useState<boolean>(
+    typeof navigator !== 'undefined' ? !navigator.onLine : false
+  );
+
+  useEffect(() => {
+    const handleOnline = () => setIsOffline(false);
+    const handleOffline = () => setIsOffline(true);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
 
   useEffect(() => {
     // 1. Détection automatique du jeton de session dans l'URL si transmis lors du SSO
@@ -161,6 +175,89 @@ export const MarmicoutAccessGate: React.FC<MarmicoutAccessGateProps> = ({ childr
               Vous n&apos;avez pas encore de compte ? Découvrir les forfaits
             </a>
           </div>
+
+          <div style={{ marginTop: '28px', paddingTop: '16px', borderTop: '1px solid #e2e8f0', fontSize: '11px', color: '#94a3b8' }}>
+            © 2026 App à la Carte ·{' '}
+            <a href={`${APPALACARTE_URL}/mentions-legales`} target="_blank" rel="noopener noreferrer" style={{ color: '#6366f1', textDecoration: 'underline' }}>Mentions légales</a>
+            {' · '}
+            <a href={`${APPALACARTE_URL}/politique-de-confidentialite`} target="_blank" rel="noopener noreferrer" style={{ color: '#6366f1', textDecoration: 'underline' }}>Confidentialité</a>
+            {' · '}
+            <a href={`${APPALACARTE_URL}/conditions-generales`} target="_blank" rel="noopener noreferrer" style={{ color: '#6366f1', textDecoration: 'underline' }}>CGU</a>
+            {' · '}
+            <a href={`${APPALACARTE_URL}/contact`} target="_blank" rel="noopener noreferrer" style={{ color: '#6366f1', textDecoration: 'underline' }}>Contact</a>
+            {' · '}
+            <span>v{APP_VERSION}</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Si double authentification obligatoire non complétée (AAL1 au lieu de AAL2)
+  if (accessState?.mode === 'mfa_required') {
+    return (
+      <div style={{
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: 'linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%)',
+        padding: '24px',
+        fontFamily: "'Inter', sans-serif",
+      }}>
+        <div style={{
+          background: '#ffffff',
+          borderRadius: '24px',
+          padding: '44px 36px',
+          maxWidth: '480px',
+          width: '100%',
+          boxShadow: '0 25px 60px rgba(0,0,0,0.3)',
+          textAlign: 'center',
+        }}>
+          <div style={{
+            width: '64px',
+            height: '64px',
+            borderRadius: '20px',
+            background: 'linear-gradient(135deg, #d97706, #b45309)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            margin: '0 auto 20px',
+            boxShadow: '0 10px 25px rgba(217, 119, 6, 0.35)',
+          }}>
+            <ShieldAlert size={32} color="#ffffff" />
+          </div>
+
+          <h1 style={{ fontSize: '22px', fontWeight: '800', color: '#0f172a', marginBottom: '8px' }}>
+            Double authentification requise
+          </h1>
+          <p style={{ fontSize: '14px', color: '#475569', marginBottom: '24px', lineHeight: '1.6' }}>
+            Votre compte central <strong>App à la Carte</strong> est protégé par la validation en deux étapes (2FA).
+            Veuillez saisir votre code TOTP sur le portail d&apos;authentification afin de valider votre session.
+          </p>
+
+          <a
+            href={accessState.actionUrl || `${APPALACARTE_URL}/auth/login?next=${encodeURIComponent(typeof window !== 'undefined' ? window.location.href : '')}`}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '8px',
+              width: '100%',
+              padding: '14px 20px',
+              background: '#d97706',
+              color: '#ffffff',
+              borderRadius: '14px',
+              fontSize: '14px',
+              fontWeight: '700',
+              textDecoration: 'none',
+              boxShadow: '0 4px 14px rgba(217, 119, 6, 0.4)',
+              transition: 'background 0.2s',
+            }}
+          >
+            <span>{accessState.actionButtonText || 'Valider mon code 2FA'}</span>
+            <ExternalLink size={16} />
+          </a>
 
           <div style={{ marginTop: '28px', paddingTop: '16px', borderTop: '1px solid #e2e8f0', fontSize: '11px', color: '#94a3b8' }}>
             © 2026 App à la Carte ·{' '}
@@ -448,6 +545,7 @@ export const MarmicoutAccessGate: React.FC<MarmicoutAccessGateProps> = ({ childr
   const isGrace = !!accessState?.isPastDueGrace;
   const isSepa = !!accessState?.isSepaProcessing;
   const isDemoActive = accessState?.status === 'demo_active';
+  const isEssentiel = accessState?.planCode === 'essentiel';
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
@@ -605,6 +703,86 @@ export const MarmicoutAccessGate: React.FC<MarmicoutAccessGateProps> = ({ childr
           >
             Passer en Pro →
           </a>
+        </div>
+      )}
+
+      {/* 5. Bandeau discret : Mode local (Essentiel) */}
+      {isEssentiel && !isReadOnly && (
+        <div style={{
+          background: '#047857',
+          color: '#ecfdf5',
+          padding: '6px 16px',
+          fontSize: '12px',
+          fontWeight: '500',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: '8px',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ fontSize: '13px' }}>💾</span>
+            <span>Mode local (Essentiel) – Données stockées sur cet appareil</span>
+          </div>
+          <button
+            type="button"
+            onClick={exportAllDataAsJSON}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '4px 10px',
+              background: 'rgba(255,255,255,0.2)',
+              border: '1px solid rgba(255,255,255,0.4)',
+              borderRadius: '6px',
+              color: '#ffffff',
+              fontSize: '11px',
+              fontWeight: '700',
+              cursor: 'pointer',
+            }}
+          >
+            <Download size={12} />
+            <span>Exporter mes données</span>
+          </button>
+        </div>
+      )}
+
+      {/* 6. Bandeau hors connexion : Consultation seule 72h */}
+      {isOffline && !isEssentiel && (
+        <div style={{
+          background: '#b45309',
+          color: '#fef3c7',
+          padding: '8px 16px',
+          fontSize: '12px',
+          fontWeight: '600',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: '8px',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Clock size={16} color="#fde68a" />
+            <span>Hors connexion : consultation seule (cache local actif 72 h)</span>
+          </div>
+          <button
+            type="button"
+            onClick={exportAllDataAsJSON}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '4px 10px',
+              background: 'rgba(255,255,255,0.2)',
+              border: '1px solid rgba(255,255,255,0.4)',
+              borderRadius: '6px',
+              color: '#ffffff',
+              fontSize: '11px',
+              fontWeight: '700',
+              cursor: 'pointer',
+            }}
+          >
+            <Download size={12} />
+            <span>Exporter mes données</span>
+          </button>
         </div>
       )}
 

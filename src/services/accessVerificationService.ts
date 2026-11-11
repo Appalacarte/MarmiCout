@@ -15,6 +15,7 @@ export type AccessMode =
   | 'virement_en_attente'
   | 'no_subscription'
   | 'blocked_hard'
+  | 'mfa_required'
   | 'unauthenticated'
   | 'loading'
   | 'error';
@@ -117,6 +118,19 @@ class AccessVerificationService {
 
       if (!res.ok) {
         // Traitement des statuts spécifiques
+        if (data.mode === 'mfa_required') {
+          const mfaResult: AccessVerificationResult = {
+            hasAccess: false,
+            mode: 'mfa_required',
+            error: data.error || 'Double authentification obligatoire non validée (AAL2 requis).',
+            actionButtonText: data.actionButtonText || 'Valider mon code 2FA',
+            actionUrl: data.actionUrl || `${APPALACARTE_URL}/auth/login`,
+            tarifsUrl: `${APPALACARTE_URL}/tarifs?app=marmicout-stock-restauration`,
+          };
+          this.notify(mfaResult);
+          return mfaResult;
+        }
+
         if (data.mode === 'virement_en_attente') {
           const virResult: AccessVerificationResult = {
             hasAccess: false,

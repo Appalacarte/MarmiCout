@@ -1,12 +1,12 @@
 {
   "name": "appli-marmicout",
   "private": true,
-  "version": "2.0.43",
+  "version": "2.0.44",
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "check:legal": "node scripts/verify-legal.mjs",
-    "build": "node scripts/verify-legal.mjs && tsc -b && vite build",
+    "check:legal": "node scripts/sync-legal-from-central.mjs && node scripts/verify-legal.mjs",
+    "build": "node scripts/sync-legal-from-central.mjs && node scripts/verify-legal.mjs && tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
     "backup:on": "bash scripts/backup.sh on",

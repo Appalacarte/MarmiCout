@@ -4,6 +4,26 @@ Toutes les modifications notables apportées à ce projet sont documentées dans
 
 ---
 
+## [2.0.44] - 2026-11-11
+
+### Étape c) Architecture Hybride, Contrôle 2FA (AAL2), Intégrité Export/Import & Sync Mentions Légales
+- **Écran Dédié Double Authentification (2FA / AAL2) (Point 3)** :
+  - Dans [`src/components/MarmicoutAccessGate.tsx`](file:///d:/Aplli/Marmicout/Appli%20Marmicout/src/components/MarmicoutAccessGate.tsx) et [`src/services/accessVerificationService.ts`](file:///d:/Aplli/Marmicout/Appli%20Marmicout/src/services/accessVerificationService.ts) : prise en charge du mode `mfa_required` affichant un portail dédié demandant à l'utilisateur de valider son code TOTP sur App à la Carte pour escalader sa session au niveau AAL2.
+- **Synchronisation Automatique de la Configuration Légale (Point 1)** :
+  - Création de [`scripts/sync-legal-from-central.mjs`](file:///d:/Aplli/Marmicout/Appli%20Marmicout/scripts/sync-legal-from-central.mjs) qui génère `src/config/legalConfig.ts` directement depuis `Créateur_application/src/config/legal.ts` (source unique de vérité).
+  - Adresse officielle de Vercel Inc. vérifiée et validée : `440 N Barranca Ave #4133, Covina, CA 91723, USA`.
+  - Mise à jour de `scripts/verify-legal.mjs` pour rejeter formellement toute mention obsolète de `340 S Lemon Ave` ou `Walnut`.
+- **Intégrité 100% Export / Réimport Ligne pour Ligne (Point 2)** :
+  - Implémentation de `importAllDataFromJSON()` dans [`src/utils/exportAllData.ts`](file:///d:/Aplli/Marmicout/Appli%20Marmicout/src/utils/exportAllData.ts) et des setters de collections dans [`src/services/db.ts`](file:///d:/Aplli/Marmicout/Appli%20Marmicout/src/services/db.ts).
+  - Création de [`scripts/test-export-import-integrity.mjs`](file:///d:/Aplli/Marmicout/Appli%20Marmicout/scripts/test-export-import-integrity.mjs) validant l'égalité stricte ligne par ligne sur les 10 tables opérationnelles : `products`, `stores`, `purchases`, `recipes`, `recipe_ingredients`, `recipe_packaging`, `productions`, `sales`, `stock_movements`, `settings`.
+- **Architecture Étape c) Simplifiée (Stockage Local Pur vs Cloud Direct)** :
+  - [`src/services/indexedDbService.ts`](file:///d:/Aplli/Marmicout/Appli%20Marmicout/src/services/indexedDbService.ts) : moteur IndexedDB dédié pour le stockage local pur (forfait Essentiel) et le miroir de cache local (72h).
+  - [`src/services/cloudDbService.ts`](file:///d:/Aplli/Marmicout/Appli%20Marmicout/src/services/cloudDbService.ts) : écritures directes dans Supabase PostgreSQL pour Pro et Pro Cloud avec mise en cache automatique, et bascule transparente en consultation seule 72h hors connexion.
+  - Bandeau discret Essentiel dans `MarmicoutAccessGate.tsx` : « Mode local (Essentiel) – Données stockées sur cet appareil » avec accès immédiat à « Exporter mes données ».
+  - Bandeau consultation seule hors connexion (72h) pour Pro/Pro Cloud.
+
+---
+
 ## [2.0.43] - 2026-11-11
 
 ### Corrigé & Amélioré

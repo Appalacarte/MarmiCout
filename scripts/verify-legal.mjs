@@ -84,15 +84,21 @@ if (!hasPubDirConfig || !rendersPubDir) {
   errors.push("Mention du Directeur de la publication manquante.");
 }
 
-// Hébergeur : nom, adresse ET téléphone (OBLIGATOIRES)
+// Hébergeur : nom, adresse ET téléphone (OBLIGATOIRES SREN 2024)
+// ADRESSE OFFICIELLE STRICTE : 440 N Barranca Ave #4133, Covina, CA 91723, USA
 const hasHostName = configContent.includes('Vercel Inc.');
-const hasHostAddr = configContent.includes('340 S Lemon Ave') || configContent.includes('Walnut');
+const hasCovina = configContent.includes('440 N Barranca Ave') && configContent.includes('Covina');
+const hasObsoleteLemon = configContent.includes('Lemon Ave') || configContent.includes('Walnut');
 const hasHostPhone = configContent.includes('+1 951-383-6898') || configContent.includes('+19513836898');
 const rendersHost = componentContent.includes('LEGAL_CONFIG.host.name') || componentContent.includes('Vercel Inc.');
 const rendersHostPhone = componentContent.includes('LEGAL_CONFIG.host.phone') || componentContent.includes('+1 951-383-6898');
 
-if (!hasHostName || !hasHostAddr || !hasHostPhone || !rendersHost || !rendersHostPhone) {
-  errors.push("Hébergeur incomplet : le nom (Vercel Inc.), l'adresse (340 S Lemon Ave #4133 Walnut) ET le téléphone (+1 951-383-6898) sont obligatoires.");
+if (hasObsoleteLemon) {
+  errors.push("L'adresse de l'hébergeur Vercel cite encore l'ancienne adresse (Lemon Ave / Walnut). L'adresse officielle obligatoire est : 440 N Barranca Ave #4133, Covina, CA 91723, USA.");
+}
+
+if (!hasHostName || !hasCovina || !hasHostPhone || !rendersHost || !rendersHostPhone) {
+  errors.push("Hébergeur incomplet ou non conforme : le nom (Vercel Inc.), l'adresse officielle (440 N Barranca Ave #4133, Covina, CA 91723, USA) ET le téléphone (+1 951-383-6898) sont obligatoires.");
 }
 
 // =========================================================================

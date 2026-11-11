@@ -290,9 +290,17 @@ export const dbService = {
     saveTable(KEYS.STORES, stores);
   },
 
+  setStores(stores: Store[]): void {
+    saveTable(KEYS.STORES, stores);
+  },
+
   // --- PRODUITS (PRODUCTS) ---
   getProducts(): Product[] {
     return getTable<Product>(KEYS.PRODUCTS);
+  },
+
+  setProducts(products: Product[]): void {
+    saveTable(KEYS.PRODUCTS, products);
   },
 
   getProduct(id: string): Product | undefined {
@@ -323,6 +331,10 @@ export const dbService = {
   // --- ACHATS (PURCHASES) ---
   getPurchases(): Purchase[] {
     return getTable<Purchase>(KEYS.PURCHASES);
+  },
+
+  setPurchases(purchases: Purchase[]): void {
+    saveTable(KEYS.PURCHASES, purchases);
   },
 
   addPurchase(purchase: Purchase): void {
@@ -396,6 +408,10 @@ export const dbService = {
     return getTable<StockMovement>(KEYS.STOCK_MOVEMENTS);
   },
 
+  setStockMovements(movements: StockMovement[]): void {
+    saveTable(KEYS.STOCK_MOVEMENTS, movements);
+  },
+
   addStockMovement(movement: StockMovement): void {
     const movements = this.getStockMovements();
     movements.push(movement);
@@ -419,6 +435,10 @@ export const dbService = {
     return getTable<Recipe>(KEYS.RECIPES);
   },
 
+  setRecipes(recipes: Recipe[]): void {
+    saveTable(KEYS.RECIPES, recipes);
+  },
+
   getRecipe(id: string): Recipe | undefined {
     return this.getRecipes().find(r => r.id === id);
   },
@@ -431,12 +451,20 @@ export const dbService = {
     return getTable<RecipeIngredient>(KEYS.RECIPE_INGREDIENTS);
   },
 
+  setAllRecipeIngredients(ingredients: RecipeIngredient[]): void {
+    saveTable(KEYS.RECIPE_INGREDIENTS, ingredients);
+  },
+
   getRecipePackagings(recipeId: string): RecipePackaging[] {
     return getTable<RecipePackaging>(KEYS.RECIPE_PACKAGING).filter(rp => rp.recipeId === recipeId);
   },
 
   getAllRecipePackagings(): RecipePackaging[] {
     return getTable<RecipePackaging>(KEYS.RECIPE_PACKAGING);
+  },
+
+  setAllRecipePackagings(packagings: RecipePackaging[]): void {
+    saveTable(KEYS.RECIPE_PACKAGING, packagings);
   },
 
   saveRecipe(
@@ -656,9 +684,17 @@ export const dbService = {
     return { success: true };
   },
 
+  setProductions(productions: Production[]): void {
+    saveTable(KEYS.PRODUCTIONS, productions);
+  },
+
   // --- VENTES (SALES) ---
   getSales(): Sale[] {
     return getTable<Sale>(KEYS.SALES);
+  },
+
+  setSales(sales: Sale[]): void {
+    saveTable(KEYS.SALES, sales);
   },
 
   addSale(sale: Sale): void {

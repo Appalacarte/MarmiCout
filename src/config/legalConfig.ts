@@ -1,3 +1,8 @@
+/**
+ * CE FICHIER EST GÉNÉRÉ AUTOMATIQUEMENT DEPUIS src/config/legal.ts D'APP À LA CARTE.
+ * NE PAS MODIFIER DIRECTEMENT. SOURCE UNIQUE DE VÉRITÉ : Créateur_application/src/config/legal.ts
+ */
+
 export interface LegalConfig {
   legalBasis: string;
   editor: {
@@ -53,10 +58,10 @@ export const LEGAL_CONFIG: LegalConfig = {
     fullName: "Hervé CHAMPAGNE",
     legalForm: "Entrepreneur individuel (EI)",
     fullEditorDesignation: "Hervé CHAMPAGNE, Entrepreneur individuel (EI)",
-    address: "173 rue de Courcelles, 75017 Paris, France (domiciliation HelloDom)",
+    address: "173 rue de Courcelles, 75017 Paris, France",
     siren: "132 021 098",
     siret: "132 021 098 00018",
-    rcs: "", // Certifié par l'attestation RNE (INPI) du 28/10/2026 : Non inscrit au RCS (activité libérale non réglementée). Champ vide conforme.
+    rcs: "", // Activité libérale non réglementée au RNE (INPI), non inscrit au RCS
     phone: "07 69 59 04 70",
     phoneRaw: "+33769590470",
     email: "contact@appalacarte.fr",
@@ -67,7 +72,7 @@ export const LEGAL_CONFIG: LegalConfig = {
   },
   host: {
     name: "Vercel Inc.",
-    address: "340 S Lemon Ave #4133, Walnut, CA 91789, États-Unis",
+    address: "440 N Barranca Ave #4133, Covina, CA 91723, USA",
     phone: "+1 951-383-6898",
     phoneRaw: "+19513836898",
     website: "https://vercel.com",
