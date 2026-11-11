@@ -34,6 +34,8 @@ export const Products: React.FC<ProductsProps> = ({ initialTriggerAdd, onNavigat
 
   // États du Drawer de Formulaire
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
 
   // Valeurs du formulaire
@@ -120,9 +122,12 @@ export const Products: React.FC<ProductsProps> = ({ initialTriggerAdd, onNavigat
   };
 
   // Enregistrer le produit (Ajout ou Édition)
-  const handleSaveProduct = (e: React.FormEvent) => {
+  const handleSaveProduct = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formName.trim()) return;
+
+    setIsSaving(true);
+    setSaveError(null);
 
     const stockNum = parseDecimalInput(formStock);
     const minStockNum = parseDecimalInput(formMinStock);
@@ -144,23 +149,31 @@ export const Products: React.FC<ProductsProps> = ({ initialTriggerAdd, onNavigat
       isActive: formIsActive
     };
 
-    dbService.saveProduct(updatedProduct);
-    
-    // Si c'est un nouveau produit et qu'il y a un stock initial > 0, on enregistre un mouvement de stock
-    if (!editingProduct && stockNum > 0) {
-      dbService.addStockMovement({
-        id: 'SM_' + Date.now(),
-        date: new Date().toISOString().split('T')[0],
-        productId: updatedProduct.id,
-        qty: stockNum,
-        type: 'AJUSTEMENT',
-        refId: 'MANUAL',
-        notes: 'Stock initial renseigné à la création'
-      });
+    try {
+      await dbService.saveProduct(updatedProduct);
+      
+      // Si c'est un nouveau produit et qu'il y a un stock initial > 0, on enregistre un mouvement de stock
+      if (!editingProduct && stockNum > 0) {
+        await dbService.addStockMovement({
+          id: 'SM_' + Date.now(),
+          date: new Date().toISOString().split('T')[0],
+          productId: updatedProduct.id,
+          qty: stockNum,
+          type: 'AJUSTEMENT',
+          refId: 'MANUAL',
+          notes: 'Stock initial renseigné à la création'
+        });
+      }
+      
+      setIsFormOpen(false);
+      setSaveError(null);
+      loadData();
+    } catch (err: any) {
+      console.error('Erreur sauvegarde produit:', err);
+      setSaveError(err.message || "Échec de l'enregistrement dans le Cloud. Vos données sont conservées.");
+    } finally {
+      setIsSaving(false);
     }
-    
-    setIsFormOpen(false);
-    loadData();
   };
 
   // Enregistrer les achats extraits du scanner de factures pour mettre à jour le stock
@@ -392,12 +405,21 @@ export const Products: React.FC<ProductsProps> = ({ initialTriggerAdd, onNavigat
         }}
         footer={
           <>
-            <button className="btn btn-secondary" onClick={() => setIsFormOpen(false)}>Annuler</button>
-            <button className="btn btn-primary" onClick={handleSaveProduct}>Enregistrer</button>
+            <button type="button" className="btn btn-secondary" onClick={() => setIsFormOpen(false)} disabled={isSaving}>Annuler</button>
+            <button type="button" className="btn btn-primary" onClick={handleSaveProduct} disabled={isSaving}>
+              {isSaving ? 'Enregistrement...' : saveError ? 'Réessayer' : 'Enregistrer'}
+            </button>
           </>
         }
       >
         <form onSubmit={handleSaveProduct}>
+          {saveError && (
+            <div style={{ marginBottom: '16px', padding: '12px', background: '#fee2e2', border: '1px solid #ef4444', borderRadius: '8px', color: '#991b1b', fontSize: '13px' }}>
+              <div style={{ fontWeight: 700, marginBottom: '4px' }}>⚠️ Échec de l'enregistrement dans le Cloud</div>
+              <div>{saveError}</div>
+              <div style={{ marginTop: '6px', fontSize: '12px', color: '#b91c1c' }}>Vos saisies ont été conservées intactes. Vous pouvez corriger ou cliquer sur Réessayer.</div>
+            </div>
+          )}
           {/* Scanner Intégration */}
           <div style={{ marginBottom: '20px', padding: '12px', border: '1px dashed var(--color-primary)', borderRadius: 'var(--radius-md)', backgroundColor: 'var(--color-primary-light)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: isScannerOpen ? '12px' : 0 }}>

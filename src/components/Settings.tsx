@@ -26,6 +26,8 @@ export const Settings: React.FC<SettingsProps> = ({ initialSubTab = 'general' })
   const [activeSubTab, setActiveSubTab] = useState<'general' | 'subscription'>(initialSubTab);
   const [settings, setSettings] = useState<SettingsType>(dbService.getSettings());
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
 
   // État PWA pour l'installation sur PC / Mobile
   const [canInstall, setCanInstall] = useState(() => pwaService.canInstall());
@@ -82,9 +84,12 @@ export const Settings: React.FC<SettingsProps> = ({ initialSubTab = 'general' })
   const [locationsText, setLocationsText] = useState(settings.salesLocations.join('\n'));
 
   // Enregistrer les paramètres
-  const handleSaveSettings = (e: React.FormEvent) => {
+  const handleSaveSettings = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+    setIsSaving(true);
+    setSaveError(null);
+    setSaveSuccess(false);
+
     const updatedSettings: SettingsType = {
       ...settings,
       businessName: businessName.trim(),
@@ -102,10 +107,17 @@ export const Settings: React.FC<SettingsProps> = ({ initialSubTab = 'general' })
       mindeeModelId: mindeeModelId.trim()
     };
 
-    dbService.saveSettings(updatedSettings);
-    setSettings(updatedSettings);
-    setSaveSuccess(true);
-    setTimeout(() => setSaveSuccess(false), 3000);
+    try {
+      await dbService.saveSettings(updatedSettings);
+      setSettings(updatedSettings);
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 3000);
+    } catch (err: any) {
+      console.error('Erreur réglages:', err);
+      setSaveError(err.message || "Échec de l'enregistrement des paramètres dans le Cloud.");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   // Exporter en CSV
@@ -441,6 +453,13 @@ export const Settings: React.FC<SettingsProps> = ({ initialSubTab = 'general' })
           </h3>
 
           <form onSubmit={handleSaveSettings}>
+            {saveError && (
+              <div style={{ marginBottom: '16px', padding: '12px', background: '#fee2e2', border: '1px solid #ef4444', borderRadius: '8px', color: '#991b1b', fontSize: '13px' }}>
+                <div style={{ fontWeight: 700, marginBottom: '4px' }}>⚠️ Échec de l'enregistrement dans le Cloud</div>
+                <div>{saveError}</div>
+                <div style={{ marginTop: '6px', fontSize: '12px', color: '#b91c1c' }}>Vos saisies ont été conservées. Vous pouvez corriger ou cliquer sur Réessayer.</div>
+              </div>
+            )}
             <div className="form-row">
               <div className="form-group">
                 <label className="form-label">Nom de l'activité culinaire</label>
@@ -611,7 +630,9 @@ export const Settings: React.FC<SettingsProps> = ({ initialSubTab = 'general' })
             </div>
 
             <div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginTop: '20px' }}>
-              <button type="submit" className="btn btn-primary">Enregistrer les paramètres</button>
+              <button type="submit" className="btn btn-primary" disabled={isSaving}>
+                {isSaving ? 'Enregistrement...' : saveError ? 'Réessayer' : 'Enregistrer les paramètres'}
+              </button>
               {saveSuccess && (
                 <span className="badge badge-success" style={{ padding: '8px 12px' }}>
                   <Check size={14} style={{ marginRight: '4px' }} /> Paramètres sauvegardés

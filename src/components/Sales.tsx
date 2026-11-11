@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { parseDecimalInput } from '../utils';
 import {
   Plus,
@@ -29,6 +29,8 @@ export const Sales: React.FC<SalesProps> = ({ initialTriggerAdd }) => {
 
   // États du Drawer de Formulaire de Vente
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
 
   // Valeurs du formulaire de Vente
   const [formDate, setFormDate] = useState(new Date().toISOString().split('T')[0]);
@@ -99,7 +101,7 @@ export const Sales: React.FC<SalesProps> = ({ initialTriggerAdd }) => {
     }
   }, [formItemType, recipes, products]);
 
-  const handleSaveSale = (e: React.FormEvent) => {
+  const handleSaveSale = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formItemId) {
       alert("Veuillez sélectionner un article à vendre");
@@ -129,6 +131,9 @@ export const Sales: React.FC<SalesProps> = ({ initialTriggerAdd }) => {
       }
     }
 
+    setIsSaving(true);
+    setSaveError(null);
+
     const newSale: Sale = {
       id: 'V_' + Date.now(),
       date: formDate,
@@ -140,9 +145,17 @@ export const Sales: React.FC<SalesProps> = ({ initialTriggerAdd }) => {
       notes: formNotes.trim() || undefined
     };
 
-    dbService.addSale(newSale);
-    setIsFormOpen(false);
-    loadData();
+    try {
+      await dbService.addSale(newSale);
+      setIsFormOpen(false);
+      setSaveError(null);
+      loadData();
+    } catch (err: any) {
+      console.error('Erreur vente:', err);
+      setSaveError(err.message || "Échec de l'enregistrement de la vente dans le Cloud.");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleDeleteSale = (id: string) => {
@@ -473,12 +486,21 @@ export const Sales: React.FC<SalesProps> = ({ initialTriggerAdd }) => {
         onClose={() => setIsFormOpen(false)}
         footer={
           <>
-            <button className="btn btn-secondary" onClick={() => setIsFormOpen(false)}>Annuler</button>
-            <button className="btn btn-primary" onClick={handleSaveSale} disabled={!formItemId}>Valider la vente</button>
+            <button type="button" className="btn btn-secondary" onClick={() => setIsFormOpen(false)} disabled={isSaving}>Annuler</button>
+            <button type="button" className="btn btn-primary" onClick={handleSaveSale} disabled={isSaving || !formItemId}>
+              {isSaving ? 'Enregistrement...' : saveError ? 'Réessayer' : 'Valider la vente'}
+            </button>
           </>
         }
       >
         <form onSubmit={handleSaveSale}>
+          {saveError && (
+            <div style={{ marginBottom: '16px', padding: '12px', background: '#fee2e2', border: '1px solid #ef4444', borderRadius: '8px', color: '#991b1b', fontSize: '13px' }}>
+              <div style={{ fontWeight: 700, marginBottom: '4px' }}>⚠️ Échec de l'enregistrement dans le Cloud</div>
+              <div>{saveError}</div>
+              <div style={{ marginTop: '6px', fontSize: '12px', color: '#b91c1c' }}>Vos saisies ont été conservées intactes. Vous pouvez corriger ou cliquer sur Réessayer.</div>
+            </div>
+          )}
           
           <div className="form-row">
             <div className="form-group">

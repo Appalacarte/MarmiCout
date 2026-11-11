@@ -16,6 +16,7 @@ import {
   generateUUID,
   notifyCloudError
 } from './cloudDbService';
+import { indexedDbService } from './indexedDbService';
 import { accessVerificationService } from './accessVerificationService';
 
 export function isCloudMode(): boolean {
@@ -272,36 +273,28 @@ export const dbService = {
     if (!isCloudMode()) return;
     try {
       const data = await cloudDbService.syncAllFromCloud();
-      if (data.recipes && data.recipes.length > 0) {
-        saveTable(KEYS.RECIPES, data.recipes);
-      }
-      if (data.products && data.products.length > 0) {
-        saveTable(KEYS.PRODUCTS, data.products);
-      }
-      if (data.stores && data.stores.length > 0) {
-        saveTable(KEYS.STORES, data.stores);
-      }
-      if (data.purchases && data.purchases.length > 0) {
-        saveTable(KEYS.PURCHASES, data.purchases);
-      }
-      if (data.productions && data.productions.length > 0) {
-        saveTable(KEYS.PRODUCTIONS, data.productions);
-      }
-      if (data.sales && data.sales.length > 0) {
-        saveTable(KEYS.SALES, data.sales);
-      }
-      if (data.stockMovements && data.stockMovements.length > 0) {
-        saveTable(KEYS.STOCK_MOVEMENTS, data.stockMovements);
-      }
-      if (data.recipeIngredients && data.recipeIngredients.length > 0) {
-        saveTable(KEYS.RECIPE_INGREDIENTS, data.recipeIngredients);
-      }
-      if (data.recipePackaging && data.recipePackaging.length > 0) {
-        saveTable(KEYS.RECIPE_PACKAGING, data.recipePackaging);
-      }
+      saveTable(KEYS.RECIPES, data.recipes || []);
+      saveTable(KEYS.PRODUCTS, data.products || []);
+      saveTable(KEYS.STORES, data.stores || []);
+      saveTable(KEYS.PURCHASES, data.purchases || []);
+      saveTable(KEYS.PRODUCTIONS, data.productions || []);
+      saveTable(KEYS.SALES, data.sales || []);
+      saveTable(KEYS.STOCK_MOVEMENTS, data.stockMovements || []);
+      saveTable(KEYS.RECIPE_INGREDIENTS, data.recipeIngredients || []);
+      saveTable(KEYS.RECIPE_PACKAGING, data.recipePackaging || []);
       if (data.settings) {
         localStorage.setItem(KEYS.SETTINGS, JSON.stringify(data.settings));
       }
+      // Miroir complet dans IndexedDB
+      await indexedDbService.setAll('recipes', data.recipes || []);
+      await indexedDbService.setAll('products', data.products || []);
+      await indexedDbService.setAll('stores', data.stores || []);
+      await indexedDbService.setAll('purchases', data.purchases || []);
+      await indexedDbService.setAll('productions', data.productions || []);
+      await indexedDbService.setAll('sales', data.sales || []);
+      await indexedDbService.setAll('stock_movements', data.stockMovements || []);
+      await indexedDbService.setAll('recipe_ingredients', data.recipeIngredients || []);
+      await indexedDbService.setAll('recipe_packaging', data.recipePackaging || []);
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('marmicout-data-synced'));
       }
@@ -318,13 +311,17 @@ export const dbService = {
     return data ? JSON.parse(data) : INITIAL_SETTINGS;
   },
 
-  saveSettings(settings: Settings): void {
-    localStorage.setItem(KEYS.SETTINGS, JSON.stringify(settings));
+  async saveSettings(settings: Settings): Promise<void> {
     if (isCloudMode()) {
-      cloudDbService.saveSettings(settings).catch((err) => {
-        notifyCloudError('Enregistrement paramètres cloud échoué', err.message || String(err));
-      });
+      try {
+        await cloudDbService.saveSettings(settings);
+      } catch (err: any) {
+        notifyCloudError('Enregistrement paramètres cloud refusé', err.message || String(err));
+        throw err;
+      }
     }
+    localStorage.setItem(KEYS.SETTINGS, JSON.stringify(settings));
+    await indexedDbService.put('settings', { key: 'app_settings', value: settings });
   },
 
   // --- MAGASINS (STORES) ---
@@ -336,9 +333,17 @@ export const dbService = {
     return this.getStores().find(s => s.id === id);
   },
 
-  saveStore(store: Store): void {
+  async saveStore(store: Store): Promise<void> {
     if (!isUUID(store.id)) {
       store.id = generateUUID();
+    }
+    if (isCloudMode()) {
+      try {
+        await cloudDbService.saveStore(store);
+      } catch (err: any) {
+        notifyCloudError('Enregistrement magasin cloud refusé', err.message || String(err));
+        throw err;
+      }
     }
     const stores = this.getStores();
     const index = stores.findIndex(s => s.id === store.id);
@@ -348,25 +353,26 @@ export const dbService = {
       stores.push(store);
     }
     saveTable(KEYS.STORES, stores);
-    if (isCloudMode()) {
-      cloudDbService.saveStore(store).catch((err) => {
-        notifyCloudError('Enregistrement magasin cloud échoué', err.message || String(err));
-      });
-    }
+    await indexedDbService.put('stores', store);
   },
 
-  deleteStore(id: string): void {
+  async deleteStore(id: string): Promise<void> {
+    if (isCloudMode()) {
+      try {
+        await cloudDbService.deleteStore(id);
+      } catch (err: any) {
+        notifyCloudError('Suppression magasin cloud refusée', err.message || String(err));
+        throw err;
+      }
+    }
     const stores = this.getStores().filter(s => s.id !== id);
     saveTable(KEYS.STORES, stores);
-    if (isCloudMode()) {
-      cloudDbService.deleteStore(id).catch((err) => {
-        notifyCloudError('Suppression magasin cloud échouée', err.message || String(err));
-      });
-    }
+    await indexedDbService.delete('stores', id);
   },
 
   setStores(stores: Store[]): void {
     saveTable(KEYS.STORES, stores);
+    indexedDbService.setAll('stores', stores);
   },
 
   // --- PRODUITS (PRODUCTS) ---
@@ -376,6 +382,7 @@ export const dbService = {
 
   setProducts(products: Product[]): void {
     saveTable(KEYS.PRODUCTS, products);
+    indexedDbService.setAll('products', products);
   },
 
   getProduct(id: string): Product | undefined {
@@ -387,9 +394,17 @@ export const dbService = {
     return this.getProducts().find(p => p.barcode === barcode.trim());
   },
 
-  saveProduct(product: Product): void {
+  async saveProduct(product: Product): Promise<void> {
     if (!isUUID(product.id)) {
       product.id = generateUUID();
+    }
+    if (isCloudMode()) {
+      try {
+        await cloudDbService.saveProduct(product);
+      } catch (err: any) {
+        notifyCloudError('Enregistrement produit cloud refusé', err.message || String(err));
+        throw err;
+      }
     }
     const products = this.getProducts();
     const index = products.findIndex(p => p.id === product.id);
@@ -399,21 +414,21 @@ export const dbService = {
       products.push(product);
     }
     saveTable(KEYS.PRODUCTS, products);
-    if (isCloudMode()) {
-      cloudDbService.saveProduct(product).catch((err) => {
-        notifyCloudError('Enregistrement produit cloud échoué', err.message || String(err));
-      });
-    }
+    await indexedDbService.put('products', product);
   },
 
-  deleteProduct(id: string): void {
+  async deleteProduct(id: string): Promise<void> {
+    if (isCloudMode()) {
+      try {
+        await cloudDbService.deleteProduct(id);
+      } catch (err: any) {
+        notifyCloudError('Suppression produit cloud refusée', err.message || String(err));
+        throw err;
+      }
+    }
     const products = this.getProducts().filter(p => p.id !== id);
     saveTable(KEYS.PRODUCTS, products);
-    if (isCloudMode()) {
-      cloudDbService.deleteProduct(id).catch((err) => {
-        notifyCloudError('Suppression produit cloud échouée', err.message || String(err));
-      });
-    }
+    await indexedDbService.delete('products', id);
   },
 
   // --- ACHATS (PURCHASES) ---
@@ -423,15 +438,25 @@ export const dbService = {
 
   setPurchases(purchases: Purchase[]): void {
     saveTable(KEYS.PURCHASES, purchases);
+    indexedDbService.setAll('purchases', purchases);
   },
 
-  addPurchase(purchase: Purchase): void {
+  async addPurchase(purchase: Purchase): Promise<void> {
     if (!isUUID(purchase.id)) {
       purchase.id = generateUUID();
+    }
+    if (isCloudMode()) {
+      try {
+        await cloudDbService.savePurchase(purchase);
+      } catch (err: any) {
+        notifyCloudError('Enregistrement achat cloud refusé', err.message || String(err));
+        throw err;
+      }
     }
     const purchases = this.getPurchases();
     purchases.push(purchase);
     saveTable(KEYS.PURCHASES, purchases);
+    await indexedDbService.put('purchases', purchase);
 
     // Mettre à jour le stock et le prix moyen du produit
     const products = this.getProducts();
@@ -454,11 +479,10 @@ export const dbService = {
 
       product.stock = oldStock + qtyInProductUnit;
       product.avgPurchasePrice = Number(newAvgPrice.toFixed(4));
-      product.mainStoreId = purchase.storeId; // Mettre à jour le fournisseur principal
-      this.saveProduct(product);
+      product.mainStoreId = purchase.storeId;
+      await this.saveProduct(product);
 
-      // Créer un mouvement de stock
-      this.addStockMovement({
+      await this.addStockMovement({
         id: generateUUID(),
         date: purchase.date,
         productId: purchase.productId,
@@ -468,15 +492,17 @@ export const dbService = {
         notes: `Achat chez ${this.getStore(purchase.storeId)?.name || 'Magasin Inconnu'}`
       });
     }
-
-    if (isCloudMode()) {
-      cloudDbService.savePurchase(purchase).catch((err) => {
-        notifyCloudError('Enregistrement achat cloud échoué', err.message || String(err));
-      });
-    }
   },
 
-  deletePurchase(id: string): void {
+  async deletePurchase(id: string): Promise<void> {
+    if (isCloudMode()) {
+      try {
+        await cloudDbService.deletePurchase(id);
+      } catch (err: any) {
+        notifyCloudError('Suppression achat cloud refusée', err.message || String(err));
+        throw err;
+      }
+    }
     const purchases = this.getPurchases();
     const purchase = purchases.find(p => p.id === id);
     if (!purchase) return;
@@ -487,23 +513,15 @@ export const dbService = {
     if (product) {
       const qtyInProductUnit = convertUnits(purchase.qty, purchase.unit, product.unit);
       product.stock = Math.max(0, product.stock - qtyInProductUnit);
-      // On ne recalcule pas le PMP de manière complexe lors d'une suppression pour simplifier
-      this.saveProduct(product);
+      await this.saveProduct(product);
     }
 
-    // Supprimer la transaction d'achat
     const updatedPurchases = purchases.filter(p => p.id !== id);
     saveTable(KEYS.PURCHASES, updatedPurchases);
+    await indexedDbService.delete('purchases', id);
 
-    // Supprimer les mouvements de stock associés
     const movements = this.getStockMovements().filter(m => !(m.type === 'ACHAT' && m.refId === id));
     saveTable(KEYS.STOCK_MOVEMENTS, movements);
-
-    if (isCloudMode()) {
-      cloudDbService.deletePurchase(id).catch((err) => {
-        notifyCloudError('Suppression achat cloud échouée', err.message || String(err));
-      });
-    }
   },
 
   // --- MOUVEMENTS DE STOCK (STOCK MOVEMENTS) ---
@@ -513,20 +531,25 @@ export const dbService = {
 
   setStockMovements(movements: StockMovement[]): void {
     saveTable(KEYS.STOCK_MOVEMENTS, movements);
+    indexedDbService.setAll('stock_movements', movements);
   },
 
-  addStockMovement(movement: StockMovement): void {
+  async addStockMovement(movement: StockMovement): Promise<void> {
     if (!isUUID(movement.id)) {
       movement.id = generateUUID();
+    }
+    if (isCloudMode()) {
+      try {
+        await cloudDbService.saveStockMovement(movement);
+      } catch (err: any) {
+        notifyCloudError('Enregistrement mouvement stock cloud refusé', err.message || String(err));
+        throw err;
+      }
     }
     const movements = this.getStockMovements();
     movements.push(movement);
     saveTable(KEYS.STOCK_MOVEMENTS, movements);
-    if (isCloudMode()) {
-      cloudDbService.saveStockMovement(movement).catch((err) => {
-        notifyCloudError('Enregistrement mouvement stock cloud échoué', err.message || String(err));
-      });
-    }
+    await indexedDbService.put('stock_movements', movement);
   },
 
   getProductStockMovements(productId: string): StockMovement[] {
@@ -548,6 +571,7 @@ export const dbService = {
 
   setRecipes(recipes: Recipe[]): void {
     saveTable(KEYS.RECIPES, recipes);
+    indexedDbService.setAll('recipes', recipes);
   },
 
   getRecipe(id: string): Recipe | undefined {
@@ -564,6 +588,7 @@ export const dbService = {
 
   setAllRecipeIngredients(ingredients: RecipeIngredient[]): void {
     saveTable(KEYS.RECIPE_INGREDIENTS, ingredients);
+    indexedDbService.setAll('recipe_ingredients', ingredients);
   },
 
   getRecipePackagings(recipeId: string): RecipePackaging[] {
@@ -576,18 +601,30 @@ export const dbService = {
 
   setAllRecipePackagings(packagings: RecipePackaging[]): void {
     saveTable(KEYS.RECIPE_PACKAGING, packagings);
+    indexedDbService.setAll('recipe_packaging', packagings);
   },
 
-  saveRecipe(
+  async saveRecipe(
     recipe: Recipe,
     ingredients: Omit<RecipeIngredient, 'id' | 'recipeId'>[],
     packagings: Omit<RecipePackaging, 'id' | 'recipeId'>[]
-  ): void {
+  ): Promise<void> {
     if (!isUUID(recipe.id)) {
       recipe.id = generateUUID();
     }
 
-    // 1. Sauvegarder la recette principale
+    // 1. SI MODE CLOUD : SUPABASE D'ABORD (AUCUNE MODIFICATION LOCALE SI ÉCHEC)
+    if (isCloudMode()) {
+      try {
+        await cloudDbService.saveRecipe(recipe, ingredients, packagings);
+      } catch (err: any) {
+        notifyCloudError('Enregistrement recette cloud refusé', err.message || String(err));
+        // NE PAS MODIFIER LE STOCKAGE LOCAL EN CAS DE REJET
+        throw err;
+      }
+    }
+
+    // 2. SUPABASE A CONFIRMÉ (OU MODE ESSENTIEL LOCAL) : METTRE À JOUR LE LOCAL
     const recipes = this.getRecipes();
     const index = recipes.findIndex(r => r.id === recipe.id);
     if (index >= 0) {
@@ -596,8 +633,8 @@ export const dbService = {
       recipes.push(recipe);
     }
     saveTable(KEYS.RECIPES, recipes);
+    await indexedDbService.put('recipes', recipe);
 
-    // 2. Remplacer les ingrédients
     const allIngredients = getTable<RecipeIngredient>(KEYS.RECIPE_INGREDIENTS).filter(ri => ri.recipeId !== recipe.id);
     const newIngredients = ingredients.map((ing) => ({
       ...ing,
@@ -605,8 +642,8 @@ export const dbService = {
       recipeId: recipe.id
     }));
     saveTable(KEYS.RECIPE_INGREDIENTS, [...allIngredients, ...newIngredients]);
+    await indexedDbService.setAll('recipe_ingredients', [...allIngredients, ...newIngredients]);
 
-    // 3. Remplacer les emballages
     const allPackagings = getTable<RecipePackaging>(KEYS.RECIPE_PACKAGING).filter(rp => rp.recipeId !== recipe.id);
     const newPackagings = packagings.map((pack) => ({
       ...pack,
@@ -614,33 +651,29 @@ export const dbService = {
       recipeId: recipe.id
     }));
     saveTable(KEYS.RECIPE_PACKAGING, [...allPackagings, ...newPackagings]);
-
-    // 4. Délégation Cloud immédiate si mode Cloud
-    if (isCloudMode()) {
-      cloudDbService.saveRecipe(recipe, ingredients, packagings).catch((err) => {
-        notifyCloudError('Enregistrement recette cloud refusé', err.message || String(err));
-      });
-    }
+    await indexedDbService.setAll('recipe_packaging', [...allPackagings, ...newPackagings]);
   },
 
-  deleteRecipe(id: string): void {
-    // Supprimer la recette
+  async deleteRecipe(id: string): Promise<void> {
+    if (isCloudMode()) {
+      try {
+        await cloudDbService.deleteRecipe(id);
+      } catch (err: any) {
+        notifyCloudError('Suppression recette cloud refusée', err.message || String(err));
+        throw err;
+      }
+    }
     const recipes = this.getRecipes().filter(r => r.id !== id);
     saveTable(KEYS.RECIPES, recipes);
+    await indexedDbService.delete('recipes', id);
 
-    // Supprimer les ingrédients associés
     const ingredients = getTable<RecipeIngredient>(KEYS.RECIPE_INGREDIENTS).filter(ri => ri.recipeId !== id);
     saveTable(KEYS.RECIPE_INGREDIENTS, ingredients);
+    await indexedDbService.setAll('recipe_ingredients', ingredients);
 
-    // Supprimer les emballages associés
     const packagings = getTable<RecipePackaging>(KEYS.RECIPE_PACKAGING).filter(rp => rp.recipeId !== id);
     saveTable(KEYS.RECIPE_PACKAGING, packagings);
-
-    if (isCloudMode()) {
-      cloudDbService.deleteRecipe(id).catch((err) => {
-        notifyCloudError('Suppression recette cloud refusée', err.message || String(err));
-      });
-    }
+    await indexedDbService.setAll('recipe_packaging', packagings);
   },
 
   // --- CALCUL DU COÛT DE REVIENT ---
@@ -713,7 +746,7 @@ export const dbService = {
     return getTable<Production>(KEYS.PRODUCTIONS);
   },
 
-  addProduction(production: Production): { success: boolean; error?: string } {
+  async addProduction(production: Production): Promise<{ success: boolean; error?: string }> {
     const recipe = this.getRecipe(production.recipeId);
     if (!recipe) return { success: false, error: 'Recette non trouvée' };
 
@@ -754,17 +787,31 @@ export const dbService = {
       };
     }
 
+    if (!isUUID(production.id)) {
+      production.id = generateUUID();
+    }
+
+    // CLOUD FIRST : Écriture dans Supabase D'ABORD si mode cloud
+    if (isCloudMode()) {
+      try {
+        await cloudDbService.saveProduction(production);
+      } catch (err: any) {
+        notifyCloudError('Enregistrement fabrication cloud refusé', err.message || String(err));
+        throw err;
+      }
+    }
+
     // 2. Déduire les ingrédients du stock
-    ingredients.forEach(ing => {
+    for (const ing of ingredients) {
       const prod = products.find(p => p.id === ing.productId);
       if (prod) {
         const qtyNeeded = convertUnits(ing.qtyUsed * factor, ing.unit, prod.unit);
         prod.stock = Math.max(0, prod.stock - qtyNeeded);
-        this.saveProduct(prod);
+        await this.saveProduct(prod);
 
         // Enregistrer le mouvement de stock négatif
-        this.addStockMovement({
-          id: 'SM_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
+        await this.addStockMovement({
+          id: generateUUID(),
           date: production.date,
           productId: prod.id,
           qty: -qtyNeeded,
@@ -773,19 +820,19 @@ export const dbService = {
           notes: `Consommation pour la production de ${production.portionsProduced} portions de ${recipe.name}`
         });
       }
-    });
+    }
 
     // 3. Déduire les emballages du stock
-    packagings.forEach(pack => {
+    for (const pack of packagings) {
       const prod = products.find(p => p.name.toLowerCase() === pack.name.toLowerCase());
       if (prod) {
         const qtyNeeded = pack.qtyUsed * factor;
         prod.stock = Math.max(0, prod.stock - qtyNeeded);
-        this.saveProduct(prod);
+        await this.saveProduct(prod);
 
         // Enregistrer le mouvement de stock négatif
-        this.addStockMovement({
-          id: 'SM_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
+        await this.addStockMovement({
+          id: generateUUID(),
           date: production.date,
           productId: prod.id,
           qty: -qtyNeeded,
@@ -794,7 +841,7 @@ export const dbService = {
           notes: `Consommation emballage pour la production de ${recipe.name}`
         });
       }
-    });
+    }
 
     // 4. Augmenter le stock de produit fini de la recette
     const recipes = this.getRecipes();
@@ -802,21 +849,14 @@ export const dbService = {
     if (recipeIndex >= 0) {
       recipes[recipeIndex].stock += production.portionsProduced;
       saveTable(KEYS.RECIPES, recipes);
+      await indexedDbService.put('recipes', recipes[recipeIndex]);
     }
 
     // 5. Enregistrer la production
-    if (!isUUID(production.id)) {
-      production.id = generateUUID();
-    }
     const productions = this.getProductions();
     productions.push(production);
     saveTable(KEYS.PRODUCTIONS, productions);
-
-    if (isCloudMode()) {
-      cloudDbService.saveProduction(production).catch((err) => {
-        notifyCloudError('Enregistrement fabrication cloud échoué', err.message || String(err));
-      });
-    }
+    await indexedDbService.put('productions', production);
 
     return { success: true };
   },
@@ -834,13 +874,25 @@ export const dbService = {
     saveTable(KEYS.SALES, sales);
   },
 
-  addSale(sale: Sale): void {
+  async addSale(sale: Sale): Promise<void> {
     if (!isUUID(sale.id)) {
       sale.id = generateUUID();
     }
+
+    // CLOUD FIRST : Écriture dans Supabase D'ABORD si mode cloud
+    if (isCloudMode()) {
+      try {
+        await cloudDbService.saveSale(sale);
+      } catch (err: any) {
+        notifyCloudError('Enregistrement vente cloud refusé', err.message || String(err));
+        throw err;
+      }
+    }
+
     const sales = this.getSales();
     sales.push(sale);
     saveTable(KEYS.SALES, sales);
+    await indexedDbService.put('sales', sale);
 
     // Déduction automatique du stock de produit fini ou d'ingrédient direct
     if (sale.itemType === 'RECIPE') {
@@ -849,16 +901,17 @@ export const dbService = {
       if (recipe) {
         recipe.stock = Math.max(0, recipe.stock - sale.qtySold);
         saveTable(KEYS.RECIPES, recipes);
+        await indexedDbService.put('recipes', recipe);
       }
     } else {
       const products = this.getProducts();
       const product = products.find(p => p.id === sale.itemId);
       if (product) {
         product.stock = Math.max(0, product.stock - sale.qtySold);
-        this.saveProduct(product);
+        await this.saveProduct(product);
 
         // Créer un mouvement de stock
-        this.addStockMovement({
+        await this.addStockMovement({
           id: generateUUID(),
           date: sale.date,
           productId: sale.itemId,
@@ -869,15 +922,18 @@ export const dbService = {
         });
       }
     }
-
-    if (isCloudMode()) {
-      cloudDbService.saveSale(sale).catch((err) => {
-        notifyCloudError('Enregistrement vente cloud échoué', err.message || String(err));
-      });
-    }
   },
 
-  deleteSale(id: string): void {
+  async deleteSale(id: string): Promise<void> {
+    if (isCloudMode()) {
+      try {
+        await cloudDbService.deleteSale(id);
+      } catch (err: any) {
+        notifyCloudError('Suppression vente cloud refusée', err.message || String(err));
+        throw err;
+      }
+    }
+
     const sales = this.getSales();
     const sale = sales.find(s => s.id === id);
     if (!sale) return;
@@ -889,13 +945,14 @@ export const dbService = {
       if (recipe) {
         recipe.stock += sale.qtySold;
         saveTable(KEYS.RECIPES, recipes);
+        await indexedDbService.put('recipes', recipe);
       }
     } else {
       const products = this.getProducts();
       const product = products.find(p => p.id === sale.itemId);
       if (product) {
         product.stock += sale.qtySold;
-        this.saveProduct(product);
+        await this.saveProduct(product);
       }
 
       // Supprimer le mouvement de stock
@@ -905,12 +962,7 @@ export const dbService = {
 
     const updatedSales = sales.filter(s => s.id !== id);
     saveTable(KEYS.SALES, updatedSales);
-
-    if (isCloudMode()) {
-      cloudDbService.deleteSale(id).catch((err) => {
-        notifyCloudError('Suppression vente cloud échouée', err.message || String(err));
-      });
-    }
+    await indexedDbService.delete('sales', id);
   },
 
   // --- EXPORTATION ET IMPORTATION CSV (GOOGLE SHEETS COMPATIBLE) ---

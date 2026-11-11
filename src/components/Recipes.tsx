@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { parseDecimalInput } from '../utils';
 import {
   Plus,
@@ -41,6 +41,8 @@ export const Recipes: React.FC<RecipesProps> = ({ initialTriggerAdd, initialView
 
   // États du Drawer de Formulaire de Recette
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
   const [editingRecipe, setEditingRecipe] = useState<Recipe | null>(null);
 
   // Valeurs du formulaire principal de Recette
@@ -378,12 +380,15 @@ export const Recipes: React.FC<RecipesProps> = ({ initialTriggerAdd, initialView
   };
 
   // Enregistrer la recette complète
-  const handleSaveRecipe = (e: React.FormEvent) => {
+  const handleSaveRecipe = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formName.trim()) {
       alert("Veuillez donner un nom à la recette");
       return;
     }
+
+    setIsSaving(true);
+    setSaveError(null);
 
     const recipeId = (editingRecipe && editingRecipe.id) 
       ? editingRecipe.id 
@@ -422,13 +427,21 @@ export const Recipes: React.FC<RecipesProps> = ({ initialTriggerAdd, initialView
       customCostPerUnit: ing.productId ? undefined : (ing.customCostPerUnit || 0)
     }));
 
-    dbService.saveRecipe(newRecipe, cleanedIngredients, formPackagings);
-    setIsFormOpen(false);
-    loadData();
-    
-    // Si on visualisait le détail, recharger le détail
-    if (selectedRecipeDetails && selectedRecipeDetails.id === recipeId) {
-      handleOpenDetails(newRecipe);
+    try {
+      await dbService.saveRecipe(newRecipe, cleanedIngredients, formPackagings);
+      setIsFormOpen(false);
+      setSaveError(null);
+      loadData();
+      
+      // Si on visualisait le détail, recharger le détail
+      if (selectedRecipeDetails && selectedRecipeDetails.id === recipeId) {
+        handleOpenDetails(newRecipe);
+      }
+    } catch (err: any) {
+      console.error('Erreur sauvegarde recette:', err);
+      setSaveError(err.message || "Échec de l'enregistrement dans le Cloud. Vos données sont conservées.");
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -739,12 +752,21 @@ export const Recipes: React.FC<RecipesProps> = ({ initialTriggerAdd, initialView
         zIndex={700}
         footer={
           <>
-            <button className="btn btn-secondary" onClick={() => setIsFormOpen(false)}>Annuler</button>
-            <button className="btn btn-primary" onClick={handleSaveRecipe}>Sauvegarder</button>
+            <button type="button" className="btn btn-secondary" onClick={() => setIsFormOpen(false)} disabled={isSaving}>Annuler</button>
+            <button type="button" className="btn btn-primary" onClick={handleSaveRecipe} disabled={isSaving}>
+              {isSaving ? 'Enregistrement...' : saveError ? 'Réessayer' : 'Sauvegarder'}
+            </button>
           </>
         }
       >
         <form onSubmit={handleSaveRecipe}>
+          {saveError && (
+            <div style={{ marginBottom: '16px', padding: '12px', background: '#fee2e2', border: '1px solid #ef4444', borderRadius: '8px', color: '#991b1b', fontSize: '13px' }}>
+              <div style={{ fontWeight: 700, marginBottom: '4px' }}>⚠️ Échec de l'enregistrement dans le Cloud</div>
+              <div>{saveError}</div>
+              <div style={{ marginTop: '6px', fontSize: '12px', color: '#b91c1c' }}>Vos saisies ont été conservées intactes. Vous pouvez corriger ou cliquer sur Réessayer.</div>
+            </div>
+          )}
           
           <h4 style={{ fontSize: '14px', fontWeight: '700', borderBottom: '1px solid var(--color-border)', paddingBottom: '6px', marginBottom: '12px' }}>
             Informations générales

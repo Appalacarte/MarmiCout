@@ -4,6 +4,20 @@ Toutes les modifications notables apportées à ce projet sont documentées dans
 
 ---
 
+## [2.0.46] - 2026-11-11
+
+### Ordre d'Écriture Cloud-First, Gestion des Erreurs UI avec Bouton Réessayer & Migration IndexedDB
+- **Ordre d'Écriture Cloud-First & Rejet sans Pollution Locale (Point 2)** :
+  - Dans [`src/services/db.ts`](file:///d:/Aplli/Marmicout/Appli%20Marmicout/src/services/db.ts) : toutes les méthodes d'écriture (`saveRecipe`, `saveProduct`, `saveStore`, `addPurchase`, `addProduction`, `addSale`, `saveSettings`, etc.) écrivent en priorité absolue dans Supabase. En cas de refus ou d'échec réseau, le cache local n'est JAMAIS modifié et l'erreur est levée.
+  - Dans tous les formulaires UI (`Recipes.tsx`, `Products.tsx`, `Stores.tsx`, `Purchases.tsx`, `Productions.tsx`, `Sales.tsx`, `Settings.tsx`) : en cas d'erreur de persistance Cloud, le drawer reste ouvert, les saisies de l'utilisateur sont conservées intactes, un bandeau d'erreur explicite est affiché et le bouton d'action se transforme en « Réessayer ».
+- **Alignement Schéma & Fallback Robuste (Point 0)** :
+  - Dans [`src/services/cloudDbService.ts`](file:///d:/Aplli/Marmicout/Appli%20Marmicout/src/services/cloudDbService.ts) : normalisation des champs facultatifs (ex: `description: recipe.description ? recipe.description.trim() : ''`) évitant les violations NOT NULL. Mécanisme de fallback gracieux si les colonnes étendues ne sont pas encore migrées sur le serveur Supabase.
+  - `syncFromCloud()` remplace intégralement le cache local par les données réelles du serveur Supabase, nettoyant automatiquement les données fantômes non persistées.
+- **Migration IndexedDB Complète (Point 3)** :
+  - Dans [`src/services/indexedDbService.ts`](file:///d:/Aplli/Marmicout/Appli%20Marmicout/src/services/indexedDbService.ts) : migration automatique de l'ensemble des données `localStorage` vers `IndexedDB` au premier lancement pour le forfait Essentiel.
+
+---
+
 ## [2.0.45] - 2026-11-11
 
 ### Façade Hybride dbService / cloudDbService, Alertes Cloud Explicites & Indicateur Forfait Pro

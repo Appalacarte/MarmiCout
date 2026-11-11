@@ -1,4 +1,4 @@
-﻿import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { parseDecimalInput } from '../utils';
 import {
   ShoppingCart,
@@ -260,7 +260,7 @@ export const ShoppingListDrawer: React.FC<ShoppingListDrawerProps> = ({
   };
 
   // --- Cuisiner : créer les productions et déduire les stocks ---
-  const handleCook = () => {
+  const handleCook = async () => {
     const today = new Date().toISOString().split('T')[0];
     const results: { recipeName: string; success: boolean; error?: string }[] = [];
 
@@ -277,12 +277,20 @@ export const ShoppingListDrawer: React.FC<ShoppingListDrawerProps> = ({
         calculatedCost: Number(calculatedCost.toFixed(2))
       };
 
-      const result = dbService.addProduction(prod);
-      results.push({
-        recipeName: recipe.name,
-        success: result.success,
-        error: result.error
-      });
+      try {
+        const result = await dbService.addProduction(prod);
+        results.push({
+          recipeName: recipe.name,
+          success: result.success,
+          error: result.error
+        });
+      } catch (err: any) {
+        results.push({
+          recipeName: recipe.name,
+          success: false,
+          error: err.message || String(err)
+        });
+      }
     }
 
     setCookResults(results);

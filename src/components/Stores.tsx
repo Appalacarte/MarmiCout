@@ -19,6 +19,8 @@ export const Stores: React.FC = () => {
 
   // États du Drawer de Formulaire de Magasin
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
   const [editingStore, setEditingStore] = useState<Store | null>(null);
 
   // Valeurs du formulaire
@@ -62,9 +64,12 @@ export const Stores: React.FC = () => {
     setIsFormOpen(true);
   };
 
-  const handleSaveStore = (e: React.FormEvent) => {
+  const handleSaveStore = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formName.trim()) return;
+
+    setIsSaving(true);
+    setSaveError(null);
 
     const newStore: Store = {
       id: editingStore ? editingStore.id : 'S_' + Date.now(),
@@ -75,9 +80,17 @@ export const Stores: React.FC = () => {
       notes: formNotes.trim() || undefined
     };
 
-    dbService.saveStore(newStore);
-    setIsFormOpen(false);
-    loadData();
+    try {
+      await dbService.saveStore(newStore);
+      setIsFormOpen(false);
+      setSaveError(null);
+      loadData();
+    } catch (err: any) {
+      console.error('Erreur sauvegarde fournisseur:', err);
+      setSaveError(err.message || "Échec de l'enregistrement dans le Cloud. Vos données sont conservées.");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleDeleteStore = (id: string, e: React.MouseEvent) => {
@@ -213,12 +226,21 @@ export const Stores: React.FC = () => {
         onClose={() => setIsFormOpen(false)}
         footer={
           <>
-            <button className="btn btn-secondary" onClick={() => setIsFormOpen(false)}>Annuler</button>
-            <button className="btn btn-primary" onClick={handleSaveStore}>Enregistrer</button>
+            <button type="button" className="btn btn-secondary" onClick={() => setIsFormOpen(false)} disabled={isSaving}>Annuler</button>
+            <button type="button" className="btn btn-primary" onClick={handleSaveStore} disabled={isSaving}>
+              {isSaving ? 'Enregistrement...' : saveError ? 'Réessayer' : 'Enregistrer'}
+            </button>
           </>
         }
       >
         <form onSubmit={handleSaveStore}>
+          {saveError && (
+            <div style={{ marginBottom: '16px', padding: '12px', background: '#fee2e2', border: '1px solid #ef4444', borderRadius: '8px', color: '#991b1b', fontSize: '13px' }}>
+              <div style={{ fontWeight: 700, marginBottom: '4px' }}>⚠️ Échec de l'enregistrement dans le Cloud</div>
+              <div>{saveError}</div>
+              <div style={{ marginTop: '6px', fontSize: '12px', color: '#b91c1c' }}>Vos saisies ont été conservées intactes. Vous pouvez corriger ou cliquer sur Réessayer.</div>
+            </div>
+          )}
           <div className="form-group">
             <label className="form-label">Nom du fournisseur *</label>
             <input

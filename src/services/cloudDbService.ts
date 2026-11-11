@@ -272,6 +272,11 @@ export class CloudDbService {
       photo: row.photo || undefined,
       originalPortions: row.original_portions ? Number(row.original_portions) : undefined,
       instructions: row.instructions || undefined,
+      sourceImage: row.source_image || undefined,
+      rawExtractedText: row.raw_extracted_text || undefined,
+      externalId: row.external_id || undefined,
+      videoUrl: row.video_url || undefined,
+      sourceUrl: row.source_url || undefined,
     }));
     await indexedDbService.setAll('recipes', recipes);
     await indexedDbService.setLastSyncTimestamp();
@@ -340,24 +345,43 @@ export class CloudDbService {
     const payload: any = {
       id: recipeUUID,
       establishment_id: estId,
-      name: recipe.name,
-      category: recipe.category,
-      description: recipe.description || null,
-      portions: recipe.portions,
-      yield_qty: recipe.yieldQty,
-      yield_unit: recipe.yieldUnit,
-      stock: recipe.stock,
-      prep_time_minutes: recipe.prepTimeMinutes || null,
-      utensils_notes: recipe.utensilsNotes || null,
-      notes: recipe.notes || null,
+      name: recipe.name.trim(),
+      category: recipe.category || 'Plats',
+      description: recipe.description ? recipe.description.trim() : '',
+      portions: Number(recipe.portions || 1),
+      yield_qty: Number(recipe.yieldQty || 1),
+      yield_unit: recipe.yieldUnit || 'portion',
+      stock: Number(recipe.stock || 0),
+      prep_time_minutes: recipe.prepTimeMinutes ? Number(recipe.prepTimeMinutes) : null,
+      utensils_notes: recipe.utensilsNotes ? recipe.utensilsNotes.trim() : null,
+      notes: recipe.notes ? recipe.notes.trim() : null,
       is_active: recipe.isActive !== false,
       photo: recipe.photo || null,
-      instructions: recipe.instructions || null,
+      instructions: recipe.instructions ? recipe.instructions.trim() : null,
     };
 
-    const { error: recipeErr } = await supabase
+    if (recipe.originalPortions) payload.original_portions = Number(recipe.originalPortions);
+    if (recipe.sourceImage) payload.source_image = recipe.sourceImage;
+    if (recipe.rawExtractedText) payload.raw_extracted_text = recipe.rawExtractedText;
+    if (recipe.externalId) payload.external_id = recipe.externalId;
+    if (recipe.videoUrl) payload.video_url = recipe.videoUrl;
+    if (recipe.sourceUrl) payload.source_url = recipe.sourceUrl;
+
+    let { error: recipeErr } = await supabase
       .from('marmicout_recipes')
       .upsert(payload, { onConflict: 'id' });
+
+    // Fallback gracieux si les colonnes étendues ne sont pas encore migrées sur Supabase
+    if (recipeErr && (recipeErr.message.includes('column') || recipeErr.code === '42703' || recipeErr.code === 'PGRST204')) {
+      delete payload.original_portions;
+      delete payload.source_image;
+      delete payload.raw_extracted_text;
+      delete payload.external_id;
+      delete payload.video_url;
+      delete payload.source_url;
+      const retry = await supabase.from('marmicout_recipes').upsert(payload, { onConflict: 'id' });
+      recipeErr = retry.error;
+    }
 
     if (recipeErr) {
       notifyCloudError('Enregistrement de la recette refusé', recipeErr.message);
@@ -688,9 +712,13 @@ export class CloudDbService {
       units: data.units || ['kg', 'g', 'l', 'cl', 'ml', 'pièce'],
       salesLocations: data.sales_locations || ['Marché', 'Commande', 'En Ligne', 'Domicile', 'Autre'],
       defaultMinStockAlert: Number(data.default_min_stock_alert || 2),
-      googleSheetId: undefined,
+      googleSheetId: data.google_sheet_id || undefined,
       googleSheetLink: data.google_sheet_link || undefined,
-      googleWebAppUrl: undefined,
+      googleWebAppUrl: data.google_web_app_url || undefined,
+      mindeeApiKey: data.mindee_api_key || undefined,
+      mindeeModelId: data.mindee_model_id || undefined,
+      mindeeMonthlyScans: data.mindee_monthly_scans ? Number(data.mindee_monthly_scans) : 0,
+      mindeeLastScanMonth: data.mindee_last_scan_month || undefined,
     };
     await indexedDbService.put('settings', { key: 'app_settings', value: settings });
     return settings;
@@ -712,6 +740,12 @@ export class CloudDbService {
       sales_locations: settings.salesLocations,
       default_min_stock_alert: settings.defaultMinStockAlert,
       google_sheet_link: settings.googleSheetLink || null,
+      google_sheet_id: settings.googleSheetId || null,
+      google_web_app_url: settings.googleWebAppUrl || null,
+      mindee_api_key: settings.mindeeApiKey || null,
+      mindee_model_id: settings.mindeeModelId || null,
+      mindee_monthly_scans: settings.mindeeMonthlyScans || 0,
+      mindee_last_scan_month: settings.mindeeLastScanMonth || null,
     };
 
     const { error } = await supabase

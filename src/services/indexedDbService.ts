@@ -151,6 +151,59 @@ class IndexedDbService {
     const diffHours = (Date.now() - lastSync) / (1000 * 60 * 60);
     return diffHours <= 72;
   }
+
+  /**
+   * Migration automatique de localStorage vers IndexedDB pour le mode Essentiel
+   * Garantit l'absence de saturation du localStorage et la persistance Safari
+   */
+  public async migrateLocalStorageToIndexedDB(): Promise<void> {
+    if (typeof window === 'undefined') return;
+    try {
+      const alreadyMigrated = localStorage.getItem('marmicout_indexeddb_migrated');
+      if (alreadyMigrated === 'true') return;
+
+      const keysMap: Record<string, StoreName> = {
+        marmicout_products: 'products',
+        marmicout_stores: 'stores',
+        marmicout_purchases: 'purchases',
+        marmicout_recipes: 'recipes',
+        marmicout_recipe_ingredients: 'recipe_ingredients',
+        marmicout_recipe_packaging: 'recipe_packaging',
+        marmicout_productions: 'productions',
+        marmicout_sales: 'sales',
+        marmicout_stock_movements: 'stock_movements',
+      };
+
+      for (const [lsKey, storeName] of Object.entries(keysMap)) {
+        const raw = localStorage.getItem(lsKey);
+        if (raw) {
+          try {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              await this.setAll(storeName, parsed);
+            }
+          } catch (e) {
+            console.warn(`[Migration IDB] Erreur sur ${lsKey}`, e);
+          }
+        }
+      }
+
+      const settingsRaw = localStorage.getItem('marmicout_settings');
+      if (settingsRaw) {
+        try {
+          const parsedSettings = JSON.parse(settingsRaw);
+          await this.put('settings', { key: 'app_settings', value: parsedSettings });
+        } catch (e) {
+          console.warn('[Migration IDB] Erreur sur settings', e);
+        }
+      }
+
+      localStorage.setItem('marmicout_indexeddb_migrated', 'true');
+      console.log('✅ [IndexedDB] Migration des données locales localStorage -> IndexedDB effectuée avec succès.');
+    } catch (err) {
+      console.error('[IndexedDB] Erreur lors de la migration localStorage -> IndexedDB:', err);
+    }
+  }
 }
 
 export const indexedDbService = new IndexedDbService();

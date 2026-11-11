@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { parseDecimalInput } from '../utils';
 import {
   Plus,
@@ -27,6 +27,8 @@ export const Productions: React.FC<ProductionsProps> = ({ initialTriggerAdd }) =
 
   // États du Drawer de Formulaire de Production
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
 
   // Valeurs du formulaire de Production
   const [formDate, setFormDate] = useState(new Date().toISOString().split('T')[0]);
@@ -145,12 +147,15 @@ export const Productions: React.FC<ProductionsProps> = ({ initialTriggerAdd }) =
   }, [formRecipeId, formPortions, products, recipes]);
 
   // Valider et enregistrer la fabrication
-  const handleSaveProduction = (e: React.FormEvent) => {
+  const handleSaveProduction = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formRecipeId) return;
 
     const recipe = recipes.find(r => r.id === formRecipeId);
     if (!recipe) return;
+
+    setIsSaving(true);
+    setSaveError(null);
 
     // Calculer le coût de la production
     const costInfo = dbService.calculateRecipeCost(formRecipeId);
@@ -166,23 +171,32 @@ export const Productions: React.FC<ProductionsProps> = ({ initialTriggerAdd }) =
       calculatedCost: Number(calculatedCost.toFixed(2))
     };
 
-    const result = dbService.addProduction(newProd);
+    try {
+      const result = await dbService.addProduction(newProd);
 
-    if (result.success) {
-      // Capturer le résumé de consommation pour le bandeau de succès
-      setSuccessBanner({
-        recipeName: recipe.name,
-        portions: formPortions,
-        consumed: feasibility.ingredientsUsed.map(i => ({
-          name: i.name,
-          required: i.required,
-          unit: i.unit
-        }))
-      });
-      setIsFormOpen(false);
-      loadData();
-    } else {
-      alert(result.error || "Erreur de production");
+      if (result.success) {
+        // Capturer le résumé de consommation pour le bandeau de succès
+        setSuccessBanner({
+          recipeName: recipe.name,
+          portions: formPortions,
+          consumed: feasibility.ingredientsUsed.map(i => ({
+            name: i.name,
+            required: i.required,
+            unit: i.unit
+          }))
+        });
+
+        setIsFormOpen(false);
+        setSaveError(null);
+        loadData();
+      } else {
+        setSaveError(result.error || "Erreur de production");
+      }
+    } catch (err: any) {
+      console.error('Erreur fabrication:', err);
+      setSaveError(err.message || "Échec de l'enregistrement de la fabrication dans le Cloud.");
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -323,15 +337,16 @@ export const Productions: React.FC<ProductionsProps> = ({ initialTriggerAdd }) =
         onClose={() => setIsFormOpen(false)}
         footer={
           <>
-            <button className="btn btn-secondary" onClick={() => setIsFormOpen(false)}>Annuler</button>
+            <button type="button" className="btn btn-secondary" onClick={() => setIsFormOpen(false)} disabled={isSaving}>Annuler</button>
             <button 
+              type="button"
               className="btn btn-primary" 
               onClick={handleSaveProduction}
-              disabled={!feasibility.isFeasible || !formRecipeId}
+              disabled={isSaving || !feasibility.isFeasible || !formRecipeId}
               title="Valide la production et déduit immédiatement les ingrédients du stock"
             >
               <PackageCheck size={16} />
-              Confirmer &amp; déduire du stock
+              {isSaving ? 'Enregistrement...' : saveError ? 'Réessayer' : 'Confirmer & déduire du stock'}
             </button>
           </>
         }
@@ -343,6 +358,13 @@ export const Productions: React.FC<ProductionsProps> = ({ initialTriggerAdd }) =
           </div>
         ) : (
           <form onSubmit={handleSaveProduction}>
+            {saveError && (
+              <div style={{ marginBottom: '16px', padding: '12px', background: '#fee2e2', border: '1px solid #ef4444', borderRadius: '8px', color: '#991b1b', fontSize: '13px' }}>
+                <div style={{ fontWeight: 700, marginBottom: '4px' }}>⚠️ Échec de l'enregistrement dans le Cloud</div>
+                <div>{saveError}</div>
+                <div style={{ marginTop: '6px', fontSize: '12px', color: '#b91c1c' }}>Vos saisies ont été conservées intactes. Vous pouvez corriger ou cliquer sur Réessayer.</div>
+              </div>
+            )}
             <div className="form-row">
               <div className="form-group">
                 <label className="form-label">Date de fabrication</label>
