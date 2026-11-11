@@ -65,7 +65,17 @@ export class CloudDbService {
   }
 
   public getEstablishmentId(): string | null {
-    return this.establishmentId;
+    if (this.establishmentId && isUUID(this.establishmentId)) {
+      return this.establishmentId;
+    }
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('marmicout_establishment_id');
+      if (stored && isUUID(stored)) {
+        this.establishmentId = stored;
+        return stored;
+      }
+    }
+    return null;
   }
 
   public isOnline(): boolean {
@@ -73,8 +83,9 @@ export class CloudDbService {
   }
 
   public async ensureEstablishmentId(): Promise<string> {
-    if (this.establishmentId && isUUID(this.establishmentId)) {
-      return this.establishmentId;
+    const existing = this.getEstablishmentId();
+    if (existing && isUUID(existing)) {
+      return existing;
     }
 
     // Récupérer depuis les membres Supabase si non initialisé en mémoire
@@ -89,6 +100,18 @@ export class CloudDbService {
       if (!error && member?.establishment_id) {
         this.setEstablishmentId(member.establishment_id);
         return member.establishment_id;
+      }
+
+      // Fallback direct sur les établissements accessibles
+      const { data: est } = await supabase
+        .from('marmicout_establishments')
+        .select('id')
+        .limit(1)
+        .maybeSingle();
+
+      if (est?.id) {
+        this.setEstablishmentId(est.id);
+        return est.id;
       }
     } catch (e) {
       console.warn('[CloudDbService] Impossible de récupérer l\'establishment_id', e);

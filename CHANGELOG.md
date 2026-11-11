@@ -4,6 +4,18 @@ Toutes les modifications notables apportées à ce projet sont documentées dans
 
 ---
 
+## [2.0.47] - 2026-11-11
+
+### Neutralisation Service Worker sur Localhost & Renforcement Détection Cloud-First
+- **Désactivation Totale du Service Worker en Local (Point 1)** :
+  - Dans [`src/services/pwaService.ts`](file:///d:/Aplli/Marmicout/Appli%20Marmicout/src/services/pwaService.ts) : désenregistrement automatique de tout Service Worker actif et suppression des Caches Storage sur `localhost` et `127.0.0.1`.
+  - Dans [`public/sw.js`](file:///d:/Aplli/Marmicout/Appli%20Marmicout/public/sw.js) : bypass immédiat de tout cache pour les requêtes émises sur `localhost` / `127.0.0.1`.
+- **Fiabilisation Synchrone du Mode Cloud (Points 2 & 3)** :
+  - Dans [`src/services/db.ts`](file:///d:/Aplli/Marmicout/Appli%20Marmicout/src/services/db.ts) : `isCloudMode()` intègre un contrôle direct du token de session Supabase (`marmicout_supabase_auth_token`), interdisant tout repli clandestin en stockage local si un utilisateur est authentifié. Prise en compte du statut `'demo_active'`.
+  - Dans [`src/services/cloudDbService.ts`](file:///d:/Aplli/Marmicout/Appli%20Marmicout/src/services/cloudDbService.ts) : `getEstablishmentId()` et `ensureEstablishmentId()` inspectent `localStorage` et interrogent directement `marmicout_establishments` en cas d'absence en mémoire.
+
+---
+
 ## [2.0.46] - 2026-11-11
 
 ### Ordre d'Écriture Cloud-First, Gestion des Erreurs UI avec Bouton Réessayer & Migration IndexedDB

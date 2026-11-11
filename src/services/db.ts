@@ -21,8 +21,31 @@ import { accessVerificationService } from './accessVerificationService';
 
 export function isCloudMode(): boolean {
   const last = accessVerificationService.getLastResult();
-  if (!last || !last.hasAccess) return false;
-  return last.planCode === 'pro' || last.planCode === 'pro_cloud' || last.planCode === 'demo_14j' || last.status === 'demo';
+  if (last && last.hasAccess) {
+    return (
+      last.planCode === 'pro' ||
+      last.planCode === 'pro_cloud' ||
+      last.planCode === 'demo_14j' ||
+      last.status === 'demo' ||
+      last.status === 'demo_active'
+    );
+  }
+  // Sécurité renforcée : si l'utilisateur est authentifié avec une session Supabase active,
+  // il est obligatoirement en mode Cloud (zéro écriture locale clandestine)
+  if (typeof window !== 'undefined') {
+    const rawAuth = localStorage.getItem('marmicout_supabase_auth_token');
+    if (rawAuth) {
+      try {
+        const parsed = JSON.parse(rawAuth);
+        if (parsed?.access_token || parsed?.currentSession?.access_token) {
+          return true;
+        }
+      } catch (e) {
+        // ignorer
+      }
+    }
+  }
+  return false;
 }
 
 // Détection du code testeur dans l'URL (ex: ?code=cook1 ou ?code=michel)

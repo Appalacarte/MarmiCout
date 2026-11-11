@@ -58,6 +58,11 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
   if (url.origin !== self.location.origin) return;
 
+  // En local (localhost / 127.0.0.1) : ne jamais intercepter ni mettre en cache pour éviter les versions obsolètes
+  if (url.hostname === 'localhost' || url.hostname === '127.0.0.1') {
+    return;
+  }
+
   // Gestion de la navigation principale SPA
   if (event.request.mode === 'navigate') {
     event.respondWith(

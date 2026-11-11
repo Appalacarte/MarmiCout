@@ -63,6 +63,24 @@ class PwaService {
 
   private registerServiceWorker(): void {
     if ('serviceWorker' in navigator) {
+      if (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
+        // En développement local : désactiver et purger tout Service Worker et Cache Storage
+        navigator.serviceWorker.getRegistrations().then((registrations) => {
+          for (const reg of registrations) {
+            reg.unregister();
+            console.info('[MarmiCout PWA] Service Worker désenregistré en local (localhost).');
+          }
+        });
+        if ('caches' in window) {
+          caches.keys().then((names) => {
+            for (const name of names) {
+              caches.delete(name);
+            }
+          });
+        }
+        return;
+      }
+
       window.addEventListener('load', () => {
         navigator.serviceWorker
           .register('/sw.js')
