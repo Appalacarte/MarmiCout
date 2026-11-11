@@ -10,6 +10,19 @@ import {
   StockMovement,
   Settings
 } from '../types';
+import {
+  cloudDbService,
+  isUUID,
+  generateUUID,
+  notifyCloudError
+} from './cloudDbService';
+import { accessVerificationService } from './accessVerificationService';
+
+export function isCloudMode(): boolean {
+  const last = accessVerificationService.getLastResult();
+  if (!last || !last.hasAccess) return false;
+  return last.planCode === 'pro' || last.planCode === 'pro_cloud' || last.planCode === 'demo_14j' || last.status === 'demo';
+}
 
 // Détection du code testeur dans l'URL (ex: ?code=cook1 ou ?code=michel)
 const getTesterCode = (): string | null => {
@@ -254,6 +267,50 @@ export const dbService = {
     localStorage.setItem(KEYS.STOCK_MOVEMENTS, JSON.stringify([]));
   },
 
+  // --- SYNCHRONISATION CLOUD & FAÇADE ---
+  async syncFromCloud(): Promise<void> {
+    if (!isCloudMode()) return;
+    try {
+      const data = await cloudDbService.syncAllFromCloud();
+      if (data.recipes && data.recipes.length > 0) {
+        saveTable(KEYS.RECIPES, data.recipes);
+      }
+      if (data.products && data.products.length > 0) {
+        saveTable(KEYS.PRODUCTS, data.products);
+      }
+      if (data.stores && data.stores.length > 0) {
+        saveTable(KEYS.STORES, data.stores);
+      }
+      if (data.purchases && data.purchases.length > 0) {
+        saveTable(KEYS.PURCHASES, data.purchases);
+      }
+      if (data.productions && data.productions.length > 0) {
+        saveTable(KEYS.PRODUCTIONS, data.productions);
+      }
+      if (data.sales && data.sales.length > 0) {
+        saveTable(KEYS.SALES, data.sales);
+      }
+      if (data.stockMovements && data.stockMovements.length > 0) {
+        saveTable(KEYS.STOCK_MOVEMENTS, data.stockMovements);
+      }
+      if (data.recipeIngredients && data.recipeIngredients.length > 0) {
+        saveTable(KEYS.RECIPE_INGREDIENTS, data.recipeIngredients);
+      }
+      if (data.recipePackaging && data.recipePackaging.length > 0) {
+        saveTable(KEYS.RECIPE_PACKAGING, data.recipePackaging);
+      }
+      if (data.settings) {
+        localStorage.setItem(KEYS.SETTINGS, JSON.stringify(data.settings));
+      }
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('marmicout-data-synced'));
+      }
+    } catch (err: any) {
+      console.error('[dbService] Erreur lors de la synchronisation cloud:', err);
+      notifyCloudError('Erreur de synchronisation cloud', err.message || String(err));
+    }
+  },
+
   // --- PARAMÈTRES (SETTINGS) ---
   getSettings(): Settings {
     initDB();
@@ -263,6 +320,11 @@ export const dbService = {
 
   saveSettings(settings: Settings): void {
     localStorage.setItem(KEYS.SETTINGS, JSON.stringify(settings));
+    if (isCloudMode()) {
+      cloudDbService.saveSettings(settings).catch((err) => {
+        notifyCloudError('Enregistrement paramètres cloud échoué', err.message || String(err));
+      });
+    }
   },
 
   // --- MAGASINS (STORES) ---
@@ -275,6 +337,9 @@ export const dbService = {
   },
 
   saveStore(store: Store): void {
+    if (!isUUID(store.id)) {
+      store.id = generateUUID();
+    }
     const stores = this.getStores();
     const index = stores.findIndex(s => s.id === store.id);
     if (index >= 0) {
@@ -283,11 +348,21 @@ export const dbService = {
       stores.push(store);
     }
     saveTable(KEYS.STORES, stores);
+    if (isCloudMode()) {
+      cloudDbService.saveStore(store).catch((err) => {
+        notifyCloudError('Enregistrement magasin cloud échoué', err.message || String(err));
+      });
+    }
   },
 
   deleteStore(id: string): void {
     const stores = this.getStores().filter(s => s.id !== id);
     saveTable(KEYS.STORES, stores);
+    if (isCloudMode()) {
+      cloudDbService.deleteStore(id).catch((err) => {
+        notifyCloudError('Suppression magasin cloud échouée', err.message || String(err));
+      });
+    }
   },
 
   setStores(stores: Store[]): void {
@@ -313,6 +388,9 @@ export const dbService = {
   },
 
   saveProduct(product: Product): void {
+    if (!isUUID(product.id)) {
+      product.id = generateUUID();
+    }
     const products = this.getProducts();
     const index = products.findIndex(p => p.id === product.id);
     if (index >= 0) {
@@ -321,11 +399,21 @@ export const dbService = {
       products.push(product);
     }
     saveTable(KEYS.PRODUCTS, products);
+    if (isCloudMode()) {
+      cloudDbService.saveProduct(product).catch((err) => {
+        notifyCloudError('Enregistrement produit cloud échoué', err.message || String(err));
+      });
+    }
   },
 
   deleteProduct(id: string): void {
     const products = this.getProducts().filter(p => p.id !== id);
     saveTable(KEYS.PRODUCTS, products);
+    if (isCloudMode()) {
+      cloudDbService.deleteProduct(id).catch((err) => {
+        notifyCloudError('Suppression produit cloud échouée', err.message || String(err));
+      });
+    }
   },
 
   // --- ACHATS (PURCHASES) ---
@@ -338,6 +426,9 @@ export const dbService = {
   },
 
   addPurchase(purchase: Purchase): void {
+    if (!isUUID(purchase.id)) {
+      purchase.id = generateUUID();
+    }
     const purchases = this.getPurchases();
     purchases.push(purchase);
     saveTable(KEYS.PURCHASES, purchases);
@@ -368,13 +459,19 @@ export const dbService = {
 
       // Créer un mouvement de stock
       this.addStockMovement({
-        id: 'SM_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
+        id: generateUUID(),
         date: purchase.date,
         productId: purchase.productId,
         qty: qtyInProductUnit,
         type: 'ACHAT',
         refId: purchase.id,
         notes: `Achat chez ${this.getStore(purchase.storeId)?.name || 'Magasin Inconnu'}`
+      });
+    }
+
+    if (isCloudMode()) {
+      cloudDbService.savePurchase(purchase).catch((err) => {
+        notifyCloudError('Enregistrement achat cloud échoué', err.message || String(err));
       });
     }
   },
@@ -401,6 +498,12 @@ export const dbService = {
     // Supprimer les mouvements de stock associés
     const movements = this.getStockMovements().filter(m => !(m.type === 'ACHAT' && m.refId === id));
     saveTable(KEYS.STOCK_MOVEMENTS, movements);
+
+    if (isCloudMode()) {
+      cloudDbService.deletePurchase(id).catch((err) => {
+        notifyCloudError('Suppression achat cloud échouée', err.message || String(err));
+      });
+    }
   },
 
   // --- MOUVEMENTS DE STOCK (STOCK MOVEMENTS) ---
@@ -413,9 +516,17 @@ export const dbService = {
   },
 
   addStockMovement(movement: StockMovement): void {
+    if (!isUUID(movement.id)) {
+      movement.id = generateUUID();
+    }
     const movements = this.getStockMovements();
     movements.push(movement);
     saveTable(KEYS.STOCK_MOVEMENTS, movements);
+    if (isCloudMode()) {
+      cloudDbService.saveStockMovement(movement).catch((err) => {
+        notifyCloudError('Enregistrement mouvement stock cloud échoué', err.message || String(err));
+      });
+    }
   },
 
   getProductStockMovements(productId: string): StockMovement[] {
@@ -472,6 +583,10 @@ export const dbService = {
     ingredients: Omit<RecipeIngredient, 'id' | 'recipeId'>[],
     packagings: Omit<RecipePackaging, 'id' | 'recipeId'>[]
   ): void {
+    if (!isUUID(recipe.id)) {
+      recipe.id = generateUUID();
+    }
+
     // 1. Sauvegarder la recette principale
     const recipes = this.getRecipes();
     const index = recipes.findIndex(r => r.id === recipe.id);
@@ -484,21 +599,28 @@ export const dbService = {
 
     // 2. Remplacer les ingrédients
     const allIngredients = getTable<RecipeIngredient>(KEYS.RECIPE_INGREDIENTS).filter(ri => ri.recipeId !== recipe.id);
-    const newIngredients = ingredients.map((ing, idx) => ({
+    const newIngredients = ingredients.map((ing) => ({
       ...ing,
-      id: `RI_${recipe.id}_${idx}_${Date.now()}`,
+      id: generateUUID(),
       recipeId: recipe.id
     }));
     saveTable(KEYS.RECIPE_INGREDIENTS, [...allIngredients, ...newIngredients]);
 
     // 3. Remplacer les emballages
     const allPackagings = getTable<RecipePackaging>(KEYS.RECIPE_PACKAGING).filter(rp => rp.recipeId !== recipe.id);
-    const newPackagings = packagings.map((pack, idx) => ({
+    const newPackagings = packagings.map((pack) => ({
       ...pack,
-      id: `RP_${recipe.id}_${idx}_${Date.now()}`,
+      id: generateUUID(),
       recipeId: recipe.id
     }));
     saveTable(KEYS.RECIPE_PACKAGING, [...allPackagings, ...newPackagings]);
+
+    // 4. Délégation Cloud immédiate si mode Cloud
+    if (isCloudMode()) {
+      cloudDbService.saveRecipe(recipe, ingredients, packagings).catch((err) => {
+        notifyCloudError('Enregistrement recette cloud refusé', err.message || String(err));
+      });
+    }
   },
 
   deleteRecipe(id: string): void {
@@ -513,6 +635,12 @@ export const dbService = {
     // Supprimer les emballages associés
     const packagings = getTable<RecipePackaging>(KEYS.RECIPE_PACKAGING).filter(rp => rp.recipeId !== id);
     saveTable(KEYS.RECIPE_PACKAGING, packagings);
+
+    if (isCloudMode()) {
+      cloudDbService.deleteRecipe(id).catch((err) => {
+        notifyCloudError('Suppression recette cloud refusée', err.message || String(err));
+      });
+    }
   },
 
   // --- CALCUL DU COÛT DE REVIENT ---
@@ -677,9 +805,18 @@ export const dbService = {
     }
 
     // 5. Enregistrer la production
+    if (!isUUID(production.id)) {
+      production.id = generateUUID();
+    }
     const productions = this.getProductions();
     productions.push(production);
     saveTable(KEYS.PRODUCTIONS, productions);
+
+    if (isCloudMode()) {
+      cloudDbService.saveProduction(production).catch((err) => {
+        notifyCloudError('Enregistrement fabrication cloud échoué', err.message || String(err));
+      });
+    }
 
     return { success: true };
   },
@@ -698,6 +835,9 @@ export const dbService = {
   },
 
   addSale(sale: Sale): void {
+    if (!isUUID(sale.id)) {
+      sale.id = generateUUID();
+    }
     const sales = this.getSales();
     sales.push(sale);
     saveTable(KEYS.SALES, sales);
@@ -719,7 +859,7 @@ export const dbService = {
 
         // Créer un mouvement de stock
         this.addStockMovement({
-          id: 'SM_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
+          id: generateUUID(),
           date: sale.date,
           productId: sale.itemId,
           qty: -sale.qtySold,
@@ -728,6 +868,12 @@ export const dbService = {
           notes: `Vente directe (${sale.location})`
         });
       }
+    }
+
+    if (isCloudMode()) {
+      cloudDbService.saveSale(sale).catch((err) => {
+        notifyCloudError('Enregistrement vente cloud échoué', err.message || String(err));
+      });
     }
   },
 
@@ -759,6 +905,12 @@ export const dbService = {
 
     const updatedSales = sales.filter(s => s.id !== id);
     saveTable(KEYS.SALES, updatedSales);
+
+    if (isCloudMode()) {
+      cloudDbService.deleteSale(id).catch((err) => {
+        notifyCloudError('Suppression vente cloud échouée', err.message || String(err));
+      });
+    }
   },
 
   // --- EXPORTATION ET IMPORTATION CSV (GOOGLE SHEETS COMPATIBLE) ---

@@ -1,4 +1,5 @@
 import { supabase, getAccessToken } from './supabaseClient';
+import { cloudDbService } from './cloudDbService';
 
 const APPALACARTE_URL = import.meta.env.VITE_APPALACARTE_URL || 'https://appalacarte.fr';
 
@@ -184,6 +185,10 @@ class AccessVerificationService {
         };
         this.notify(errResult);
         return errResult;
+      }
+
+      if (data.establishmentId) {
+        cloudDbService.setEstablishmentId(data.establishmentId);
       }
 
       // Résultat HTTP 200 OK

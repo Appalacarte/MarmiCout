@@ -15,6 +15,7 @@ import {
   accessVerificationService,
   AccessVerificationResult,
 } from '../services/accessVerificationService';
+import { dbService } from '../services/db';
 import { exportAllDataAsJSON } from '../utils/exportAllData';
 import { APP_VERSION } from '../version';
 
@@ -27,6 +28,7 @@ interface MarmicoutAccessGateProps {
 export const MarmicoutAccessGate: React.FC<MarmicoutAccessGateProps> = ({ children }) => {
   const [accessState, setAccessState] = useState<AccessVerificationResult | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
+  const [cloudError, setCloudError] = useState<{ title: string; details: string; timestamp: number } | null>(null);
   const [isOffline, setIsOffline] = useState<boolean>(
     typeof navigator !== 'undefined' ? !navigator.onLine : false
   );
@@ -34,11 +36,18 @@ export const MarmicoutAccessGate: React.FC<MarmicoutAccessGateProps> = ({ childr
   useEffect(() => {
     const handleOnline = () => setIsOffline(false);
     const handleOffline = () => setIsOffline(true);
+    const handleCloudError = (e: any) => {
+      if (e.detail) {
+        setCloudError(e.detail);
+      }
+    };
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
+    window.addEventListener('marmicout-cloud-error', handleCloudError);
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
+      window.removeEventListener('marmicout-cloud-error', handleCloudError);
     };
   }, []);
 
@@ -69,6 +78,11 @@ export const MarmicoutAccessGate: React.FC<MarmicoutAccessGateProps> = ({ childr
     const unsubscribe = accessVerificationService.subscribe((res) => {
       setAccessState(res);
       setLoading(false);
+      if (res.hasAccess && (res.planCode === 'pro' || res.planCode === 'pro_cloud' || res.planCode === 'demo_14j' || res.status === 'demo' || res.status === 'demo_active')) {
+        dbService.syncFromCloud().catch((err) => {
+          console.error('[Marmicout] Erreur synchronisation initiale:', err);
+        });
+      }
     });
 
     // 3. Lancement initial de la vérification
@@ -544,11 +558,55 @@ export const MarmicoutAccessGate: React.FC<MarmicoutAccessGateProps> = ({ childr
   const isReadOnly = accessState?.mode === 'consultation_seule';
   const isGrace = !!accessState?.isPastDueGrace;
   const isSepa = !!accessState?.isSepaProcessing;
-  const isDemoActive = accessState?.status === 'demo_active';
+  const isDemoActive = accessState?.status === 'demo_active' || accessState?.status === 'demo';
   const isEssentiel = accessState?.planCode === 'essentiel';
+  const isPro = (accessState?.planCode === 'pro' || accessState?.planCode === 'pro_cloud') && !isDemoActive && !isReadOnly;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
+      
+      {/* 0. Alerte d'erreur Cloud explicite (Aucun échec silencieux) */}
+      {cloudError && (
+        <div style={{
+          background: '#b91c1c',
+          color: '#ffffff',
+          padding: '12px 20px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: '12px',
+          fontSize: '13px',
+          fontWeight: '600',
+          boxShadow: '0 4px 14px rgba(185, 28, 28, 0.4)',
+          position: 'sticky',
+          top: 0,
+          zIndex: 10000,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <ShieldAlert size={20} color="#fee2e2" />
+            <div>
+              <span style={{ fontWeight: '800' }}>Erreur de synchronisation cloud : </span>
+              <span>{cloudError.title} — {cloudError.details}</span>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setCloudError(null)}
+            style={{
+              background: 'rgba(255,255,255,0.2)',
+              border: 'none',
+              borderRadius: '6px',
+              color: '#ffffff',
+              padding: '4px 10px',
+              fontSize: '11px',
+              cursor: 'pointer',
+              fontWeight: '700',
+            }}
+          >
+            Fermer
+          </button>
+        </div>
+      )}
       
       {/* 1. Bandeau Persistant : Mode Consultation seule 30 jours */}
       {isReadOnly && (
@@ -703,6 +761,34 @@ export const MarmicoutAccessGate: React.FC<MarmicoutAccessGateProps> = ({ childr
           >
             Passer en Pro →
           </a>
+        </div>
+      )}
+
+      {/* 4b. Bandeau discret : Forfait Pro / Pro Cloud actif */}
+      {isPro && (
+        <div style={{
+          background: '#1e1b4b',
+          color: '#c7d2fe',
+          padding: '6px 16px',
+          fontSize: '12px',
+          fontWeight: '500',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: '8px',
+          borderBottom: '1px solid #312e81',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ fontSize: '13px' }}>✨</span>
+            <span style={{ fontWeight: '700', color: '#e0e7ff' }}>
+              {accessState?.planName || (accessState?.planCode === 'pro_cloud' ? 'Forfait Pro Cloud' : 'Forfait Pro')}
+            </span>
+            <span>· Données synchronisées dans le Cloud Supabase (UE)</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', color: '#a5b4fc' }}>
+            <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#10b981', display: 'inline-block' }}></span>
+            <span>Synchronisation active</span>
+          </div>
         </div>
       )}
 

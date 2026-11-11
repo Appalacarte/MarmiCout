@@ -1,9 +1,10 @@
 /**
  * Service d'accès Cloud direct Supabase pour Marmicout (Forfaits Pro, Pro Cloud & Démo 14j)
- * Architecture simplifiée :
- * - En ligne : Écritures et lectures directes dans Supabase (PostgreSQL / RLS)
- * - Mise en miroir immédiate dans IndexedDB pour alimenter le cache local
- * - Hors ligne : Bascule automatique vers le cache local IndexedDB en consultation seule (72h)
+ * Architecture :
+ * - Mode Cloud : Écritures et lectures directes dans Supabase (PostgreSQL / RLS)
+ * - Cache local : Synchronisation miroir dans IndexedDB et localStorage
+ * - Mode Local (Essentiel) : Zéro appel Supabase, stockage local exclusif
+ * - Erreurs explicites : Alerte visuelle et log console immédiat à chaque échec
  */
 
 import { supabase } from './supabaseClient';
@@ -21,11 +22,46 @@ import {
   Settings,
 } from '../types';
 
+export function isUUID(id?: string | null): boolean {
+  if (!id) return false;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+}
+
+export function generateUUID(): string {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
+export function notifyCloudError(title: string, details: string) {
+  console.error(`[Marmicout Cloud Error] ${title} :`, details);
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(
+      new CustomEvent('marmicout-cloud-error', {
+        detail: { title, details, timestamp: Date.now() },
+      })
+    );
+  }
+}
+
 export class CloudDbService {
-  private establishmentId: string | null = null;
+  private establishmentId: string | null =
+    typeof window !== 'undefined' ? localStorage.getItem('marmicout_establishment_id') : null;
 
   public setEstablishmentId(id: string | null) {
     this.establishmentId = id;
+    if (typeof window !== 'undefined') {
+      if (id) {
+        localStorage.setItem('marmicout_establishment_id', id);
+      } else {
+        localStorage.removeItem('marmicout_establishment_id');
+      }
+    }
   }
 
   public getEstablishmentId(): string | null {
@@ -34,6 +70,31 @@ export class CloudDbService {
 
   public isOnline(): boolean {
     return typeof navigator !== 'undefined' ? navigator.onLine : true;
+  }
+
+  public async ensureEstablishmentId(): Promise<string> {
+    if (this.establishmentId && isUUID(this.establishmentId)) {
+      return this.establishmentId;
+    }
+
+    // Récupérer depuis les membres Supabase si non initialisé en mémoire
+    try {
+      const { data: member, error } = await supabase
+        .from('marmicout_members')
+        .select('establishment_id')
+        .eq('status', 'active')
+        .limit(1)
+        .maybeSingle();
+
+      if (!error && member?.establishment_id) {
+        this.setEstablishmentId(member.establishment_id);
+        return member.establishment_id;
+      }
+    } catch (e) {
+      console.warn('[CloudDbService] Impossible de récupérer l\'establishment_id', e);
+    }
+
+    throw new Error('Établissement manquant. Veuillez recharger la page pour synchroniser votre compte.');
   }
 
   // --- STORES ---
@@ -62,32 +123,42 @@ export class CloudDbService {
     return stores;
   }
 
-  public async saveStore(store: Store): Promise<void> {
+  public async saveStore(store: Store): Promise<string> {
     if (!this.isOnline()) {
       throw new Error('Hors connexion : consultation seule pendant 72 h. Reconnectez-vous pour enregistrer.');
     }
+    const estId = await this.ensureEstablishmentId();
+    const storeUUID = isUUID(store.id) ? store.id : generateUUID();
+    store.id = storeUUID;
+
     const payload: any = {
+      id: storeUUID,
+      establishment_id: estId,
       name: store.name,
       type: store.type,
       address: store.address || null,
       phone: store.phone || null,
       notes: store.notes || null,
     };
-    if (this.establishmentId) payload.establishment_id = this.establishmentId;
 
-    if (store.id && !store.id.startsWith('temp_')) {
-      await supabase.from('marmicout_stores').update(payload).eq('id', store.id);
-    } else {
-      await supabase.from('marmicout_stores').insert(payload);
+    const { error } = await supabase.from('marmicout_stores').upsert(payload, { onConflict: 'id' });
+    if (error) {
+      notifyCloudError('Enregistrement du magasin refusé', error.message);
+      throw new Error(`Erreur Supabase marmicout_stores (${error.code || 'RLS'}): ${error.message}`);
     }
     await indexedDbService.put('stores', store);
+    return storeUUID;
   }
 
   public async deleteStore(id: string): Promise<void> {
     if (!this.isOnline()) {
       throw new Error('Hors connexion : consultation seule pendant 72 h.');
     }
-    await supabase.from('marmicout_stores').delete().eq('id', id);
+    const { error } = await supabase.from('marmicout_stores').delete().eq('id', id);
+    if (error) {
+      notifyCloudError('Suppression du magasin refusée', error.message);
+      throw new Error(`Erreur suppression magasin: ${error.message}`);
+    }
     await indexedDbService.delete('stores', id);
   }
 
@@ -125,11 +196,17 @@ export class CloudDbService {
     return products;
   }
 
-  public async saveProduct(product: Product): Promise<void> {
+  public async saveProduct(product: Product): Promise<string> {
     if (!this.isOnline()) {
       throw new Error('Hors connexion : consultation seule pendant 72 h. Reconnectez-vous pour enregistrer.');
     }
+    const estId = await this.ensureEstablishmentId();
+    const productUUID = isUUID(product.id) ? product.id : generateUUID();
+    product.id = productUUID;
+
     const payload: any = {
+      id: productUUID,
+      establishment_id: estId,
       barcode: product.barcode || null,
       name: product.name,
       category: product.category,
@@ -139,19 +216,31 @@ export class CloudDbService {
       stock: product.stock,
       min_stock_alert: product.minStockAlert,
       avg_purchase_price: product.avgPurchasePrice,
-      main_store_id: product.mainStoreId || null,
+      main_store_id: isUUID(product.mainStoreId) ? product.mainStoreId : null,
       notes: product.notes || null,
       is_active: product.isActive !== false,
       photo: product.photo || null,
     };
-    if (this.establishmentId) payload.establishment_id = this.establishmentId;
 
-    if (product.id && !product.id.startsWith('temp_')) {
-      await supabase.from('marmicout_products').update(payload).eq('id', product.id);
-    } else {
-      await supabase.from('marmicout_products').insert(payload);
+    const { error } = await supabase.from('marmicout_products').upsert(payload, { onConflict: 'id' });
+    if (error) {
+      notifyCloudError('Enregistrement du produit refusé', error.message);
+      throw new Error(`Erreur Supabase marmicout_products (${error.code || 'RLS'}): ${error.message}`);
     }
     await indexedDbService.put('products', product);
+    return productUUID;
+  }
+
+  public async deleteProduct(id: string): Promise<void> {
+    if (!this.isOnline()) {
+      throw new Error('Hors connexion : consultation seule pendant 72 h.');
+    }
+    const { error } = await supabase.from('marmicout_products').delete().eq('id', id);
+    if (error) {
+      notifyCloudError('Suppression du produit refusée', error.message);
+      throw new Error(`Erreur suppression produit: ${error.message}`);
+    }
+    await indexedDbService.delete('products', id);
   }
 
   // --- RECIPES ---
@@ -189,11 +278,68 @@ export class CloudDbService {
     return recipes;
   }
 
-  public async saveRecipe(recipe: Recipe): Promise<void> {
+  public async getAllRecipeIngredients(): Promise<RecipeIngredient[]> {
+    if (!this.isOnline()) {
+      return indexedDbService.getAll<RecipeIngredient>('recipe_ingredients');
+    }
+    const { data, error } = await supabase
+      .from('marmicout_recipe_ingredients')
+      .select('*');
+    if (error) {
+      console.warn('[CloudDbService] getAllRecipeIngredients fallback:', error);
+      return indexedDbService.getAll<RecipeIngredient>('recipe_ingredients');
+    }
+    const list: RecipeIngredient[] = (data || []).map((row: any) => ({
+      id: row.id,
+      recipeId: row.recipe_id,
+      productId: row.product_id || '',
+      customName: row.custom_name || undefined,
+      qtyUsed: Number(row.qty_used || 0),
+      unit: row.unit || 'g',
+      originalQtyUsed: row.qty_used ? Number(row.qty_used) : undefined,
+      customCostPerUnit: row.custom_cost_per_unit ? Number(row.custom_cost_per_unit) : undefined,
+    }));
+    await indexedDbService.setAll('recipe_ingredients', list);
+    return list;
+  }
+
+  public async getAllRecipePackaging(): Promise<RecipePackaging[]> {
+    if (!this.isOnline()) {
+      return indexedDbService.getAll<RecipePackaging>('recipe_packaging');
+    }
+    const { data, error } = await supabase
+      .from('marmicout_recipe_packaging')
+      .select('*');
+    if (error) {
+      console.warn('[CloudDbService] getAllRecipePackaging fallback:', error);
+      return indexedDbService.getAll<RecipePackaging>('recipe_packaging');
+    }
+    const list: RecipePackaging[] = (data || []).map((row: any) => ({
+      id: row.id,
+      recipeId: row.recipe_id,
+      name: row.name,
+      qtyUsed: Number(row.qty_used || 1),
+      costPerUnit: Number(row.cost_per_unit || 0),
+    }));
+    await indexedDbService.setAll('recipe_packaging', list);
+    return list;
+  }
+
+  public async saveRecipe(
+    recipe: Recipe,
+    ingredients?: Omit<RecipeIngredient, 'id' | 'recipeId'>[],
+    packagings?: Omit<RecipePackaging, 'id' | 'recipeId'>[]
+  ): Promise<string> {
     if (!this.isOnline()) {
       throw new Error('Hors connexion : consultation seule pendant 72 h. Reconnectez-vous pour enregistrer.');
     }
+    const estId = await this.ensureEstablishmentId();
+    const recipeUUID = isUUID(recipe.id) ? recipe.id : generateUUID();
+    recipe.id = recipeUUID;
+
     const payload: any = {
+      id: recipeUUID,
+      establishment_id: estId,
       name: recipe.name,
       category: recipe.category,
       description: recipe.description || null,
@@ -206,17 +352,70 @@ export class CloudDbService {
       notes: recipe.notes || null,
       is_active: recipe.isActive !== false,
       photo: recipe.photo || null,
-      original_portions: recipe.originalPortions || null,
       instructions: recipe.instructions || null,
     };
-    if (this.establishmentId) payload.establishment_id = this.establishmentId;
 
-    if (recipe.id && !recipe.id.startsWith('temp_')) {
-      await supabase.from('marmicout_recipes').update(payload).eq('id', recipe.id);
-    } else {
-      await supabase.from('marmicout_recipes').insert(payload);
+    const { error: recipeErr } = await supabase
+      .from('marmicout_recipes')
+      .upsert(payload, { onConflict: 'id' });
+
+    if (recipeErr) {
+      notifyCloudError('Enregistrement de la recette refusé', recipeErr.message);
+      throw new Error(`Erreur écriture recette Supabase (${recipeErr.code || 'RLS'}): ${recipeErr.message}`);
     }
+
+    // Ingrédients
+    if (ingredients && ingredients.length > 0) {
+      await supabase.from('marmicout_recipe_ingredients').delete().eq('recipe_id', recipeUUID);
+      const ingPayloads = ingredients.map((ing) => ({
+        id: generateUUID(),
+        establishment_id: estId,
+        recipe_id: recipeUUID,
+        product_id: ing.productId && isUUID(ing.productId) ? ing.productId : null,
+        custom_name: ing.customName || null,
+        qty_used: ing.qtyUsed,
+        unit: ing.unit,
+        custom_cost_per_unit: ing.customCostPerUnit || 0,
+      }));
+      const { error: ingErr } = await supabase.from('marmicout_recipe_ingredients').insert(ingPayloads);
+      if (ingErr) {
+        console.error('[Supabase recipe_ingredients error]', ingErr);
+        notifyCloudError('Erreur ingrédients recette', ingErr.message);
+      }
+    }
+
+    // Emballages
+    if (packagings && packagings.length > 0) {
+      await supabase.from('marmicout_recipe_packaging').delete().eq('recipe_id', recipeUUID);
+      const packPayloads = packagings.map((pack) => ({
+        id: generateUUID(),
+        establishment_id: estId,
+        recipe_id: recipeUUID,
+        name: pack.name,
+        qty_used: pack.qtyUsed,
+        cost_per_unit: pack.costPerUnit || 0,
+      }));
+      const { error: packErr } = await supabase.from('marmicout_recipe_packaging').insert(packPayloads);
+      if (packErr) {
+        console.error('[Supabase recipe_packaging error]', packErr);
+        notifyCloudError('Erreur emballages recette', packErr.message);
+      }
+    }
+
     await indexedDbService.put('recipes', recipe);
+    return recipeUUID;
+  }
+
+  public async deleteRecipe(id: string): Promise<void> {
+    if (!this.isOnline()) {
+      throw new Error('Hors connexion : consultation seule pendant 72 h.');
+    }
+    const { error } = await supabase.from('marmicout_recipes').delete().eq('id', id);
+    if (error) {
+      notifyCloudError('Suppression de la recette refusée', error.message);
+      throw new Error(`Erreur suppression recette: ${error.message}`);
+    }
+    await indexedDbService.delete('recipes', id);
   }
 
   // --- PURCHASES ---
@@ -227,19 +426,19 @@ export class CloudDbService {
     const { data, error } = await supabase
       .from('marmicout_purchases')
       .select('*')
-      .order('date', { ascending: false });
+      .order('purchase_date', { ascending: false });
     if (error) {
       console.warn('[CloudDbService] getPurchases fallback to cache:', error);
       return indexedDbService.getAll<Purchase>('purchases');
     }
     const purchases: Purchase[] = (data || []).map((row: any) => ({
       id: row.id,
-      date: row.date,
+      date: row.purchase_date,
       productId: row.product_id,
-      qty: Number(row.quantity),
+      qty: Number(row.qty || 0),
       unit: row.unit || 'kg',
-      pricePaid: Number(row.price_paid || row.unit_price_ht * row.quantity),
-      unitPrice: Number(row.unit_price_ht || 0),
+      pricePaid: Number(row.price_paid || 0),
+      unitPrice: Number(row.unit_price || 0),
       storeId: row.store_id || '',
       batchNo: row.batch_no || undefined,
       expiryDate: row.expiry_date || undefined,
@@ -250,81 +449,48 @@ export class CloudDbService {
     return purchases;
   }
 
-  public async savePurchase(purchase: Purchase): Promise<void> {
+  public async savePurchase(purchase: Purchase): Promise<string> {
     if (!this.isOnline()) {
       throw new Error('Hors connexion : consultation seule pendant 72 h. Reconnectez-vous pour enregistrer.');
     }
+    const estId = await this.ensureEstablishmentId();
+    const purchaseUUID = isUUID(purchase.id) ? purchase.id : generateUUID();
+    purchase.id = purchaseUUID;
+
     const payload: any = {
-      date: purchase.date,
-      store_id: purchase.storeId || null,
-      product_id: purchase.productId,
-      quantity: purchase.qty,
+      id: purchaseUUID,
+      establishment_id: estId,
+      purchase_date: purchase.date,
+      store_id: isUUID(purchase.storeId) ? purchase.storeId : null,
+      product_id: isUUID(purchase.productId) ? purchase.productId : null,
+      qty: purchase.qty,
       unit: purchase.unit,
-      unit_price_ht: purchase.unitPrice,
+      unit_price: purchase.unitPrice,
       price_paid: purchase.pricePaid,
       batch_no: purchase.batchNo || null,
       expiry_date: purchase.expiryDate || null,
       notes: purchase.notes || null,
     };
-    if (this.establishmentId) payload.establishment_id = this.establishmentId;
 
-    if (purchase.id && !purchase.id.startsWith('temp_')) {
-      await supabase.from('marmicout_purchases').update(payload).eq('id', purchase.id);
-    } else {
-      await supabase.from('marmicout_purchases').insert(payload);
+    const { error } = await supabase.from('marmicout_purchases').upsert(payload, { onConflict: 'id' });
+    if (error) {
+      notifyCloudError('Enregistrement de l\'achat refusé', error.message);
+      throw new Error(`Erreur Supabase marmicout_purchases (${error.code || 'RLS'}): ${error.message}`);
     }
     await indexedDbService.put('purchases', purchase);
+    return purchaseUUID;
   }
 
-  // --- RECIPE INGREDIENTS ---
-  public async getRecipeIngredients(recipeId?: string): Promise<RecipeIngredient[]> {
+  public async deletePurchase(id: string): Promise<void> {
     if (!this.isOnline()) {
-      const all = await indexedDbService.getAll<RecipeIngredient>('recipe_ingredients');
-      return recipeId ? all.filter((i) => i.recipeId === recipeId) : all;
+      throw new Error('Hors connexion : consultation seule pendant 72 h.');
     }
-    let query = supabase.from('marmicout_recipe_ingredients').select('*');
-    if (recipeId) query = query.eq('recipe_id', recipeId);
-    const { data, error } = await query;
+    const { error } = await supabase.from('marmicout_purchases').delete().eq('id', id);
     if (error) {
-      const all = await indexedDbService.getAll<RecipeIngredient>('recipe_ingredients');
-      return recipeId ? all.filter((i) => i.recipeId === recipeId) : all;
+      notifyCloudError('Suppression de l\'achat refusée', error.message);
+      throw new Error(`Erreur suppression achat: ${error.message}`);
     }
-    const list: RecipeIngredient[] = (data || []).map((row: any) => ({
-      id: row.id,
-      recipeId: row.recipe_id,
-      productId: row.product_id || undefined,
-      customName: row.custom_name || undefined,
-      qtyUsed: Number(row.quantity || row.qty_used || 0),
-      unit: row.unit || 'g',
-      originalQtyUsed: row.original_qty_used ? Number(row.original_qty_used) : undefined,
-      customCostPerUnit: row.custom_cost_per_unit ? Number(row.custom_cost_per_unit) : undefined,
-    }));
-    await indexedDbService.setAll('recipe_ingredients', list);
-    return list;
-  }
-
-  // --- RECIPE PACKAGING ---
-  public async getRecipePackaging(recipeId?: string): Promise<RecipePackaging[]> {
-    if (!this.isOnline()) {
-      const all = await indexedDbService.getAll<RecipePackaging>('recipe_packaging');
-      return recipeId ? all.filter((p) => p.recipeId === recipeId) : all;
-    }
-    let query = supabase.from('marmicout_recipe_packaging').select('*');
-    if (recipeId) query = query.eq('recipe_id', recipeId);
-    const { data, error } = await query;
-    if (error) {
-      const all = await indexedDbService.getAll<RecipePackaging>('recipe_packaging');
-      return recipeId ? all.filter((p) => p.recipeId === recipeId) : all;
-    }
-    const list: RecipePackaging[] = (data || []).map((row: any) => ({
-      id: row.id,
-      recipeId: row.recipe_id,
-      name: row.name || 'Emballage',
-      qtyUsed: Number(row.quantity || row.qty_used || 1),
-      costPerUnit: Number(row.cost_per_unit || 0),
-    }));
-    await indexedDbService.setAll('recipe_packaging', list);
-    return list;
+    await indexedDbService.delete('purchases', id);
   }
 
   // --- PRODUCTIONS ---
@@ -335,13 +501,13 @@ export class CloudDbService {
     const { data, error } = await supabase
       .from('marmicout_productions')
       .select('*')
-      .order('date', { ascending: false });
+      .order('production_date', { ascending: false });
     if (error) {
       return indexedDbService.getAll<Production>('productions');
     }
     const list: Production[] = (data || []).map((row: any) => ({
       id: row.id,
-      date: row.date,
+      date: row.production_date,
       recipeId: row.recipe_id,
       portionsProduced: Number(row.portions_produced),
       calculatedCost: Number(row.calculated_cost || 0),
@@ -349,6 +515,33 @@ export class CloudDbService {
     }));
     await indexedDbService.setAll('productions', list);
     return list;
+  }
+
+  public async saveProduction(production: Production): Promise<string> {
+    if (!this.isOnline()) {
+      throw new Error('Hors connexion : consultation seule pendant 72 h.');
+    }
+    const estId = await this.ensureEstablishmentId();
+    const prodUUID = isUUID(production.id) ? production.id : generateUUID();
+    production.id = prodUUID;
+
+    const payload: any = {
+      id: prodUUID,
+      establishment_id: estId,
+      production_date: production.date,
+      recipe_id: isUUID(production.recipeId) ? production.recipeId : null,
+      portions_produced: production.portionsProduced,
+      calculated_cost: production.calculatedCost,
+      notes: production.notes || null,
+    };
+
+    const { error } = await supabase.from('marmicout_productions').upsert(payload, { onConflict: 'id' });
+    if (error) {
+      notifyCloudError('Enregistrement de fabrication refusé', error.message);
+      throw new Error(`Erreur Supabase marmicout_productions (${error.code || 'RLS'}): ${error.message}`);
+    }
+    await indexedDbService.put('productions', production);
+    return prodUUID;
   }
 
   // --- SALES ---
@@ -359,22 +552,63 @@ export class CloudDbService {
     const { data, error } = await supabase
       .from('marmicout_sales')
       .select('*')
-      .order('date', { ascending: false });
+      .order('sale_date', { ascending: false });
     if (error) {
       return indexedDbService.getAll<Sale>('sales');
     }
     const list: Sale[] = (data || []).map((row: any) => ({
       id: row.id,
-      date: row.date,
+      date: row.sale_date,
       itemId: row.item_id,
       itemType: (row.item_type || 'RECIPE') as 'RECIPE' | 'PRODUCT',
-      qtySold: Number(row.qty_sold || row.quantity || 0),
+      qtySold: Number(row.qty_sold || 0),
       unitPrice: Number(row.unit_price || 0),
-      location: row.location || 'Marché',
+      location: row.location || 'Boutique',
       notes: row.notes || undefined,
     }));
     await indexedDbService.setAll('sales', list);
     return list;
+  }
+
+  public async saveSale(sale: Sale): Promise<string> {
+    if (!this.isOnline()) {
+      throw new Error('Hors connexion : consultation seule pendant 72 h.');
+    }
+    const estId = await this.ensureEstablishmentId();
+    const saleUUID = isUUID(sale.id) ? sale.id : generateUUID();
+    sale.id = saleUUID;
+
+    const payload: any = {
+      id: saleUUID,
+      establishment_id: estId,
+      sale_date: sale.date,
+      item_id: isUUID(sale.itemId) ? sale.itemId : null,
+      item_type: sale.itemType,
+      qty_sold: sale.qtySold,
+      unit_price: sale.unitPrice,
+      location: sale.location || 'Boutique',
+      notes: sale.notes || null,
+    };
+
+    const { error } = await supabase.from('marmicout_sales').upsert(payload, { onConflict: 'id' });
+    if (error) {
+      notifyCloudError('Enregistrement de vente refusé', error.message);
+      throw new Error(`Erreur Supabase marmicout_sales (${error.code || 'RLS'}): ${error.message}`);
+    }
+    await indexedDbService.put('sales', sale);
+    return saleUUID;
+  }
+
+  public async deleteSale(id: string): Promise<void> {
+    if (!this.isOnline()) {
+      throw new Error('Hors connexion : consultation seule pendant 72 h.');
+    }
+    const { error } = await supabase.from('marmicout_sales').delete().eq('id', id);
+    if (error) {
+      notifyCloudError('Suppression de vente refusée', error.message);
+      throw new Error(`Erreur suppression vente: ${error.message}`);
+    }
+    await indexedDbService.delete('sales', id);
   }
 
   // --- STOCK MOVEMENTS ---
@@ -385,21 +619,49 @@ export class CloudDbService {
     const { data, error } = await supabase
       .from('marmicout_stock_movements')
       .select('*')
-      .order('date', { ascending: false });
+      .order('movement_date', { ascending: false });
     if (error) {
       return indexedDbService.getAll<StockMovement>('stock_movements');
     }
     const list: StockMovement[] = (data || []).map((row: any) => ({
       id: row.id,
-      date: row.date,
+      date: row.movement_date,
       productId: row.product_id,
-      qty: Number(row.qty || row.quantity || 0),
+      qty: Number(row.qty || 0),
       type: (row.type || 'AJUSTEMENT') as 'ACHAT' | 'PRODUCTION_CONSOMMATION' | 'VENTE_DIRECTE' | 'AJUSTEMENT',
-      refId: row.ref_id || row.reference_id || 'MANUAL',
+      refId: row.ref_id || 'MANUAL',
       notes: row.notes || undefined,
     }));
     await indexedDbService.setAll('stock_movements', list);
     return list;
+  }
+
+  public async saveStockMovement(movement: StockMovement): Promise<string> {
+    if (!this.isOnline()) {
+      throw new Error('Hors connexion : consultation seule pendant 72 h.');
+    }
+    const estId = await this.ensureEstablishmentId();
+    const smUUID = isUUID(movement.id) ? movement.id : generateUUID();
+    movement.id = smUUID;
+
+    const payload: any = {
+      id: smUUID,
+      establishment_id: estId,
+      movement_date: movement.date,
+      product_id: isUUID(movement.productId) ? movement.productId : null,
+      qty: movement.qty,
+      type: movement.type,
+      ref_id: movement.refId || 'MANUAL',
+      notes: movement.notes || null,
+    };
+
+    const { error } = await supabase.from('marmicout_stock_movements').upsert(payload, { onConflict: 'id' });
+    if (error) {
+      notifyCloudError('Mouvement de stock refusé', error.message);
+      throw new Error(`Erreur Supabase marmicout_stock_movements (${error.code || 'RLS'}): ${error.message}`);
+    }
+    await indexedDbService.put('stock_movements', movement);
+    return smUUID;
   }
 
   // --- SETTINGS ---
@@ -426,12 +688,92 @@ export class CloudDbService {
       units: data.units || ['kg', 'g', 'l', 'cl', 'ml', 'pièce'],
       salesLocations: data.sales_locations || ['Marché', 'Commande', 'En Ligne', 'Domicile', 'Autre'],
       defaultMinStockAlert: Number(data.default_min_stock_alert || 2),
-      googleSheetId: data.google_sheet_id || undefined,
+      googleSheetId: undefined,
       googleSheetLink: data.google_sheet_link || undefined,
-      googleWebAppUrl: data.google_web_app_url || undefined,
+      googleWebAppUrl: undefined,
     };
     await indexedDbService.put('settings', { key: 'app_settings', value: settings });
     return settings;
+  }
+
+  public async saveSettings(settings: Settings): Promise<void> {
+    if (!this.isOnline()) {
+      throw new Error('Hors connexion : consultation seule pendant 72 h.');
+    }
+    const estId = await this.ensureEstablishmentId();
+    const payload: any = {
+      establishment_id: estId,
+      business_name: settings.businessName,
+      currency: settings.currency,
+      default_target_margin: settings.defaultTargetMargin,
+      categories: settings.categories,
+      recipe_categories: settings.recipeCategories,
+      units: settings.units,
+      sales_locations: settings.salesLocations,
+      default_min_stock_alert: settings.defaultMinStockAlert,
+      google_sheet_link: settings.googleSheetLink || null,
+    };
+
+    const { error } = await supabase
+      .from('marmicout_settings')
+      .upsert(payload, { onConflict: 'establishment_id' });
+
+    if (error) {
+      notifyCloudError('Enregistrement des paramètres refusé', error.message);
+      throw new Error(`Erreur Supabase marmicout_settings: ${error.message}`);
+    }
+    await indexedDbService.put('settings', { key: 'app_settings', value: settings });
+  }
+
+  // --- SYNCHRONISATION INITIALE COMPLÈTE DEPUIS LE CLOUD ---
+  public async syncAllFromCloud(): Promise<{
+    recipes: Recipe[];
+    products: Product[];
+    stores: Store[];
+    purchases: Purchase[];
+    productions: Production[];
+    sales: Sale[];
+    stockMovements: StockMovement[];
+    recipeIngredients: RecipeIngredient[];
+    recipePackaging: RecipePackaging[];
+    settings: Settings | null;
+  }> {
+    const [
+      recipes,
+      products,
+      stores,
+      purchases,
+      productions,
+      sales,
+      stockMovements,
+      recipeIngredients,
+      recipePackaging,
+      settings,
+    ] = await Promise.all([
+      this.getRecipes(),
+      this.getProducts(),
+      this.getStores(),
+      this.getPurchases(),
+      this.getProductions(),
+      this.getSales(),
+      this.getStockMovements(),
+      this.getAllRecipeIngredients(),
+      this.getAllRecipePackaging(),
+      this.getSettings(),
+    ]);
+
+    return {
+      recipes,
+      products,
+      stores,
+      purchases,
+      productions,
+      sales,
+      stockMovements,
+      recipeIngredients,
+      recipePackaging,
+      settings,
+    };
   }
 }
 

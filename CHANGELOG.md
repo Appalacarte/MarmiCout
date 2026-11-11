@@ -4,6 +4,25 @@ Toutes les modifications notables apportées à ce projet sont documentées dans
 
 ---
 
+## [2.0.45] - 2026-11-11
+
+### Façade Hybride dbService / cloudDbService, Alertes Cloud Explicites & Indicateur Forfait Pro
+- **Façade Hybride `dbService` / `cloudDbService` (Point 3)** :
+  - Dans [`src/services/db.ts`](file:///d:/Aplli/Marmicout/Appli%20Marmicout/src/services/db.ts) : transformation en façade réactive pour l'ensemble des écrans (recettes, produits, achats, productions, ventes, magasins, réglages).
+  - Mode Essentiel : écritures purement locales, zéro appel réseau vers Supabase.
+  - Mode Cloud (`pro`, `pro_cloud`, `demo_14j`) : double écriture locale et cloud immédiate via `cloudDbService`.
+  - Normalisation automatique des identifiants en UUID RFC 4122 compatibles PostgreSQL.
+  - Ajout de `syncFromCloud()` synchronisant les données distantes au lancement.
+- **Zéro Échec Silencieux (Point 4)** :
+  - Dans [`src/components/MarmicoutAccessGate.tsx`](file:///d:/Aplli/Marmicout/Appli%20Marmicout/src/components/MarmicoutAccessGate.tsx) : écouteur d'événement `marmicout-cloud-error` affichant un bandeau d'alerte rouge immédiat en cas d'erreur de rejet RLS, de réseau ou d'établissement manquant.
+  - Journalisation systématique des erreurs dans la console avec horodatage et contexte.
+- **Indicateur Discret « Forfait Pro » (Point 5)** :
+  - Dans [`src/components/MarmicoutAccessGate.tsx`](file:///d:/Aplli/Marmicout/Appli%20Marmicout/src/components/MarmicoutAccessGate.tsx) : disparition du bandeau de démo après passage en Pro, et affichage du bandeau discret « ✨ Forfait Pro · Données synchronisées dans le Cloud Supabase (UE) » avec pastille verte « Synchronisation active ».
+- **Alignement Strict du Schéma SQL Supabase** :
+  - Correction dans [`src/services/cloudDbService.ts`](file:///d:/Aplli/Marmicout/Appli%20Marmicout/src/services/cloudDbService.ts) des noms de colonnes SQL (`purchase_date`, `production_date`, `sale_date`, `movement_date`, `qty_used`, `qty`, `unit_price`).
+
+---
+
 ## [2.0.44] - 2026-11-11
 
 ### Étape c) Architecture Hybride, Contrôle 2FA (AAL2), Intégrité Export/Import & Sync Mentions Légales
