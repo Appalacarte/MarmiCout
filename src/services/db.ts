@@ -1693,7 +1693,7 @@ export const dbService = {
                 photo: row.photo ? String(row.photo) : undefined,
                 unitWeightG: row.unitWeightG != null && !isNaN(Number(row.unitWeightG)) ? Number(row.unitWeightG) : (row.unit_weight_g != null && !isNaN(Number(row.unit_weight_g)) ? Number(row.unit_weight_g) : undefined),
                 densityGPerMl: row.densityGPerMl != null && !isNaN(Number(row.densityGPerMl)) ? Number(row.densityGPerMl) : (row.density_g_per_ml != null && !isNaN(Number(row.density_g_per_ml)) ? Number(row.density_g_per_ml) : undefined),
-                allergens: Array.isArray(row.allergens) ? row.allergens : (typeof row.allergens === 'string' ? (row.allergens as string).split(';').map((s: string) => s.trim()).filter(Boolean) : []),
+                allergens: Array.isArray(row.allergens) ? row.allergens : (typeof row.allergens === 'string' && row.allergens.trim() !== '' ? (row.allergens as string).split(';').map((s: string) => s.trim()).filter(Boolean) : (row.allergens === null || row.allergens === undefined ? null : [])),
               };
               await this.saveProduct(product);
               importedCount++;

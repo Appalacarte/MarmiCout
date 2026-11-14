@@ -247,31 +247,72 @@ export function suggestAllergensFromName(name: string | undefined | null): Aller
   return OFFICIAL_ALLERGENS.filter(a => detected.has(a));
 }
 
+export interface UnverifiedAllergenItem {
+  name: string;
+  productId?: string;
+  reason: 'unspecified' | 'unlinked';
+}
+
 export interface RecipeAllergensResult {
   allergens: Allergen[];
+  isFullyVerified: boolean;
   hasUnlinkedIngredients: boolean;
   unlinkedCount: number;
+  hasUnspecifiedProducts: boolean;
+  unspecifiedCount: number;
+  unverifiedItems: UnverifiedAllergenItem[];
 }
 
 /**
  * Calcule automatiquement les allergènes déclarables d'une recette à partir de ses ingrédients liés.
+ * Un produit vérifié est soit un tableau d'allergènes déclaré, soit un tableau vide (vérifié sans allergène).
+ * Si allergens est absent ou null, le produit est considéré non renseigné.
  */
 export function calculateRecipeAllergens(
   ingredients: Array<{ productId?: string; customName?: string }>,
-  productMap: Map<string, { allergens?: string[] | null }>
+  productMap: Map<string, { id?: string; name?: string; allergens?: string[] | null }>
 ): RecipeAllergensResult {
   const detected = new Set<Allergen>();
-  let unlinkedCount = 0;
+  const unverifiedMap = new Map<string, UnverifiedAllergenItem>();
 
   for (const ing of ingredients) {
     if (!ing.productId) {
-      unlinkedCount++;
+      const name = ing.customName?.trim() || 'Ingrédient sans produit lié';
+      const key = `unlinked:${name}`;
+      if (!unverifiedMap.has(key)) {
+        unverifiedMap.set(key, {
+          name,
+          reason: 'unlinked',
+        });
+      }
       continue;
     }
 
     const prod = productMap.get(ing.productId);
     if (!prod) {
-      unlinkedCount++;
+      const name = ing.customName?.trim() || 'Produit introuvable';
+      const key = `unlinked:${ing.productId}`;
+      if (!unverifiedMap.has(key)) {
+        unverifiedMap.set(key, {
+          name,
+          productId: ing.productId,
+          reason: 'unlinked',
+        });
+      }
+      continue;
+    }
+
+    // Trois états : null/undefined = non renseigné ; [] = vérifié sans allergène ; [...] = déclarés
+    if (prod.allergens === null || prod.allergens === undefined) {
+      const name = prod.name || ing.customName?.trim() || 'Produit';
+      const key = `unspecified:${prod.id || ing.productId}`;
+      if (!unverifiedMap.has(key)) {
+        unverifiedMap.set(key, {
+          name,
+          productId: prod.id || ing.productId,
+          reason: 'unspecified',
+        });
+      }
       continue;
     }
 
@@ -285,19 +326,46 @@ export function calculateRecipeAllergens(
     }
   }
 
+  const unverifiedItems = Array.from(unverifiedMap.values());
+  const unlinkedCount = unverifiedItems.filter(item => item.reason === 'unlinked').length;
+  const unspecifiedCount = unverifiedItems.filter(item => item.reason === 'unspecified').length;
+
   return {
     allergens: OFFICIAL_ALLERGENS.filter(a => detected.has(a)),
+    isFullyVerified: unverifiedItems.length === 0,
     hasUnlinkedIngredients: unlinkedCount > 0,
     unlinkedCount,
+    hasUnspecifiedProducts: unspecifiedCount > 0,
+    unspecifiedCount,
+    unverifiedItems,
   };
 }
 
 /**
  * Formate la liste des allergènes pour la copie ou l'affichage (ex: "Gluten, Lait, Œufs").
+ * Inclut l'avertissement et la liste des produits concernés si des ingrédients ne sont pas vérifiés.
  */
-export function formatAllergensList(allergens: string[]): string {
-  if (!allergens || allergens.length === 0) return 'Aucun allergène majeur détecté';
-  return allergens
-    .map(a => a.charAt(0).toUpperCase() + a.slice(1))
-    .join(', ');
+export function formatAllergensList(
+  allergens: string[],
+  unverifiedItems?: UnverifiedAllergenItem[]
+): string {
+  const parts: string[] = [];
+
+  if (allergens && allergens.length > 0) {
+    const formatted = allergens
+      .map(a => a.charAt(0).toUpperCase() + a.slice(1))
+      .join(', ');
+    parts.push(formatted);
+  } else {
+    parts.push('Aucun allergène déclaré');
+  }
+
+  if (unverifiedItems && unverifiedItems.length > 0) {
+    const details = unverifiedItems
+      .map(item => `${item.name} (${item.reason === 'unlinked' ? 'non lié au stock' : 'non renseigné'})`)
+      .join(', ');
+    parts.push(`⚠️ Allergènes à vérifier pour : ${details}`);
+  }
+
+  return parts.join('\n');
 }

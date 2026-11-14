@@ -43,6 +43,7 @@ import {
   calculateRecipeAllergens,
   formatAllergensList,
   ALLERGEN_DISCLAIMER,
+  type UnverifiedAllergenItem,
 } from '../utils/allergens';
 
 interface RecipesProps {
@@ -68,8 +69,8 @@ export const Recipes: React.FC<RecipesProps> = ({ initialTriggerAdd, initialView
   const [selectedCategory, setSelectedCategory] = useState('');
   const [copiedAllergens, setCopiedAllergens] = useState(false);
 
-  const handleCopyAllergens = (allergens: string[]) => {
-    const text = formatAllergensList(allergens);
+  const handleCopyAllergens = (allergens: string[], unverifiedItems?: UnverifiedAllergenItem[]) => {
+    const text = formatAllergensList(allergens, unverifiedItems);
     if (typeof navigator !== 'undefined' && navigator.clipboard) {
       navigator.clipboard.writeText(text);
     }
@@ -926,11 +927,11 @@ export const Recipes: React.FC<RecipesProps> = ({ initialTriggerAdd, initialView
 
                   {/* Badges allergènes dans la carte */}
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', alignItems: 'center', marginBottom: '8px' }}>
-                    {allergenInfo.hasUnlinkedIngredients && (
+                    {!allergenInfo.isFullyVerified && (
                       <span
                         className="badge badge-warning"
                         style={{ fontSize: '10px', padding: '1px 6px', fontWeight: '700' }}
-                        title="Certains ingrédients ne sont pas liés au stock"
+                        title="Allergènes à vérifier : ingrédients non liés au stock ou non renseignés"
                       >
                         ⚠️ Allergènes à vérifier
                       </span>
@@ -951,7 +952,7 @@ export const Recipes: React.FC<RecipesProps> = ({ initialTriggerAdd, initialView
                         {a}
                       </span>
                     ))}
-                    {!allergenInfo.hasUnlinkedIngredients && allergenInfo.allergens.length === 0 && (
+                    {allergenInfo.isFullyVerified && allergenInfo.allergens.length === 0 && (
                       <span
                         className="badge"
                         style={{
@@ -1763,30 +1764,64 @@ export const Recipes: React.FC<RecipesProps> = ({ initialTriggerAdd, initialView
                       type="button"
                       className="btn btn-secondary"
                       style={{ height: '28px', padding: '0 10px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }}
-                      onClick={() => handleCopyAllergens(allergenInfo.allergens)}
-                      title="Copier la liste des allergènes"
+                      onClick={() => handleCopyAllergens(allergenInfo.allergens, allergenInfo.unverifiedItems)}
+                      title="Copier la liste des allergènes (inclut les avertissements si nécessaire)"
                     >
                       {copiedAllergens ? <Check size={12} style={{ color: 'var(--color-secondary)' }} /> : <Copy size={12} />}
                       {copiedAllergens ? 'Copié !' : 'Copier les allergènes'}
                     </button>
                   </div>
 
-                  {allergenInfo.hasUnlinkedIngredients && (
+                  {!allergenInfo.isFullyVerified && (
                     <div style={{
-                      backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                      backgroundColor: 'rgba(239, 68, 68, 0.08)',
                       border: '1px solid #fca5a5',
-                      color: '#b91c1c',
-                      padding: '8px 10px',
+                      color: '#991b1b',
+                      padding: '10px 12px',
                       borderRadius: '6px',
                       fontSize: '12px',
-                      fontWeight: '700',
-                      marginBottom: '10px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '6px'
+                      marginBottom: '12px'
                     }}>
-                      <AlertTriangle size={14} />
-                      <span>⚠️ Allergènes à vérifier : {allergenInfo.unlinkedCount} ingrédient(s) non lié(s) au stock.</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: '700', marginBottom: '6px' }}>
+                        <AlertTriangle size={15} style={{ color: '#dc2626' }} />
+                        <span>⚠️ Allergènes à vérifier ({allergenInfo.unverifiedItems.length} ingrédient{allergenInfo.unverifiedItems.length > 1 ? 's' : ''}) :</span>
+                      </div>
+                      <ul style={{ margin: 0, paddingLeft: '20px', lineHeight: '1.5' }}>
+                        {allergenInfo.unverifiedItems.map((item, idx) => (
+                          <li key={idx} style={{ marginBottom: '4px' }}>
+                            <span style={{ fontWeight: '600' }}>{item.name}</span>
+                            <span style={{ color: '#7f1d1d', fontSize: '11px', marginLeft: '4px' }}>
+                              ({item.reason === 'unlinked' ? 'ingrédient non lié au stock' : 'allergènes non renseignés'})
+                            </span>
+                            {item.productId && onNavigate && (
+                              <button
+                                type="button"
+                                className="btn btn-secondary"
+                                style={{
+                                  marginLeft: '8px',
+                                  height: '20px',
+                                  padding: '0 6px',
+                                  fontSize: '10px',
+                                  lineHeight: '1',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '2px',
+                                  color: 'var(--color-primary)',
+                                  borderColor: 'var(--color-primary)',
+                                  verticalAlign: 'middle'
+                                }}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onNavigate('Produits', { editProductId: item.productId, focusAllergens: true });
+                                }}
+                                title="Ouvrir le produit pour renseigner ses allergènes"
+                              >
+                                Renseigner
+                              </button>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
                     </div>
                   )}
 
@@ -1808,9 +1843,13 @@ export const Recipes: React.FC<RecipesProps> = ({ initialTriggerAdd, initialView
                           {a}
                         </span>
                       ))
+                    ) : allergenInfo.isFullyVerified ? (
+                      <span style={{ fontSize: '12px', color: '#065f46', fontWeight: '700' }}>
+                        ✅ Aucun allergène majeur détecté (tous les ingrédients sont vérifiés).
+                      </span>
                     ) : (
-                      <span style={{ fontSize: '12px', color: '#065f46', fontWeight: '600' }}>
-                        Aucun allergène majeur détecté parmi les ingrédients liés.
+                      <span style={{ fontSize: '12px', color: '#b45309', fontWeight: '600' }}>
+                        Aucun allergène déclaré pour les produits vérifiés. Vérification nécessaire pour les ingrédients ci-dessus.
                       </span>
                     )}
                   </div>

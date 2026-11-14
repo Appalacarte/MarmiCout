@@ -57,15 +57,18 @@ assertEqual(neutreAllergens.length, 0, 'Pommes de terre ne doit suggérer aucun 
 
 console.log('✅ PASS : Détection et suggestions automatiques par nom de produit');
 
-// 3. Calcul des allergènes d'une recette
+// 3. Calcul des allergènes d'une recette selon les trois états
 const productMap = new Map([
-  ['p1', { allergens: ['gluten'] }], // Farine
-  ['p2', { allergens: ['lait'] }],   // Beurre
-  ['p3', { allergens: ['œufs'] }],   // Œufs
-  ['p4', { allergens: [] }],         // Sucre
+  ['p1', { id: 'p1', name: 'Farine T55', allergens: ['gluten'] }],     // Déclaré
+  ['p2', { id: 'p2', name: 'Beurre doux', allergens: ['lait'] }],      // Déclaré
+  ['p3', { id: 'p3', name: 'Œufs frais', allergens: ['œufs'] }],       // Déclaré
+  ['p4', { id: 'p4', name: 'Sucre blanc', allergens: [] }],            // Vérifié sans allergène
+  ['p5', { id: 'p5', name: 'Sel fin', allergens: [] }],                // Vérifié sans allergène
+  ['p6', { id: 'p6', name: 'Vanille liquide', allergens: null }],      // Non renseigné (null)
+  ['p7', { id: 'p7', name: 'Arôme caramel', allergens: undefined }],  // Non renseigné (undefined)
 ]);
 
-// Recette entièrement liée
+// 3.1 Recette entièrement vérifiée avec allergènes
 const resultLinked = calculateRecipeAllergens(
   [{ productId: 'p1' }, { productId: 'p2' }, { productId: 'p4' }],
   productMap
@@ -73,28 +76,68 @@ const resultLinked = calculateRecipeAllergens(
 assertEqual(resultLinked.allergens.length, 2, 'Doit trouver gluten et lait');
 assert(resultLinked.allergens.includes('gluten'));
 assert(resultLinked.allergens.includes('lait'));
-assertEqual(resultLinked.hasUnlinkedIngredients, false, 'Tous les ingrédients sont liés');
-assertEqual(resultLinked.unlinkedCount, 0);
+assertEqual(resultLinked.isFullyVerified, true, 'Tous les ingrédients sont vérifiés');
+assertEqual(resultLinked.unverifiedItems.length, 0);
 
-console.log('✅ PASS : Calcul automatique des allergènes sur recette entièrement liée');
+// 3.2 Recette « Sans allergène » : tous les ingrédients vérifiés et aucun allergène
+const resultSansAllergene = calculateRecipeAllergens(
+  [{ productId: 'p4' }, { productId: 'p5' }],
+  productMap
+);
+assertEqual(resultSansAllergene.allergens.length, 0, 'Aucun allergène présent');
+assertEqual(resultSansAllergene.isFullyVerified, true, 'Doit être pleinement vérifié');
+assertEqual(resultSansAllergene.unverifiedItems.length, 0);
 
-// Recette avec ingrédient non lié
+// 3.3 Recette avec produit non renseigné (allergens null) : « Sans allergène » INTERDIT
+const resultUnspecified = calculateRecipeAllergens(
+  [{ productId: 'p4' }, { productId: 'p6' }],
+  productMap
+);
+assertEqual(resultUnspecified.allergens.length, 0, 'Aucun allergène déclaré');
+assertEqual(resultUnspecified.isFullyVerified, false, 'Ne doit PAS être considéré vérifié car p6 est null');
+assertEqual(resultUnspecified.unverifiedItems.length, 1);
+assertEqual(resultUnspecified.unverifiedItems[0].name, 'Vanille liquide');
+assertEqual(resultUnspecified.unverifiedItems[0].reason, 'unspecified');
+assertEqual(resultUnspecified.unverifiedItems[0].productId, 'p6');
+
+// 3.4 Recette avec produit non renseigné (undefined) et allergènes déclarés
+const resultMixed = calculateRecipeAllergens(
+  [{ productId: 'p1' }, { productId: 'p7' }],
+  productMap
+);
+assertEqual(resultMixed.allergens.length, 1, 'Doit contenir gluten');
+assert(resultMixed.allergens.includes('gluten'));
+assertEqual(resultMixed.isFullyVerified, false, 'Ne doit PAS être pleinement vérifié');
+assertEqual(resultMixed.unverifiedItems.length, 1);
+assertEqual(resultMixed.unverifiedItems[0].reason, 'unspecified');
+
+// 3.5 Recette avec ingrédient libre non lié au stock
 const resultUnlinked = calculateRecipeAllergens(
   [{ productId: 'p1' }, { customName: 'Poudre mystère' }],
   productMap
 );
+assertEqual(resultUnlinked.isFullyVerified, false, 'Doit être non vérifié');
 assertEqual(resultUnlinked.hasUnlinkedIngredients, true, 'Doit détecter l\'ingrédient non lié');
 assertEqual(resultUnlinked.unlinkedCount, 1);
 assert(resultUnlinked.allergens.includes('gluten'));
+assertEqual(resultUnlinked.unverifiedItems[0].name, 'Poudre mystère');
+assertEqual(resultUnlinked.unverifiedItems[0].reason, 'unlinked');
 
-console.log('✅ PASS : Alerte "Allergènes à vérifier" si ingrédient non lié');
+console.log('✅ PASS : Calcul des 3 états (déclaré, vérifié sans allergène, non renseigné) et alertes recettes');
 
-// 4. Formatage texte pour copie
-const formatted = formatAllergensList(['gluten', 'lait', 'œufs']);
-assertEqual(formatted, 'Gluten, Lait, Œufs');
+// 4. Formatage texte pour copie (avec avertissements)
+const formattedVerified = formatAllergensList(['gluten', 'lait', 'œufs']);
+assertEqual(formattedVerified, 'Gluten, Lait, Œufs');
 
 const emptyFormatted = formatAllergensList([]);
-assertEqual(emptyFormatted, 'Aucun allergène majeur détecté');
+assertEqual(emptyFormatted, 'Aucun allergène déclaré');
 
-console.log('✅ PASS : Formatage pour bouton "Copier les allergènes"');
+const formattedWithWarning = formatAllergensList(['gluten'], [
+  { name: 'Vanille liquide', reason: 'unspecified' },
+  { name: 'Poudre mystère', reason: 'unlinked' }
+]);
+assert(formattedWithWarning.includes('Gluten'), 'Doit inclure Gluten');
+assert(formattedWithWarning.includes('⚠️ Allergènes à vérifier pour : Vanille liquide (non renseigné), Poudre mystère (non lié au stock)'), 'Doit inclure l\'avertissement complet');
+
+console.log('✅ PASS : Formatage pour bouton "Copier les allergènes" avec inclusion des avertissements');
 console.log('Tous les tests allergens.ts ont réussi avec succès !');

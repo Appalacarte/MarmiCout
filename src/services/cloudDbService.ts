@@ -218,7 +218,7 @@ export class CloudDbService {
       photo: row.photo || undefined,
       unitWeightG: row.unit_weight_g != null ? Number(row.unit_weight_g) : undefined,
       densityGPerMl: row.density_g_per_ml != null ? Number(row.density_g_per_ml) : undefined,
-      allergens: Array.isArray(row.allergens) ? row.allergens : [],
+      allergens: Array.isArray(row.allergens) ? row.allergens : null,
     }));
     await indexedDbService.setAll('products', products);
     await indexedDbService.setLastSyncTimestamp();
@@ -251,7 +251,7 @@ export class CloudDbService {
       photo: product.photo || null,
       unit_weight_g: product.unitWeightG != null && Number.isFinite(product.unitWeightG) ? Number(product.unitWeightG) : null,
       density_g_per_ml: product.densityGPerMl != null && Number.isFinite(product.densityGPerMl) ? Number(product.densityGPerMl) : null,
-      allergens: Array.isArray(product.allergens) ? product.allergens : [],
+      allergens: Array.isArray(product.allergens) ? product.allergens : null,
     };
 
     const { error } = await supabase.from('marmicout_products').upsert(payload, { onConflict: 'id' });

@@ -15,7 +15,7 @@ export interface Product {
   photo?: string;
   unitWeightG?: number; // Poids d'une pièce, d'un sachet, d'un pot… en grammes (facultatif)
   densityGPerMl?: number; // Densité en g/ml (facultatif)
-  allergens?: string[]; // Liste des allergènes déclarables UE (facultatif)
+  allergens?: string[] | null; // null/undefined = non renseigné, [] = vérifié sans allergène, string[] = allergènes déclarés
 }
 
 export interface Purchase {

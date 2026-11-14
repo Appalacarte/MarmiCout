@@ -264,6 +264,7 @@ function App() {
             initialSelectedProductId={extra?.selectedProductId as string | undefined}
             initialEditProductId={extra?.editProductId as string | undefined}
             initialFocusEquivalence={Boolean(extra?.focusEquivalence)}
+            initialFocusAllergens={Boolean(extra?.focusAllergens)}
             onNavigate={handleNavigate}
           />
         );

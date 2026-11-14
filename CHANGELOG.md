@@ -4,6 +4,29 @@ Toutes les modifications notables apportées à ce projet sont documentées dans
 
 ---
 
+## [2.0.65] - 2026-11-14
+
+### Trois états allergènes produit (non renseigné, vérifié sans allergène, déclarés), filtre et alertes recettes
+- **Migration SQL Supabase (`supabase/migrations/20261114221500_add_product_allergens.sql`)** :
+  - Mise en accord avec l'application manuelle : `allergens TEXT[] NULL` sans `DEFAULT '{}'` (la colonne vaut `NULL` tant que le produit n'a pas été vérifié).
+- **Modèle et services de données (`src/types/index.ts`, `src/services/cloudDbService.ts`, `src/services/db.ts`)** :
+  - Support strict des 3 états pour un produit : `null`/`undefined` = « non renseigné » ; `[]` = « vérifié, aucun allergène » ; tableau non vide = allergènes déclarés.
+  - Sauvegarde et synchronisation Cloud Supabase préservant `null` sans jamais forcer un tableau vide par défaut.
+- **Formulaire Produit (`src/components/Products.tsx`)** :
+  - Ajout de la case à cocher « Aucun allergène (vérifié) » permettant d'enregistrer explicitement un tableau vide `[]`.
+  - Si aucune case n'est cochée (ni allergène, ni « Aucun allergène »), le produit reste « non renseigné » (`null`).
+  - La modification d'un produit pour une autre raison (ex: stock, prix, fournisseur) conserve intact cet état.
+  - Les suggestions d'après le nom sont présentées sous forme de bannière interactive mais ne sont jamais pré-cochées ni enregistrées automatiquement sans validation explicite de l'utilisateur.
+  - Filtre « ⚠️ Non renseignés » ajouté dans la barre de recherche et filtres de la liste des produits.
+- **Recettes & Alertes (`src/components/Recipes.tsx`, `src/utils/allergens.ts`)** :
+  - Le badge « Sans allergène » n'apparaît que si tous les ingrédients de la recette sont liés à des produits vérifiés sans allergènes.
+  - Dès qu'un produit est « non renseigné » ou qu'un ingrédient n'est pas lié au stock, affichage de l'alerte « ⚠️ Allergènes à vérifier » avec la liste précise des ingrédients concernés et un lien/bouton direct « Renseigner » ouvrant le produit.
+  - Le bouton « Copier les allergènes » inclut automatiquement le détail des avertissements « ⚠️ Allergènes à vérifier pour : ... » lorsque la recette n'est pas pleinement vérifiée.
+- **Tests unitaires (`src/utils/allergens.test.ts`)** :
+  - Couverture complète des 3 états de vérification produit, de la condition stricte du badge « Sans allergène », de la détection des produits non renseignés (`null` et `undefined`), et du formatage de copie avec avertissements.
+
+---
+
 ## [2.0.64] - 2026-11-14
 
 ### Gestion des 14 allergènes déclarables UE, calcul automatique et alertes recettes
