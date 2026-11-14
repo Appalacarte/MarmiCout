@@ -4,6 +4,21 @@ Toutes les modifications notables apportées à ce projet sont documentées dans
 
 ---
 
+## [2.0.49] - 2026-11-14
+
+### Sécurité SSO à Usage Unique, Suppression des QR Codes de Partage & Codes Testeurs Longs
+- **Échange de jeton SSO signé à usage unique (Clients payants)** :
+  - Dans [`src/components/MarmicoutAccessGate.tsx`](file:///d:/Aplli/Marmicout/Appli%20Marmicout/src/components/MarmicoutAccessGate.tsx) : détection du paramètre `?sso_token=...`, suppression immédiate de `sso_token` et de tout `code` résiduel de l'URL (`history.replaceState`), puis échange serveur sécurisé via `POST /api/auth/sso-exchange` contre une session Supabase.
+  - Dans [`src/services/db.ts`](file:///d:/Aplli/Marmicout/Appli%20Marmicout/src/services/db.ts) : `getActiveTesterCode()` renvoie désormais `null` pour tout client abonné (`pro`, `pro_cloud`, `essentiel`), supprimant l'indicateur « Espace Testeur ».
+  - Dans [`src/services/supabaseClient.ts`](file:///d:/Aplli/Marmicout/Appli%20Marmicout/src/services/supabaseClient.ts) : désactivation de `detectSessionInUrl` au profit de l'échange serveur par jeton signé à usage unique.
+- **Renforcement des codes testeurs (24 caractères aléatoires)** :
+  - Dans [`src/services/testerCodes.ts`](file:///d:/Aplli/Marmicout/Appli%20Marmicout/src/services/testerCodes.ts) : génération de codes aléatoires de 24 caractères (~117 bits d'entropie) sans biais de modulo via `crypto.getRandomValues`.
+  - Dans [`src/components/WelcomeScreen.tsx`](file:///d:/Aplli/Marmicout/Appli%20Marmicout/src/components/WelcomeScreen.tsx) : remplacement du code basé sur le prénom/surnom court par un jeton aléatoire de 24 caractères.
+- **Suppression des QR codes de partage** :
+  - Suppression des composants `QRCodePage.tsx`, `InviteQRCode.tsx`, des entrées de menu associées dans `App.tsx` et de la dépendance inutilisée `qrcode.react`.
+
+---
+
 ## [2.0.48] - 2026-11-11
 
 ### Sécurisation OCR Serveur, Distinction Forfait Cloud / Essentiel & Cache Local IndexedDB

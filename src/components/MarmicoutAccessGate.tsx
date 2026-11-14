@@ -36,9 +36,10 @@ export const MarmicoutAccessGate: React.FC<MarmicoutAccessGateProps> = ({ childr
   useEffect(() => {
     const handleOnline = () => setIsOffline(false);
     const handleOffline = () => setIsOffline(true);
-    const handleCloudError = (e: any) => {
-      if (e.detail) {
-        setCloudError(e.detail);
+    const handleCloudError = (e: Event) => {
+      const customEvt = e as CustomEvent<{ title: string; details: string; timestamp: number }>;
+      if (customEvt.detail) {
+        setCloudError(customEvt.detail);
       }
     };
     window.addEventListener('online', handleOnline);
@@ -52,45 +53,99 @@ export const MarmicoutAccessGate: React.FC<MarmicoutAccessGateProps> = ({ childr
   }, []);
 
   useEffect(() => {
-    // 1. Détection automatique du jeton de session dans l'URL si transmis lors du SSO
-    // SÉCURITÉ STRICTE : Uniquement actif en environnement local de développement (localhost / 127.0.0.1)
-    if (typeof window !== 'undefined') {
-      const isLocalHost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-      const hash = window.location.hash;
-      if (isLocalHost && hash && hash.includes('access_token=')) {
-        const params = new URLSearchParams(hash.replace('#', ''));
-        const accessToken = params.get('access_token');
-        const refreshToken = params.get('refresh_token');
-        if (accessToken) {
-          supabase.auth.setSession({
-            access_token: accessToken,
-            refresh_token: refreshToken || '',
-          }).then(() => {
-            // Nettoyage de l'ancre d'URL
-            window.history.replaceState(null, '', window.location.pathname + window.location.search);
-            accessVerificationService.verifyAccess();
-          });
-        }
-      }
-    }
+    let isMounted = true;
 
-    // 2. Abonnement au service de vérification
+    // 1. Abonnement au service de vérification
     const unsubscribe = accessVerificationService.subscribe((res) => {
+      if (!isMounted) return;
       setAccessState(res);
       setLoading(false);
-      if (res.hasAccess && (res.planCode === 'pro' || res.planCode === 'pro_cloud' || res.planCode === 'demo_14j' || res.status === 'demo' || res.status === 'demo_active')) {
+
+      // Si client payant authentifié, supprimer tout code testeur résiduel de l'URL
+      if (
+        res.hasAccess &&
+        (res.planCode === 'pro' || res.planCode === 'pro_cloud' || res.planCode === 'essentiel') &&
+        typeof window !== 'undefined'
+      ) {
+        const searchParams = new URLSearchParams(window.location.search);
+        if (searchParams.has('code') || searchParams.has('sso_token')) {
+          searchParams.delete('code');
+          searchParams.delete('sso_token');
+          const cleanSearch = searchParams.toString();
+          const newUrl =
+            window.location.pathname +
+            (cleanSearch ? `?${cleanSearch}` : '') +
+            window.location.hash;
+          window.history.replaceState(null, '', newUrl);
+        }
+      }
+
+      if (
+        res.hasAccess &&
+        (res.planCode === 'pro' ||
+          res.planCode === 'pro_cloud' ||
+          res.planCode === 'demo_14j' ||
+          res.status === 'demo' ||
+          res.status === 'demo_active')
+      ) {
         dbService.syncFromCloud().catch((err) => {
           console.error('[Marmicout] Erreur synchronisation initiale:', err);
         });
       }
     });
 
-    // 3. Lancement initial de la vérification
-    accessVerificationService.verifyAccess().finally(() => {
-      setLoading(false);
-    });
+    // 2. Échange du jeton signé à usage unique (sso_token) contre une session Supabase puis nettoyage immédiat de l'URL
+    async function initAccess() {
+      if (typeof window !== 'undefined') {
+        const searchParams = new URLSearchParams(window.location.search);
+        const ssoToken = searchParams.get('sso_token');
+
+        if (ssoToken) {
+          // Suppression immédiate du jeton signé et de tout code testeur dans l'URL
+          searchParams.delete('sso_token');
+          searchParams.delete('code');
+          const cleanSearch = searchParams.toString();
+          const cleanUrl =
+            window.location.pathname +
+            (cleanSearch ? `?${cleanSearch}` : '') +
+            window.location.hash;
+          window.history.replaceState(null, '', cleanUrl);
+
+          try {
+            const res = await fetch(`${APPALACARTE_URL}/api/auth/sso-exchange`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                ssoToken,
+                appSlug: 'marmicout-stock-restauration',
+              }),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (res.ok && data.success && data.access_token) {
+              await supabase.auth.setSession({
+                access_token: data.access_token,
+                refresh_token: data.refresh_token || '',
+              });
+            }
+          } catch (ssoErr) {
+            console.error('[Marmicout] Erreur échange jeton SSO:', ssoErr);
+          }
+        }
+      }
+
+      try {
+        await accessVerificationService.verifyAccess();
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
+      }
+    }
+
+    initAccess();
 
     return () => {
+      isMounted = false;
       unsubscribe();
     };
   }, []);

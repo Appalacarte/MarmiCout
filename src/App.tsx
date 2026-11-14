@@ -14,7 +14,6 @@ import {
   MessageSquare,
   FileText,
   Mail,
-  QrCode,
   ShieldCheck
 } from 'lucide-react';
 import './App.css'; // Nous allons vider ce fichier pour éviter les conflits
@@ -32,7 +31,6 @@ import { Drawer } from './components/Drawer';
 import { Suggestions } from './components/Suggestions';
 import { QuoteRequest } from './components/QuoteRequest';
 import { Contact } from './components/Contact';
-import { QRCodePage } from './components/QRCodePage';
 import { ExpiredScreen } from './components/ExpiredScreen';
 import { MentionsLegales } from './components/MentionsLegales';
 import { Confidentialite } from './components/Confidentialite';
@@ -44,7 +42,7 @@ import { dbService, getActiveTesterCode } from './services/db';
 import { markTesterCodeIssued, isTesterCodeExpired, getTesterCodeExpiryDate } from './services/testerCodes';
 import { APP_VERSION } from './version';
 
-type Tab = 'Dashboard' | 'Produits' | 'Achats' | 'Recettes' | 'Production' | 'Ventes' | 'Magasins' | 'Paramètres' | 'Suggestions' | 'Devis' | 'Contact' | 'QR Code' | 'Mentions Légales';
+type Tab = 'Dashboard' | 'Produits' | 'Achats' | 'Recettes' | 'Production' | 'Ventes' | 'Magasins' | 'Paramètres' | 'Suggestions' | 'Devis' | 'Contact' | 'Mentions Légales';
 
 type LegalRoute = '/mentions-legales' | '/confidentialite' | '/cgu';
 
@@ -100,7 +98,7 @@ const resolveCurrentRoute = (): RouteState => {
             window.history.replaceState(null, '', `/mentions-legales${cleanSearch}`);
             return { type: 'legal', path: '/mentions-legales' };
           }
-          const validTabs: Tab[] = ['Dashboard', 'Produits', 'Achats', 'Recettes', 'Production', 'Ventes', 'Magasins', 'Paramètres', 'Suggestions', 'Devis', 'Contact', 'QR Code', 'Mentions Légales'];
+          const validTabs: Tab[] = ['Dashboard', 'Produits', 'Achats', 'Recettes', 'Production', 'Ventes', 'Magasins', 'Paramètres', 'Suggestions', 'Devis', 'Contact', 'Mentions Légales'];
           const found = validTabs.find(t => t.toLowerCase() === decoded.toLowerCase());
           if (found) return { type: 'app', tab: found };
         }
@@ -113,7 +111,7 @@ const resolveCurrentRoute = (): RouteState => {
     if (window.location.hash) {
       const raw = window.location.hash.replace('#', '');
       const decoded = decodeURIComponent(raw).trim();
-      const validTabs: Tab[] = ['Dashboard', 'Produits', 'Achats', 'Recettes', 'Production', 'Ventes', 'Magasins', 'Paramètres', 'Suggestions', 'Devis', 'Contact', 'QR Code', 'Mentions Légales'];
+      const validTabs: Tab[] = ['Dashboard', 'Produits', 'Achats', 'Recettes', 'Production', 'Ventes', 'Magasins', 'Paramètres', 'Suggestions', 'Devis', 'Contact', 'Mentions Légales'];
       const found = validTabs.find(t => t.toLowerCase() === decoded.toLowerCase());
       if (found) return { type: 'app', tab: found };
     }
@@ -238,8 +236,7 @@ function App() {
     { id: 'Suggestions', label: 'Suggestions', icon: MessageSquare },
     { id: 'Devis', label: 'Demande de devis', icon: FileText },
     { id: 'Contact', label: 'Contact', icon: Mail },
-    { id: 'Mentions Légales', label: 'Mentions Légales', icon: ShieldCheck, path: '/mentions-legales' as const },
-    { id: 'QR Code', label: 'QR Code', icon: QrCode }
+    { id: 'Mentions Légales', label: 'Mentions Légales', icon: ShieldCheck, path: '/mentions-legales' as const }
   ];
 
   // Rendu de la vue active
@@ -286,8 +283,6 @@ function App() {
         return <Contact />;
       case 'Mentions Légales':
         return <MentionsLegales />;
-      case 'QR Code':
-        return <QRCodePage />;
       default:
         return <Dashboard onNavigate={handleNavigate} />;
     }
@@ -660,19 +655,6 @@ function App() {
             <ShieldCheck size={18} style={{ marginRight: '12px', color: 'var(--color-primary)' }} />
             Mentions Légales
           </button>
-
-          <button
-            className="btn btn-secondary"
-            style={{ height: '50px', justifyContent: 'flex-start', paddingLeft: '20px' }}
-            onClick={() => {
-              setIsMobileActionOpen(false);
-              handleNavigate('QR Code');
-            }}
-          >
-            <QrCode size={18} style={{ marginRight: '12px', color: 'var(--color-primary)' }} />
-            QR Code
-          </button>
-
           <button
             className="btn btn-danger"
             style={{ height: '44px', marginTop: '12px' }}

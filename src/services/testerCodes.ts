@@ -23,13 +23,30 @@ export interface InviteHistoryEntry {
   sharedAt: number;
 }
 
-// Alphabet sans caractères ambigus (0/O, 1/I/l).
+// Alphabet sans caractères ambigus (0/O, 1/I/l) — 30 caractères.
 const CODE_ALPHABET = 'abcdefghjkmnpqrstuvwxyz23456789';
+export const DEFAULT_TESTER_CODE_LENGTH = 24;
 
-function generateRandomCode(length = 8): string {
-  const values = new Uint32Array(length);
-  crypto.getRandomValues(values);
-  return Array.from(values, v => CODE_ALPHABET[v % CODE_ALPHABET.length]).join('');
+/**
+ * Génère un code testeur long (24 caractères par défaut, ~117 bits d'entropie)
+ * et cryptographiquement aléatoire sans biais de modulo.
+ */
+export function generateRandomCode(length = DEFAULT_TESTER_CODE_LENGTH): string {
+  const alphabetLen = CODE_ALPHABET.length;
+  const maxUnbiased = Math.floor(256 / alphabetLen) * alphabetLen; // 240
+  const result: string[] = [];
+
+  while (result.length < length) {
+    const bytes = new Uint8Array((length - result.length) * 2);
+    crypto.getRandomValues(bytes);
+    for (let i = 0; i < bytes.length && result.length < length; i++) {
+      if (bytes[i] < maxUnbiased) {
+        result.push(CODE_ALPHABET[bytes[i] % alphabetLen]);
+      }
+    }
+  }
+
+  return result.join('');
 }
 
 function createInvite(): PendingInvite {

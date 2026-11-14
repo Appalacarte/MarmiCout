@@ -8,7 +8,7 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: {
     persistSession: true,
     autoRefreshToken: true,
-    detectSessionInUrl: true, // Détecte automatiquement #access_token=... lors de la redirection SSO
+    detectSessionInUrl: false, // La session est échangée côté serveur via jeton signé à usage unique (/api/auth/sso-exchange)
     storageKey: 'marmicout_supabase_auth_token',
   },
 });

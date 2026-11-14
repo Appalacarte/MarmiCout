@@ -51,10 +51,19 @@ export function assertAccessKnown(): void {
   }
 }
 
-// Détection du code testeur dans l'URL (ex: ?code=cook1 ou ?code=michel)
+// Détection du code testeur dans l'URL (uniquement pour les utilisateurs non abonnés payants)
 const getTesterCode = (): string | null => {
   if (typeof window === 'undefined') return null;
   const params = new URLSearchParams(window.location.search);
+  if (params.has('sso_token')) return null;
+  const last = accessVerificationService.getLastResult();
+  if (
+    last &&
+    last.hasAccess &&
+    (last.planCode === 'pro' || last.planCode === 'pro_cloud' || last.planCode === 'essentiel')
+  ) {
+    return null;
+  }
   return params.get('code');
 };
 
@@ -75,7 +84,7 @@ const KEYS = {
   SETTINGS: `${prefix}marmicout_settings`
 };
 
-export const getActiveTesterCode = (): string | null => testerCode;
+export const getActiveTesterCode = (): string | null => getTesterCode();
 
 
 // --- LOGIQUE DE CONVERSION DES UNITES ---

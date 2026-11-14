@@ -1,9 +1,10 @@
 import React, { useState, useRef } from 'react';
-import { ChefHat, ArrowDown, Sparkles, CheckCircle2, ShieldCheck, Zap, Layers } from 'lucide-react';
+import { Sparkles, CheckCircle2, ShieldCheck, Zap } from 'lucide-react';
 import { APP_VERSION } from '../version';
 import { PricingSection } from './PricingSection';
 import { PlanId, BillingInterval } from '../config/pricing';
 import { subscriptionService } from '../services/subscriptionService';
+import { generateRandomCode } from '../services/testerCodes';
 
 /**
  * Page d'accueil / Landing Page MarmiCout
@@ -35,8 +36,11 @@ export const WelcomeScreen: React.FC = () => {
       subscriptionService.changePlan(planId, interval || 'year');
     }
 
+    // Génération d'un code testeur long (24 caractères) et cryptographiquement aléatoire
+    // au lieu d'utiliser directement le prénom/surnom court et devinable dans l'URL
+    const randomToken = generateRandomCode(24);
     const url = new URL(window.location.href);
-    url.searchParams.set('code', cleaned);
+    url.searchParams.set('code', randomToken);
     window.location.href = url.toString();
   };
 
