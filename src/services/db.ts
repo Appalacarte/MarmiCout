@@ -1548,16 +1548,16 @@ export const dbService = {
   // --- EXPORTATION ET IMPORTATION CSV (GOOGLE SHEETS COMPATIBLE) ---
   exportToCSV(tableName: keyof typeof KEYS): string {
     const dataMap: Record<keyof typeof KEYS, () => Record<string, unknown>[]> = {
-      PRODUCTS: () => this.getProducts() as unknown as Record<string, unknown>[],
-      PURCHASES: () => this.getPurchases() as unknown as Record<string, unknown>[],
-      STORES: () => this.getStores() as unknown as Record<string, unknown>[],
-      RECIPES: () => this.getRecipes() as unknown as Record<string, unknown>[],
-      RECIPE_INGREDIENTS: () => this.getAllRecipeIngredients() as unknown as Record<string, unknown>[],
-      RECIPE_PACKAGING: () => this.getAllRecipePackagings() as unknown as Record<string, unknown>[],
-      PRODUCTIONS: () => this.getProductions() as unknown as Record<string, unknown>[],
-      SALES: () => this.getSales() as unknown as Record<string, unknown>[],
-      STOCK_MOVEMENTS: () => this.getStockMovements() as unknown as Record<string, unknown>[],
-      SETTINGS: () => [this.getSettings() as unknown as Record<string, unknown>],
+      PRODUCTS: () => dbService.getProducts() as unknown as Record<string, unknown>[],
+      PURCHASES: () => dbService.getPurchases() as unknown as Record<string, unknown>[],
+      STORES: () => dbService.getStores() as unknown as Record<string, unknown>[],
+      RECIPES: () => dbService.getRecipes() as unknown as Record<string, unknown>[],
+      RECIPE_INGREDIENTS: () => dbService.getAllRecipeIngredients() as unknown as Record<string, unknown>[],
+      RECIPE_PACKAGING: () => dbService.getAllRecipePackagings() as unknown as Record<string, unknown>[],
+      PRODUCTIONS: () => dbService.getProductions() as unknown as Record<string, unknown>[],
+      SALES: () => dbService.getSales() as unknown as Record<string, unknown>[],
+      STOCK_MOVEMENTS: () => dbService.getStockMovements() as unknown as Record<string, unknown>[],
+      SETTINGS: () => [dbService.getSettings() as unknown as Record<string, unknown>],
     };
 
     const getter = dataMap[tableName];

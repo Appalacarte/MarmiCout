@@ -4,6 +4,19 @@ Toutes les modifications notables apportées à ce projet sont documentées dans
 
 ---
 
+## [2.0.58] - 2026-11-14
+
+### Connexion et Configuration Directes de Google Sheets dans la Carte de Synchronisation
+- **Saisie immédiate et intuitive ([`src/components/Settings.tsx`](file:///d:/Aplli/Marmicout/Appli%20Marmicout/src/components/Settings.tsx))** :
+  - Ajout d'un champ direct dans la carte « Synchronisation Google Sheets » permettant de coller le lien ou l'ID de son document et de cliquer sur « Connecter ».
+  - Activation immédiate des boutons « 🔄 Importer en direct de Google Sheets » et « 📤 Envoyer mes données vers Google Sheets » sans devoir chercher dans le formulaire de gauche.
+  - Possibilité de modifier ou déconnecter le Google Sheet en un clic via les boutons dédiés.
+  - Champ de saisie direct pour l'URL Web App Apps Script avec bouton « Enregistrer URL » pour l'export.
+- **Sécurisation de l'export CSV ([`src/services/db.ts`](file:///d:/Aplli/Marmicout/Appli%20Marmicout/src/services/db.ts))** :
+  - Référence stricte `dbService.` au lieu de `this.` dans `exportToCSV` pour garantir un fonctionnement sans faille lors de tout appel déstructuré.
+
+---
+
 ## [2.0.57] - 2026-11-14
 
 ### Suppression de l'ID Google Sheet en Dur, Import/Export Cloud & Annulation des Fabrications

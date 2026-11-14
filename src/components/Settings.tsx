@@ -83,6 +83,59 @@ export const Settings: React.FC<SettingsProps> = ({ initialSubTab = 'general' })
   const [unitsText, setUnitsText] = useState(settings.units.join('\n'));
   const [locationsText, setLocationsText] = useState(settings.salesLocations.join('\n'));
 
+  // État d'édition rapide de la configuration Google Sheets
+  const [isSavingConfig, setIsSavingConfig] = useState(false);
+  const [isEditingSheetConfig, setIsEditingSheetConfig] = useState(false);
+
+  // Enregistrer rapidement la configuration Google Sheets directement depuis la carte
+  const handleSaveGoogleSheetConfig = async () => {
+    setIsSavingConfig(true);
+    try {
+      const current = dbService.getSettings();
+      const updated: SettingsType = {
+        ...current,
+        googleSheetId: googleSheetId.trim(),
+        googleSheetLink: googleSheetLink.trim(),
+        googleWebAppUrl: googleWebAppUrl.trim()
+      };
+      await dbService.saveSettings(updated);
+      setSettings(updated);
+      setIsEditingSheetConfig(false);
+      setSyncStatus({ type: 'success', message: 'Configuration Google Sheets enregistrée avec succès ! Les boutons sont désormais actifs.' });
+      setTimeout(() => setSyncStatus({ type: null, message: '' }), 5000);
+    } catch (err: unknown) {
+      setSyncStatus({ type: 'error', message: (err as Error).message || "Erreur lors de l'enregistrement de la configuration." });
+    } finally {
+      setIsSavingConfig(false);
+    }
+  };
+
+  // Déconnecter le Google Sheet
+  const handleDisconnectGoogleSheet = async () => {
+    if (!window.confirm('Souhaitez-vous vraiment déconnecter ce document Google Sheets de MarmiCout ?')) {
+      return;
+    }
+    setIsSavingConfig(true);
+    try {
+      const current = dbService.getSettings();
+      const updated: SettingsType = {
+        ...current,
+        googleSheetId: '',
+        googleSheetLink: ''
+      };
+      await dbService.saveSettings(updated);
+      setGoogleSheetId('');
+      setGoogleSheetLink('');
+      setSettings(updated);
+      setIsEditingSheetConfig(false);
+      setSyncStatus({ type: null, message: '' });
+    } catch (err: unknown) {
+      setSyncStatus({ type: 'error', message: (err as Error).message || "Erreur lors de la déconnexion." });
+    } finally {
+      setIsSavingConfig(false);
+    }
+  };
+
   // Enregistrer les paramètres
   const handleSaveSettings = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -641,29 +694,119 @@ export const Settings: React.FC<SettingsProps> = ({ initialSubTab = 'general' })
             </p>
 
             {googleSheetId ? (
-              <div style={{ marginBottom: '16px', fontSize: '12px', wordBreak: 'break-all', padding: '10px', backgroundColor: 'var(--color-light)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border)' }}>
-                <strong>ID Google Sheet détecté :</strong> {googleSheetId}
-                <br />
-                <a href={googleSheetLink || `https://docs.google.com/spreadsheets/d/${googleSheetId}/edit`} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--color-primary)', textDecoration: 'underline', display: 'inline-block', marginTop: '4px' }}>
-                  Ouvrir votre document Google Sheets ↗
-                </a>
+              <div style={{ marginBottom: '16px', fontSize: '12px', padding: '12px', backgroundColor: 'var(--color-light)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
+                  <div>
+                    <div style={{ fontWeight: '700', color: 'var(--color-secondary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      ✅ Google Sheet connecté
+                    </div>
+                    <div style={{ wordBreak: 'break-all', marginTop: '4px' }}>
+                      <strong>ID :</strong> {googleSheetId}
+                    </div>
+                    <a href={googleSheetLink || `https://docs.google.com/spreadsheets/d/${googleSheetId}/edit`} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--color-primary)', textDecoration: 'underline', display: 'inline-block', marginTop: '4px' }}>
+                      Ouvrir votre document Google Sheets ↗
+                    </a>
+                  </div>
+                  <div style={{ display: 'flex', gap: '6px' }}>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      style={{ padding: '4px 8px', fontSize: '11px' }}
+                      onClick={() => setIsEditingSheetConfig(!isEditingSheetConfig)}
+                    >
+                      {isEditingSheetConfig ? 'Fermer' : 'Modifier'}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      style={{ padding: '4px 8px', fontSize: '11px', color: 'var(--color-danger)' }}
+                      onClick={handleDisconnectGoogleSheet}
+                    >
+                      Déconnecter
+                    </button>
+                  </div>
+                </div>
+
+                {isEditingSheetConfig && (
+                  <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid var(--color-border)' }}>
+                    <label style={{ fontSize: '11px', fontWeight: '600', display: 'block', marginBottom: '4px' }}>
+                      Nouveau lien ou ID de votre Google Sheet :
+                    </label>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <input
+                        type="text"
+                        className="form-input"
+                        style={{ flex: 1, fontSize: '12px' }}
+                        placeholder="https://docs.google.com/spreadsheets/d/.../edit"
+                        value={googleSheetLink}
+                        onChange={(e) => {
+                          setGoogleSheetLink(e.target.value);
+                          const match = e.target.value.match(/\/d\/([a-zA-Z0-9-_]+)/);
+                          if (match && match[1]) {
+                            setGoogleSheetId(match[1]);
+                          } else if (!e.target.value.includes('/')) {
+                            setGoogleSheetId(e.target.value.trim());
+                          }
+                        }}
+                      />
+                      <button
+                        type="button"
+                        className="btn btn-primary"
+                        style={{ fontSize: '11px', whiteSpace: 'nowrap' }}
+                        onClick={handleSaveGoogleSheetConfig}
+                        disabled={isSavingConfig || (!googleSheetLink.trim() && !googleSheetId.trim())}
+                      >
+                        {isSavingConfig ? 'Enregistrement...' : 'Enregistrer'}
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             ) : (
               <div style={{
                 marginBottom: '16px',
                 fontSize: '12px',
-                padding: '12px 14px',
+                padding: '14px',
                 backgroundColor: 'rgba(234, 179, 8, 0.08)',
                 border: '1px solid rgba(234, 179, 8, 0.35)',
                 borderRadius: 'var(--radius-sm)',
-                color: '#854d0e',
                 lineHeight: '1.4'
               }}>
-                <div style={{ fontWeight: '600', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <div style={{ fontWeight: '700', marginBottom: '6px', color: '#854d0e', display: 'flex', alignItems: 'center', gap: '6px' }}>
                   ℹ️ Aucun Google Sheet configuré
                 </div>
-                <div>
-                  Pour synchroniser vos données avec Google Sheets, collez le lien de votre document dans le formulaire « Paramètres généraux » à gauche.
+                <p style={{ color: 'var(--color-dark)', marginBottom: '10px' }}>
+                  Collez le lien ou l'identifiant de votre Google Sheet ci-dessous pour activer immédiatement l'import et l'export :
+                </p>
+                <div style={{ display: 'flex', gap: '8px', marginBottom: '6px' }}>
+                  <input
+                    type="text"
+                    className="form-input"
+                    style={{ flex: 1, fontSize: '12px', backgroundColor: 'var(--color-white)' }}
+                    placeholder="https://docs.google.com/spreadsheets/d/.../edit"
+                    value={googleSheetLink}
+                    onChange={(e) => {
+                      setGoogleSheetLink(e.target.value);
+                      const match = e.target.value.match(/\/d\/([a-zA-Z0-9-_]+)/);
+                      if (match && match[1]) {
+                        setGoogleSheetId(match[1]);
+                      } else if (!e.target.value.includes('/')) {
+                        setGoogleSheetId(e.target.value.trim());
+                      }
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    style={{ fontSize: '12px', whiteSpace: 'nowrap' }}
+                    onClick={handleSaveGoogleSheetConfig}
+                    disabled={isSavingConfig || (!googleSheetLink.trim() && !googleSheetId.trim())}
+                  >
+                    {isSavingConfig ? 'Connexion...' : 'Connecter'}
+                  </button>
+                </div>
+                <div style={{ fontSize: '11px', color: 'var(--color-dark-light)' }}>
+                  💡 Assurez-vous que le document Google Sheets est partagé en « Tous les utilisateurs disposant du lien peuvent lire ».
                 </div>
               </div>
             )}
@@ -756,11 +899,35 @@ export const Settings: React.FC<SettingsProps> = ({ initialSubTab = 'general' })
               )}
             </button>
 
-            {!googleWebAppUrl && (
-              <div style={{ fontSize: '11px', color: 'var(--color-dark-light)', marginTop: '8px', fontStyle: 'italic' }}>
-                💡 Pour activer l'envoi direct, renseignez l'URL de votre Web App Apps Script dans le formulaire de gauche.
+            <div style={{ marginTop: '12px', paddingTop: '10px', borderTop: '1px solid var(--color-border)' }}>
+              <label style={{ fontSize: '11px', fontWeight: '600', display: 'block', marginBottom: '4px', color: 'var(--color-dark)' }}>
+                URL Web App Apps Script (requise pour l&apos;envoi vers Sheets) :
+              </label>
+              <div style={{ display: 'flex', gap: '8px', marginBottom: '4px' }}>
+                <input
+                  type="text"
+                  className="form-input"
+                  style={{ flex: 1, fontSize: '11px' }}
+                  placeholder="https://script.google.com/macros/s/.../exec"
+                  value={googleWebAppUrl}
+                  onChange={(e) => setGoogleWebAppUrl(e.target.value)}
+                />
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  style={{ fontSize: '11px', whiteSpace: 'nowrap' }}
+                  onClick={handleSaveGoogleSheetConfig}
+                  disabled={isSavingConfig || !googleWebAppUrl.trim()}
+                >
+                  {isSavingConfig ? '...' : 'Enregistrer URL'}
+                </button>
               </div>
-            )}
+              {!googleWebAppUrl && (
+                <span style={{ fontSize: '11px', color: 'var(--color-dark-light)', fontStyle: 'italic', display: 'block', marginTop: '2px' }}>
+                  💡 Requis pour pouvoir pousser automatiquement vos données de MarmiCout vers votre Google Sheet.
+                </span>
+              )}
+            </div>
           </div>
 
           {/* Section Exporter */}
