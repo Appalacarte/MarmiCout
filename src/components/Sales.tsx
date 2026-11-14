@@ -11,7 +11,7 @@ import {
   List
 } from 'lucide-react';
 import { dbService } from '../services/db';
-import { normalizeUnit } from '../utils/units';
+import { normalizeUnit, cleanProductName, formatStock } from '../utils/units';
 import { Product, Recipe, Sale } from '../types';
 import { Drawer } from './Drawer';
 
@@ -587,7 +587,7 @@ export const Sales: React.FC<SalesProps> = ({ initialTriggerAdd }) => {
                 <select className="form-input" required value={formItemId} onChange={(e) => setFormItemId(e.target.value)}>
                   <option value="" disabled>Choisir un ingrédient brut...</option>
                   {products.map(p => (
-                    <option key={p.id} value={p.id}>{p.name} (Format: {p.format} - Stock: {p.stock} {p.unit})</option>
+                    <option key={p.id} value={p.id}>{cleanProductName(p.name)} (Format: {p.format} - Stock: {formatStock(p.stock)} {p.unit})</option>
                   ))}
                 </select>
               )

@@ -16,7 +16,13 @@ import {
 } from 'lucide-react';
 import { Recipe, Production, Product } from '../types';
 import { dbService } from '../services/db';
-import { convertUnitsWithInfo, normalizeUnit } from '../utils/units';
+import {
+  convertUnitsWithInfo,
+  normalizeUnit,
+  cleanProductName,
+  formatStock,
+  getLogicalStockUnit,
+} from '../utils/units';
 import { generateUUID } from '../services/cloudDbService';
 
 interface RecipeSelection {
@@ -72,6 +78,14 @@ export const ShoppingListDrawer: React.FC<ShoppingListDrawerProps> = ({
   const [showAvailable, setShowAvailable] = useState(false);
   const [refreshTick, setRefreshTick] = useState(0);
   const [quickAddError, setQuickAddError] = useState<string | null>(null);
+
+  // Modal de confirmation de création rapide d'un produit
+  const [quickAddModal, setQuickAddModal] = useState<{
+    isOpen: boolean;
+    name: string;
+    unit: string;
+    item: ShoppingItem;
+  } | null>(null);
 
   // États du flux cuisine
   type CookState = 'idle' | 'confirming' | 'done';
@@ -214,16 +228,38 @@ export const ShoppingListDrawer: React.FC<ShoppingListDrawerProps> = ({
     return { toOrderItems, availableItems, incompatibleItems, totalEstimatedCost, hasApproximateCost };
   }, [selections, refreshTick]);
 
-  // --- Créer le produit et relier l'ingrédient ---
-  const handleAddUnlinkedToProducts = async (item: ShoppingItem) => {
+  // --- Ouvrir le modal de confirmation d'ajout rapide ---
+  const handleOpenAddModal = (item: ShoppingItem) => {
+    const cleaned = cleanProductName(item.productName);
+    const stockUnit = getLogicalStockUnit(item.productUnit);
+    setQuickAddModal({
+      isOpen: true,
+      name: cleaned,
+      unit: stockUnit,
+      item
+    });
+  };
+
+  // --- Confirmer la création du produit et relier l'ingrédient ---
+  const handleConfirmQuickAdd = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!quickAddModal) return;
+    const item = quickAddModal.item;
     if (!item.unlinkedRefs || item.unlinkedRefs.length === 0) return;
+    const finalName = cleanProductName(quickAddModal.name).trim();
+    if (!finalName) {
+      alert("Le nom du produit ne peut pas être vide.");
+      return;
+    }
+    const finalUnit = quickAddModal.unit || 'kg';
     const stores = dbService.getStores();
+
     const newProduct: Product = {
       id: generateUUID(),
       barcode: '',
-      name: item.productName.trim() || 'Ingrédient',
+      name: finalName,
       category: settings.categories[0] || 'Épicerie',
-      unit: item.productUnit || settings.units[0] || 'kg',
+      unit: finalUnit,
       brand: '',
       format: 'Unité',
       stock: 0,
@@ -272,6 +308,7 @@ export const ShoppingListDrawer: React.FC<ShoppingListDrawerProps> = ({
 
       setRefreshTick(t => t + 1);
       onDataChanged?.();
+      setQuickAddModal(null);
     } catch (err: unknown) {
       console.error('Erreur lors de la création rapide du produit:', err);
       setQuickAddError(err instanceof Error ? err.message : "Échec de l'ajout du produit à vos stocks.");
@@ -607,7 +644,7 @@ export const ShoppingListDrawer: React.FC<ShoppingListDrawerProps> = ({
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginBottom: '2px' }}>
                           <span style={{ fontWeight: '700', fontSize: '14px', color: 'var(--color-dark)' }}>
-                            {item.productName}
+                            {cleanProductName(item.productName)}
                           </span>
                           {item.isUnlinked && (
                             <button
@@ -621,7 +658,7 @@ export const ShoppingListDrawer: React.FC<ShoppingListDrawerProps> = ({
                                 alignItems: 'center',
                                 gap: '3px'
                               }}
-                              onClick={() => void handleAddUnlinkedToProducts(item)}
+                              onClick={() => handleOpenAddModal(item)}
                             >
                               <Plus size={11} />
                               Ajouter à mes produits
@@ -629,7 +666,7 @@ export const ShoppingListDrawer: React.FC<ShoppingListDrawerProps> = ({
                           )}
                         </div>
                         <div style={{ fontSize: '11px', color: 'var(--color-dark-light)' }}>
-                          Besoin : {item.isApproximate ? '≈ ' : ''}{item.needed} {item.productUnit} • {item.isUnlinked ? 'Non suivi en stock' : `Stock : ${item.inStock} ${item.productUnit}`} • {item.avgPurchasePrice.toFixed(2)} {settings.currency}/{item.productUnit}
+                          Besoin : {item.isApproximate ? '≈ ' : ''}{formatStock(item.needed)} {item.productUnit} • {item.isUnlinked ? 'Non suivi en stock' : `Stock : ${formatStock(item.inStock)} ${item.productUnit}`} • {item.avgPurchasePrice.toFixed(2)} {settings.currency}/{item.productUnit}
                         </div>
                         {item.fromRecipes.length > 0 && (
                           <div style={{ fontSize: '10px', color: 'var(--color-dark-light)', marginTop: '2px' }}>
@@ -639,7 +676,7 @@ export const ShoppingListDrawer: React.FC<ShoppingListDrawerProps> = ({
                       </div>
                       <div style={{ textAlign: 'right', flexShrink: 0 }}>
                         <div style={{ fontWeight: '700', fontSize: '15px', color: 'var(--color-danger)' }}>
-                          {item.isApproximate ? '≈ ' : ''}{item.toOrder} {item.productUnit}
+                          {item.isApproximate ? '≈ ' : ''}{formatStock(item.toOrder)} {item.productUnit}
                         </div>
                         {item.estimatedCost > 0 && (
                           <div style={{ fontSize: '11px', color: 'var(--color-dark-light)' }}>
@@ -696,10 +733,10 @@ export const ShoppingListDrawer: React.FC<ShoppingListDrawerProps> = ({
                       >
                         <div>
                           <span style={{ fontWeight: '600', fontSize: '13px', color: 'var(--color-dark)' }}>
-                            ✅ {item.productName}
+                            ✅ {cleanProductName(item.productName)}
                           </span>
                           <div style={{ fontSize: '10px', color: 'var(--color-dark-light)', marginTop: '2px' }}>
-                            Besoin : {item.needed} {item.productUnit} • Stock : {item.inStock} {item.productUnit}
+                            Besoin : {formatStock(item.needed)} {item.productUnit} • Stock : {formatStock(item.inStock)} {item.productUnit}
                           </div>
                         </div>
                         <span style={{ fontSize: '11px', color: 'var(--color-secondary)', fontWeight: '600' }}>
@@ -926,6 +963,74 @@ export const ShoppingListDrawer: React.FC<ShoppingListDrawerProps> = ({
           )}
         </div>
       </div>
+
+      {/* Modal de confirmation d'ajout rapide à mes produits */}
+      {quickAddModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 10000,
+          padding: '16px'
+        }}>
+          <div className="card" style={{ maxWidth: '420px', width: '100%', backgroundColor: '#fff', borderRadius: 'var(--radius-lg)', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.2)', padding: '24px' }}>
+            <h3 style={{ fontSize: '16px', fontWeight: '700', marginBottom: '8px' }}>
+              Ajouter à mes produits
+            </h3>
+            <p style={{ fontSize: '13px', color: 'var(--color-dark-light)', marginBottom: '16px' }}>
+              Vérifiez le nom et l'unité de stock de ce produit avant sa création :
+            </p>
+
+            <form onSubmit={handleConfirmQuickAdd}>
+              <div className="form-group" style={{ marginBottom: '12px' }}>
+                <label className="form-label" style={{ fontSize: '12px', fontWeight: '600' }}>Nom du produit *</label>
+                <input
+                  type="text"
+                  className="form-input"
+                  required
+                  value={quickAddModal.name}
+                  onChange={(e) => setQuickAddModal({ ...quickAddModal, name: e.target.value })}
+                />
+              </div>
+
+              <div className="form-group" style={{ marginBottom: '20px' }}>
+                <label className="form-label" style={{ fontSize: '12px', fontWeight: '600' }}>Unité de gestion du stock *</label>
+                <select
+                  className="form-input"
+                  value={quickAddModal.unit}
+                  onChange={(e) => setQuickAddModal({ ...quickAddModal, unit: e.target.value })}
+                >
+                  {settings.units.map(u => (
+                    <option key={u} value={u}>{u}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setQuickAddModal(null)}
+                >
+                  Annuler
+                </button>
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                >
+                  Créer le produit
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </>
   );
 };

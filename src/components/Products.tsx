@@ -19,6 +19,12 @@ import { Drawer } from './Drawer';
 import { BarcodeScanner } from './BarcodeScanner';
 import { LookupResult } from '../services/barcodeLookupService';
 import { InvoiceScanner } from './InvoiceScanner';
+import {
+  cleanProductName,
+  formatStock,
+  areUnitsCompatible,
+  convertProductUnitValues,
+} from '../utils/units';
 
 interface ProductsProps {
   initialTriggerAdd?: boolean;
@@ -48,6 +54,7 @@ export const Products: React.FC<ProductsProps> = ({ initialTriggerAdd, onNavigat
   const [isSaving, setIsSaving] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [editingProductHasPurchases, setEditingProductHasPurchases] = useState(false);
+  const [isUnitReset, setIsUnitReset] = useState(false);
 
   // Valeurs du formulaire
   const [formBarcode, setFormBarcode] = useState('');
@@ -110,6 +117,7 @@ export const Products: React.FC<ProductsProps> = ({ initialTriggerAdd, onNavigat
   const handleOpenAddForm = () => {
     setEditingProduct(null);
     setEditingProductHasPurchases(false);
+    setIsUnitReset(false);
     setSaveError(null);
     setDeleteDialogState({ isOpen: false, canHardDelete: true, usageReasons: [] });
     setFormBarcode('');
@@ -148,6 +156,7 @@ export const Products: React.FC<ProductsProps> = ({ initialTriggerAdd, onNavigat
     const hasPurchases = dbService.getProductPurchaseHistory(prod.id).length > 0;
     setEditingProduct(prod);
     setEditingProductHasPurchases(hasPurchases);
+    setIsUnitReset(false);
     setSaveError(null);
     setDeleteDialogState({ isOpen: false, canHardDelete: true, usageReasons: [] });
     setFormBarcode(prod.barcode);
@@ -163,6 +172,64 @@ export const Products: React.FC<ProductsProps> = ({ initialTriggerAdd, onNavigat
     setFormNotes(prod.notes);
     setFormIsActive(prod.isActive);
     setIsFormOpen(true);
+  };
+
+  // Gestion du changement d'unité en édition (conversion automatique si compatible, confirmation si incompatible)
+  const handleUnitChange = (newUnit: string) => {
+    const oldUnit = formUnit;
+    if (!oldUnit || oldUnit === newUnit) {
+      setFormUnit(newUnit);
+      return;
+    }
+
+    if (editingProduct) {
+      const isCompatible = areUnitsCompatible(oldUnit, newUnit);
+
+      if (isCompatible) {
+        const curStock = parseDecimalInput(formStock);
+        const curMinStock = parseDecimalInput(formMinStock);
+        const curAvgPrice = parseDecimalInput(formAvgPrice);
+
+        const conv = convertProductUnitValues(
+          oldUnit,
+          newUnit,
+          curStock,
+          curMinStock,
+          curAvgPrice
+        );
+
+        if (conv) {
+          if (conv.stock !== null) {
+            setFormStock(conv.stock.toString());
+          }
+          if (conv.minStockAlert !== null) {
+            setFormMinStock(conv.minStockAlert.toString());
+          }
+          if (conv.avgPurchasePrice !== null) {
+            setFormAvgPrice(conv.avgPurchasePrice.toString());
+          }
+        }
+        setFormUnit(newUnit);
+      } else {
+        const confirmed = window.confirm(
+          `L'unité "${newUnit}" n'est pas compatible avec l'unité actuelle "${oldUnit}".\n\n` +
+          `Le stock actuel, le seuil d'alerte et le prix moyen ne peuvent pas être convertis automatiquement et devront être ressaisis.\n\n` +
+          `Voulez-vous vraiment changer l'unité ?`
+        );
+
+        if (!confirmed) {
+          return;
+        }
+
+        setFormUnit(newUnit);
+        setFormStock('');
+        setFormMinStock('');
+        setFormAvgPrice('');
+        setIsUnitReset(true);
+      }
+    } else {
+      setFormUnit(newUnit);
+    }
   };
 
   // Ouvrir le panneau de détails
@@ -336,7 +403,7 @@ export const Products: React.FC<ProductsProps> = ({ initialTriggerAdd, onNavigat
     const updatedProduct: Product = {
       id: editingProduct ? editingProduct.id : generateUUID(),
       barcode: formBarcode.trim(),
-      name: formName.trim(),
+      name: cleanProductName(formName),
       category: formCategory,
       unit: formUnit,
       brand: formBrand.trim(),
@@ -362,6 +429,16 @@ export const Products: React.FC<ProductsProps> = ({ initialTriggerAdd, onNavigat
           type: 'AJUSTEMENT',
           refId: 'MANUAL',
           notes: 'Stock initial renseigné à la création'
+        });
+      } else if (editingProduct && editingProduct.unit !== formUnit) {
+        await dbService.addStockMovement({
+          id: generateUUID(),
+          date: new Date().toISOString().split('T')[0],
+          productId: updatedProduct.id,
+          qty: 0,
+          type: 'AJUSTEMENT',
+          refId: 'MANUAL',
+          notes: `Changement d'unité de ${editingProduct.unit} vers ${formUnit} (stock : ${stockNum} ${formUnit})`
         });
       }
       
@@ -549,7 +626,7 @@ export const Products: React.FC<ProductsProps> = ({ initialTriggerAdd, onNavigat
                   >
                     <td data-label="Produit">
                       <div style={{ display: 'flex', flexDirection: 'column' }}>
-                        <span style={{ fontWeight: '600' }}>{p.name}</span>
+                        <span style={{ fontWeight: '600' }}>{cleanProductName(p.name)}</span>
                         <span style={{ fontSize: '11px', color: 'var(--color-dark-light)' }}>
                           {p.brand ? `${p.brand} • ` : ''}{p.format}
                           {p.barcode ? ` • Code: ${p.barcode}` : ''}
@@ -563,11 +640,11 @@ export const Products: React.FC<ProductsProps> = ({ initialTriggerAdd, onNavigat
                     </td>
                     <td data-label="Stock Actuel">
                       <span className={`badge ${p.stock === 0 ? 'badge-danger' : isLowStock ? 'badge-warning' : 'badge-success'}`}>
-                        {p.stock.toFixed(2)} {p.unit}
+                        {formatStock(p.stock)} {p.unit}
                       </span>
                     </td>
                     <td data-label="Seuil Alerte">
-                      {p.minStockAlert} {p.unit}
+                      {formatStock(p.minStockAlert)} {p.unit}
                     </td>
                     <td data-label="Prix d'Achat Moyen">
                       {p.avgPurchasePrice.toFixed(2)} {settings.currency}/{p.unit}
@@ -777,7 +854,7 @@ export const Products: React.FC<ProductsProps> = ({ initialTriggerAdd, onNavigat
 
             <div className="form-group">
               <label className="form-label">Unité de gestion du stock *</label>
-              <select className="form-input" value={formUnit} onChange={(e) => setFormUnit(e.target.value)}>
+              <select className="form-input" value={formUnit} onChange={(e) => handleUnitChange(e.target.value)}>
                 {settings.units.map(u => (
                   <option key={u} value={u}>{u}</option>
                 ))}
@@ -799,9 +876,9 @@ export const Products: React.FC<ProductsProps> = ({ initialTriggerAdd, onNavigat
                   value={formStock}
                   placeholder="0"
                   onChange={(e) => setFormStock(e.target.value)}
-                  disabled={editingProduct !== null} // Désactivé en édition (doit passer par Achat ou Ajustement)
+                  disabled={editingProduct !== null && !isUnitReset}
                 />
-                {editingProduct && (
+                {editingProduct && !isUnitReset && (
                   <button
                     type="button"
                     className="btn btn-secondary"
@@ -813,9 +890,14 @@ export const Products: React.FC<ProductsProps> = ({ initialTriggerAdd, onNavigat
                   </button>
                 )}
               </div>
-              {editingProduct && (
+              {editingProduct && !isUnitReset && (
                 <div style={{ marginTop: '4px', fontSize: '11px', color: 'var(--color-dark-light)' }}>
                   Le stock se modifie par un achat ou par “Corriger le stock”
+                </div>
+              )}
+              {isUnitReset && (
+                <div style={{ marginTop: '4px', fontSize: '11px', color: 'var(--color-primary)', fontWeight: '600' }}>
+                  ⚠️ Unité modifiée vers une unité incompatible : veuillez saisir le nouveau stock.
                 </div>
               )}
             </div>
@@ -843,9 +925,13 @@ export const Products: React.FC<ProductsProps> = ({ initialTriggerAdd, onNavigat
                 value={formAvgPrice}
                 placeholder="0.00"
                 onChange={(e) => setFormAvgPrice(e.target.value)}
-                disabled={editingProduct !== null && editingProductHasPurchases}
+                disabled={editingProduct !== null && editingProductHasPurchases && !isUnitReset}
               />
-              {editingProduct && (
+              {isUnitReset ? (
+                <div style={{ marginTop: '4px', fontSize: '11px', color: 'var(--color-primary)', fontWeight: '600' }}>
+                  ⚠️ Veuillez saisir le nouveau prix d'achat moyen par {formUnit}.
+                </div>
+              ) : editingProduct && (
                 <div style={{ marginTop: '4px', fontSize: '11px', color: 'var(--color-dark-light)' }}>
                   Calculé automatiquement à partir de vos achats
                 </div>
@@ -922,7 +1008,7 @@ export const Products: React.FC<ProductsProps> = ({ initialTriggerAdd, onNavigat
                   Code : {selectedProductDetails.barcode || 'Aucun'}
                 </span>
               </div>
-              <h2 style={{ fontSize: '20px', fontWeight: '700', marginBottom: '4px' }}>{selectedProductDetails.name}</h2>
+              <h2 style={{ fontSize: '20px', fontWeight: '700', marginBottom: '4px' }}>{cleanProductName(selectedProductDetails.name)}</h2>
               <p style={{ color: 'var(--color-dark-light)', fontSize: '14px', marginBottom: '16px' }}>
                 Marque: {selectedProductDetails.brand || 'Non spécifiée'} • Format: {selectedProductDetails.format}
               </p>
@@ -931,7 +1017,7 @@ export const Products: React.FC<ProductsProps> = ({ initialTriggerAdd, onNavigat
                 <div style={{ padding: '12px', backgroundColor: 'var(--color-light)', borderRadius: 'var(--radius-md)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: '8px' }}>
                   <div>
                     <div style={{ fontSize: '11px', color: 'var(--color-dark-light)' }}>Stock actuel</div>
-                    <strong style={{ fontSize: '18px' }}>{selectedProductDetails.stock.toFixed(2)} {selectedProductDetails.unit}</strong>
+                    <strong style={{ fontSize: '18px' }}>{formatStock(selectedProductDetails.stock)} {selectedProductDetails.unit}</strong>
                   </div>
                   <button
                     type="button"
@@ -1045,7 +1131,7 @@ export const Products: React.FC<ProductsProps> = ({ initialTriggerAdd, onNavigat
 
       {/* --- DRAWER DE CORRECTION DE STOCK --- */}
       <Drawer
-        title={stockCorrectionTarget ? `Corriger le stock — ${stockCorrectionTarget.name}` : "Corriger le stock"}
+        title={stockCorrectionTarget ? `Corriger le stock — ${cleanProductName(stockCorrectionTarget.name)}` : "Corriger le stock"}
         isOpen={stockCorrectionTarget !== null}
         onClose={() => {
           if (!isSubmittingCorrection) {

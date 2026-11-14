@@ -8,6 +8,7 @@ import {
   areUnitsCompatible,
   formatQtyFr,
   getUnitFamily,
+  cleanProductName,
 } from '../utils/units';
 import mammoth from 'mammoth';
 
@@ -759,7 +760,7 @@ export const RecipeScanner: React.FC<RecipeScannerProps> = ({ onClose, onSave, p
                         >
                           <option value="">-- Laisser non lié (Achat à part) --</option>
                           {products.map(p => (
-                            <option key={p.id} value={p.id}>{p.name} ({p.avgPurchasePrice.toFixed(2).replace('.', ',')} {settings.currency}/{normalizeUnit(p.unit) || p.unit})</option>
+                            <option key={p.id} value={p.id}>{cleanProductName(p.name)} ({p.avgPurchasePrice.toFixed(2).replace('.', ',')} {settings.currency}/{normalizeUnit(p.unit) || p.unit})</option>
                           ))}
                         </select>
 

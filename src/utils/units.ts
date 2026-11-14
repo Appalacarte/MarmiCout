@@ -392,3 +392,126 @@ export function formatQtyFr(qty: number): string {
   const rounded = Math.round(qty * 1000) / 1000;
   return rounded.toLocaleString('fr-FR', { maximumFractionDigits: 3 });
 }
+
+/**
+ * Affiche une quantité de stock lisible : pas plus de 2 décimales, sans zéros superflus.
+ */
+export function formatStock(stock: number | undefined | null): string {
+  if (stock === undefined || stock === null || !Number.isFinite(stock)) return '0';
+  const rounded = Math.round(stock * 100) / 100;
+  return rounded.toLocaleString('fr-FR', { maximumFractionDigits: 2 });
+}
+
+/**
+ * Retire les suffixes d'unités ou de préparation entre parenthèses d'un nom de produit
+ * (ex: "Farine (g)" -> "Farine", "Persil (cs)" -> "Persil", "Oignon (haché)" -> "Oignon").
+ */
+export function cleanProductName(name: string | undefined | null): string {
+  if (!name) return '';
+  let cleaned = name.trim();
+
+  // 1. Remplacer les parenthèses d'unités ou préparations connues n'importe où
+  const unitOrPrepRegex = /\s*\((?:g|kg|mg|l|cl|dl|ml|cs|cc|c\.?\s*[àa]\s*s\.?|c\.?\s*[àa]\s*c\.?|pi[èe]ces?|sachets?|pots?|bouteilles?|bo[îi]tes?|hach[ée]e?s?|r[âa]p[ée]e?s?|morceaux|en morceaux|en d[ée]s|entier|entiers|pel[ée]e?s?|crus?|cuits?|fra[iî]s|fra[iî]che)\)\s*/gi;
+  cleaned = cleaned.replace(unitOrPrepRegex, ' ');
+
+  // 2. Si le nom se termine par une parenthèse (ex: suffixe résiduel en fin de chaîne), le retirer
+  cleaned = cleaned.replace(/\s*\([^)]*\)\s*$/g, '');
+
+  // 3. Nettoyer les espaces multiples et la ponctuation finale (virgule, tiret)
+  cleaned = cleaned.replace(/\s+/g, ' ').replace(/[,;:\s-]+$/, '').trim();
+
+  return cleaned || name.trim();
+}
+
+/**
+ * Détermine l'unité de stock logique pour la création rapide :
+ * - g ou kg donne kg
+ * - ml, cl, l, cs ou cc donne l
+ * - sinon pièce
+ */
+export function getLogicalStockUnit(inputUnit: string | undefined | null): string {
+  const norm = normalizeUnit(inputUnit);
+  if (norm === 'g' || norm === 'kg' || norm === 'mg') {
+    return 'kg';
+  }
+  if (
+    norm === 'ml' ||
+    norm === 'cl' ||
+    norm === 'dl' ||
+    norm === 'l' ||
+    norm === 'cs' ||
+    norm === 'cc'
+  ) {
+    return 'l';
+  }
+  return 'pièce';
+}
+
+/**
+ * Propose les unités d'achat compatibles avec l'unité du produit :
+ * - Produit en kg : ['kg', 'g']
+ * - Produit en l : ['l', 'cl', 'ml']
+ * - Produit à la pièce : son unité seule (ex: ['pièce'])
+ * Avec l'unité du produit sélectionnée par défaut (en tête de liste).
+ */
+export function getCompatiblePurchaseUnits(productUnit: string | undefined | null): string[] {
+  const norm = normalizeUnit(productUnit);
+  if (!norm) return ['pièce'];
+
+  if (norm === 'kg') return ['kg', 'g'];
+  if (norm === 'g') return ['g', 'kg'];
+  if (norm === 'mg') return ['mg', 'g', 'kg'];
+
+  if (norm === 'l') return ['l', 'cl', 'ml'];
+  if (norm === 'cl') return ['cl', 'l', 'ml'];
+  if (norm === 'ml') return ['ml', 'cl', 'l'];
+  if (norm === 'dl') return ['dl', 'l', 'cl', 'ml'];
+
+  const family = getUnitFamily(norm);
+  if (family === 'mass') {
+    return [norm, 'kg', 'g'].filter((u, i, arr) => arr.indexOf(u) === i);
+  }
+  if (family === 'volume') {
+    return [norm, 'l', 'cl', 'ml'].filter((u, i, arr) => arr.indexOf(u) === i);
+  }
+
+  return [productUnit?.trim() || norm];
+}
+
+export interface ConvertedProductValues {
+  stock: number | null;
+  minStockAlert: number | null;
+  avgPurchasePrice: number | null;
+}
+
+/**
+ * Convertit automatiquement le stock, le seuil d'alerte et le prix moyen
+ * lors d'un changement d'unité compatible (ex: g -> kg, ml -> l).
+ * Renvoie null si les unités sont incompatibles.
+ */
+export function convertProductUnitValues(
+  oldUnit: string,
+  newUnit: string,
+  stock: number,
+  minStockAlert: number,
+  avgPurchasePrice: number
+): ConvertedProductValues | null {
+  if (!areUnitsCompatible(oldUnit, newUnit)) {
+    return null;
+  }
+
+  const newStock = convertUnits(stock, oldUnit, newUnit);
+  const newMinStock = convertUnits(minStockAlert, oldUnit, newUnit);
+
+  // Facteur pour le prix : 1 [newUnit] = factor * [oldUnit]
+  // Ex: 1 kg = 1000 g -> prix au kg = (prix au g) * 1000
+  // Ex: 1 g = 0.001 kg -> prix au g = (prix au kg) * 0.001
+  const factor = convertUnits(1, newUnit, oldUnit);
+  const newPrice = factor !== null ? avgPurchasePrice * factor : null;
+
+  return {
+    stock: newStock,
+    minStockAlert: newMinStock,
+    avgPurchasePrice: newPrice !== null ? Number(newPrice.toFixed(4)) : null,
+  };
+}

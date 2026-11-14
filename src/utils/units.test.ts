@@ -5,6 +5,11 @@ import {
   convertUnitsWithInfo,
   areUnitsCompatible,
   ensureRequiredUnits,
+  cleanProductName,
+  getLogicalStockUnit,
+  getCompatiblePurchaseUnits,
+  formatStock,
+  convertProductUnitValues,
 } from './units.ts';
 
 function assertEqual<T>(actual: T, expected: T, message?: string): void {
@@ -118,6 +123,86 @@ const tests: TestCase[] = [
       const updated = ensureRequiredUnits(['kg', 'g', 'l', 'pièce']);
       assertEqual(updated.includes('cs'), true);
       assertEqual(updated.includes('cc'), true);
+    },
+  },
+  {
+    name: 'cleanProductName : retire suffixes (g), (cs), (haché) et parenthèses',
+    fn: () => {
+      assertEqual(cleanProductName('Farine de blé (g)'), 'Farine de blé');
+      assertEqual(cleanProductName('Persil (cs)'), 'Persil');
+      assertEqual(cleanProductName('Oignon (haché)'), 'Oignon');
+      assertEqual(cleanProductName('Carottes (râpées)'), 'Carottes');
+      assertEqual(cleanProductName('Lait demi-écrémé (l)'), 'Lait demi-écrémé');
+      assertEqual(cleanProductName('Pommes (kg)'), 'Pommes');
+      assertEqual(cleanProductName('Basilic (c. à s.)'), 'Basilic');
+      assertEqual(cleanProductName('Beurre doux'), 'Beurre doux');
+    },
+  },
+  {
+    name: 'getLogicalStockUnit : g/kg -> kg, ml/cl/l/cs/cc -> l, sinon pièce',
+    fn: () => {
+      assertEqual(getLogicalStockUnit('g'), 'kg');
+      assertEqual(getLogicalStockUnit('kg'), 'kg');
+      assertEqual(getLogicalStockUnit('mg'), 'kg');
+      assertEqual(getLogicalStockUnit('ml'), 'l');
+      assertEqual(getLogicalStockUnit('cl'), 'l');
+      assertEqual(getLogicalStockUnit('l'), 'l');
+      assertEqual(getLogicalStockUnit('cs'), 'l');
+      assertEqual(getLogicalStockUnit('cc'), 'l');
+      assertEqual(getLogicalStockUnit('pièce'), 'pièce');
+      assertEqual(getLogicalStockUnit('sachet'), 'pièce');
+      assertEqual(getLogicalStockUnit(undefined), 'pièce');
+    },
+  },
+  {
+    name: 'getCompatiblePurchaseUnits : kg -> [kg, g], l -> [l, cl, ml], pièce -> [pièce]',
+    fn: () => {
+      const massUnits = getCompatiblePurchaseUnits('kg');
+      assertEqual(massUnits.length, 2);
+      assertEqual(massUnits[0], 'kg');
+      assertEqual(massUnits[1], 'g');
+
+      const volUnits = getCompatiblePurchaseUnits('l');
+      assertEqual(volUnits.length, 3);
+      assertEqual(volUnits[0], 'l');
+      assertEqual(volUnits[1], 'cl');
+      assertEqual(volUnits[2], 'ml');
+
+      const pieceUnits = getCompatiblePurchaseUnits('pièce');
+      assertEqual(pieceUnits.length, 1);
+      assertEqual(pieceUnits[0], 'pièce');
+    },
+  },
+  {
+    name: 'formatStock : max 2 décimales sans zéros superflus',
+    fn: () => {
+      assertEqual(formatStock(10), '10');
+      assertEqual(formatStock(1.5), '1,5');
+      assertEqual(formatStock(1.25), '1,25');
+      assertEqual(formatStock(4.1234), '4,12');
+      assertEqual(formatStock(0), '0');
+    },
+  },
+  {
+    name: 'convertProductUnitValues : conversion stock, seuil et prix compatible ou null si incompatible',
+    fn: () => {
+      // 4 g à 0.02 €/g convertis vers kg (seuil 500 g)
+      const toKg = convertProductUnitValues('g', 'kg', 4, 500, 0.02);
+      assertEqual(toKg !== null, true);
+      assertEqual(toKg?.stock, 0.004); // 4 g -> 0.004 kg
+      assertEqual(toKg?.minStockAlert, 0.5); // 500 g -> 0.5 kg
+      assertEqual(toKg?.avgPurchasePrice, 20); // 0.02 €/g * 1000 = 20 €/kg
+
+      // 2 kg à 10 €/kg convertis vers g
+      const toG = convertProductUnitValues('kg', 'g', 2, 1, 10);
+      assertEqual(toG !== null, true);
+      assertEqual(toG?.stock, 2000);
+      assertEqual(toG?.minStockAlert, 1000);
+      assertEqual(toG?.avgPurchasePrice, 0.01);
+
+      // Incompatible : g vers pièce
+      const incompatible = convertProductUnitValues('g', 'pièce', 4, 500, 0.02);
+      assertEqual(incompatible, null);
     },
   },
 ];

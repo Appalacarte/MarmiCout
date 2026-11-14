@@ -4,6 +4,32 @@ Toutes les modifications notables apportées à ce projet sont documentées dans
 
 ---
 
+## [2.0.55] - 2026-11-14
+
+### Unités Compatibles aux Achats, Création Rapide Produit avec Confirmation, Conversion en Édition & Lisibilité des Stocks
+- **Formulaire « Nouvel Achat » ([`src/components/Purchases.tsx`](file:///d:/Aplli/Marmicout/Appli%20Marmicout/src/components/Purchases.tsx))** :
+  - Remplacement de l'unité fixe par un menu déroulant d'unités compatibles avec le produit sélectionné (`kg` : `kg`, `g` ; `l` : `l`, `cl`, `ml` ; comptage/pièce : unité seule), sélectionnée par défaut sur l'unité du produit.
+  - Ajout en temps réel sous le prix unitaire calculé de la ligne `« soit X €/[unité du stock] »` lorsque l'unité d'achat sélectionnée diffère de l'unité de stock.
+  - Conservation de la conversion automatique de quantité par `dbService.addPurchase` vers l'unité de stock, garantissant la justesse du stock et du prix moyen pondéré (PMP).
+- **Scanner de Factures ([`src/components/InvoiceScanner.tsx`](file:///d:/Aplli/Marmicout/Appli%20Marmicout/src/components/InvoiceScanner.tsx))** :
+  - Menu déroulant d'unités compatibles sur chaque ligne d'article détectée.
+  - Affichage sous le prix unitaire de la ligne `« soit X €/[unité du stock] »` lorsque l'unité d'achat diffère de l'unité du produit lié.
+  - Création automatique des nouveaux articles (`productId === 'NEW'`) avec nom nettoyé et unité de stock logique.
+- **Création Rapide « + Ajouter à mes produits » ([`src/components/Recipes.tsx`](file:///d:/Aplli/Marmicout/Appli%20Marmicout/src/components/Recipes.tsx) et [`src/components/ShoppingListDrawer.tsx`](file:///d:/Aplli/Marmicout/Appli%20Marmicout/src/components/ShoppingListDrawer.tsx))** :
+  - Nettoyage automatique des noms de produits (`cleanProductName`) retirant les suffixes entre parenthèses (`(g)`, `(cs)`, `(cc)`, `(haché)`, `(râpé)`, etc.).
+  - Détermination de l'unité de stock logique (`getLogicalStockUnit`) : `g` ou `kg` donne `kg` ; `ml`, `cl`, `l`, `cs` ou `cc` donne `l` ; sinon `pièce`.
+  - Affichage préalable d'une boîte de dialogue de confirmation avec le nom et l'unité de stock modifiables avant création et liaison.
+- **Formulaire d'Édition Produit ([`src/components/Products.tsx`](file:///d:/Aplli/Marmicout/Appli%20Marmicout/src/components/Products.tsx))** :
+  - En cas de changement vers une unité compatible (ex: `g` vers `kg`, `ml` vers `l`) : conversion automatique instantanée du stock actuel (ex: 4 g → 0,004 kg), du seuil d'alerte et du prix d'achat moyen (ex: un prix au g devient un prix au kg via le facteur de conversion).
+  - En cas de changement vers une unité incompatible (ex: `g` vers `pièce`) : demande explicite de confirmation avertissant que le stock et le prix ne peuvent pas être convertis automatiquement et doivent être ressaisis, avec déverrouillage des champs.
+- **Lisibilité Générale des Produits et Stocks** :
+  - Affichage du stock avec un nombre lisible plafonné à 2 décimales (`formatStock`, ex: `10`, `1,5`, `1,25`, sans zéros inutiles).
+  - Nettoyage systématique des suffixes d'unités dans les noms de produits sur l'ensemble des listes, menus déroulants et tableaux ([`Products.tsx`](file:///d:/Aplli/Marmicout/Appli%20Marmicout/src/components/Products.tsx), [`Purchases.tsx`](file:///d:/Aplli/Marmicout/Appli%20Marmicout/src/components/Purchases.tsx), [`Recipes.tsx`](file:///d:/Aplli/Marmicout/Appli%20Marmicout/src/components/Recipes.tsx), [`ShoppingListDrawer.tsx`](file:///d:/Aplli/Marmicout/Appli%20Marmicout/src/components/ShoppingListDrawer.tsx), [`Sales.tsx`](file:///d:/Aplli/Marmicout/Appli%20Marmicout/src/components/Sales.tsx), [`Dashboard.tsx`](file:///d:/Aplli/Marmicout/Appli%20Marmicout/src/components/Dashboard.tsx), [`RecipeScanner.tsx`](file:///d:/Aplli/Marmicout/Appli%20Marmicout/src/components/RecipeScanner.tsx)).
+- **Tests Automatisés ([`src/utils/units.test.ts`](file:///d:/Aplli/Marmicout/Appli%20Marmicout/src/utils/units.test.ts))** :
+  - Extension de la suite de tests (14/14 tests réussis) couvrant `cleanProductName`, `getLogicalStockUnit`, `getCompatiblePurchaseUnits`, `formatStock` et `convertProductUnitValues`.
+
+---
+
 ## [2.0.54] - 2026-11-14
 
 ### Refonte Complète de la Conversion d'Unités (`src/utils/units.ts`), Cuillères (`cs` / `cc`), Contrôle d'Incompatibilité & Détail des Prix

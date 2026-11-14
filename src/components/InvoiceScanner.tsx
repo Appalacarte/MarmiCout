@@ -8,6 +8,14 @@ import { Product, Purchase, Store, Settings } from '../types';
 import { dbService } from '../services/db';
 import { subscriptionService } from '../services/subscriptionService';
 import { getAccessToken } from '../services/supabaseClient';
+import {
+  cleanProductName,
+  formatStock,
+  getCompatiblePurchaseUnits,
+  getLogicalStockUnit,
+  normalizeUnit,
+  convertUnits,
+} from '../utils/units';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 
@@ -635,9 +643,13 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({ onClose, onSave,
     
     // Si on change de produit, on récupère son unité de mesure par défaut
     if (field === 'productId' && value !== '') {
-      const prod = products.find(p => p.id === value);
-      if (prod) {
-        updated[index].unit = prod.unit;
+      if (value === 'NEW') {
+        updated[index].unit = getLogicalStockUnit(updated[index].unit);
+      } else {
+        const prod = products.find(p => p.id === value);
+        if (prod) {
+          updated[index].unit = prod.unit;
+        }
       }
     }
     setExtractedItems(updated);
@@ -673,12 +685,14 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({ onClose, onSave,
       
       // Création automatique des nouveaux produits dans le stock
       if (finalProductId === 'NEW') {
+        const cleanName = cleanProductName(item.name);
+        const logicalStockUnit = getLogicalStockUnit(item.unit);
         const newProd: Product = {
           id: 'P_' + Date.now() + Math.floor(Math.random() * 1000),
           barcode: '',
-          name: item.name,
+          name: cleanName || 'Nouvel article',
           category: settings.categories[0] || 'Autre',
-          unit: item.unit || 'pièce',
+          unit: logicalStockUnit,
           brand: '',
           format: 'Unité',
           stock: 0,
@@ -903,6 +917,23 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({ onClose, onSave,
               <tbody>
                 {extractedItems.map((item, idx) => {
                   const lineTotal = item.qty * item.unitPrice;
+                  const linkedProduct = products.find(p => p.id === item.productId);
+                  const normItemUnit = normalizeUnit(item.unit) || item.unit;
+                  const normProdUnit = linkedProduct ? (normalizeUnit(linkedProduct.unit) || linkedProduct.unit) : '';
+                  const isDiffUnit = Boolean(linkedProduct && normItemUnit !== normProdUnit);
+
+                  let pricePerStockUnit: number | null = null;
+                  if (isDiffUnit && linkedProduct && item.qty > 0 && lineTotal > 0) {
+                    const qtyInStock = convertUnits(item.qty, item.unit, linkedProduct.unit);
+                    if (qtyInStock !== null && qtyInStock > 0) {
+                      pricePerStockUnit = lineTotal / qtyInStock;
+                    }
+                  }
+
+                  const rowCompatibleUnits = linkedProduct
+                    ? getCompatiblePurchaseUnits(linkedProduct.unit)
+                    : (item.productId === 'NEW' ? ['kg', 'g', 'l', 'cl', 'ml', 'pièce'] : [item.unit || 'pièce']);
+
                   return (
                     <tr key={idx} style={{ borderBottom: '1px solid var(--color-border)', backgroundColor: idx % 2 === 0 ? 'var(--color-light)' : 'transparent' }}>
                       <td style={{ padding: '6px' }}>
@@ -915,14 +946,27 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({ onClose, onSave,
                         />
                       </td>
                       <td style={{ padding: '6px' }}>
-                        <input
-                          type="number"
-                          step="any"
-                          className="form-input"
-                          style={{ height: '30px', fontSize: '12px', padding: '0 4px', textAlign: 'right' }}
-                          value={item.qty}
-                          onChange={e => handleRowChange(idx, 'qty', parseDecimalInput(e.target.value))}
-                        />
+                        <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                          <input
+                            type="number"
+                            step="any"
+                            className="form-input"
+                            style={{ height: '30px', fontSize: '12px', padding: '0 4px', textAlign: 'right', width: '55px' }}
+                            value={item.qty}
+                            onChange={e => handleRowChange(idx, 'qty', parseDecimalInput(e.target.value))}
+                          />
+                          <select
+                            className="form-input"
+                            style={{ height: '30px', fontSize: '11px', padding: '0 2px', width: '55px' }}
+                            value={item.unit}
+                            onChange={e => handleRowChange(idx, 'unit', e.target.value)}
+                            title="Unité d'achat"
+                          >
+                            {rowCompatibleUnits.map(u => (
+                              <option key={u} value={u}>{u}</option>
+                            ))}
+                          </select>
+                        </div>
                       </td>
                       <td style={{ padding: '6px' }}>
                         <input
@@ -933,6 +977,11 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({ onClose, onSave,
                           value={item.unitPrice}
                           onChange={e => handleRowChange(idx, 'unitPrice', parseDecimalInput(e.target.value))}
                         />
+                        {isDiffUnit && pricePerStockUnit !== null && (
+                          <div style={{ fontSize: '10px', color: 'var(--color-primary)', fontWeight: '600', marginTop: '2px', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                            soit {pricePerStockUnit.toFixed(2)} €/{normProdUnit}
+                          </div>
+                        )}
                       </td>
                       <td style={{ padding: '6px', textAlign: 'right', fontWeight: 'bold' }}>
                         {lineTotal.toFixed(2)} €
@@ -949,7 +998,7 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({ onClose, onSave,
                             <option value="NEW">➕ Créer comme nouveau produit au stock</option>
                             {products.map(p => (
                               <option key={p.id} value={p.id}>
-                                {p.name} ({p.unit})
+                                {cleanProductName(p.name)} ({p.unit} - Stock: {formatStock(p.stock)})
                               </option>
                             ))}
                           </select>

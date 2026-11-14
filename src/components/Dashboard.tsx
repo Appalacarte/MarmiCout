@@ -10,6 +10,7 @@ import {
   Plus
 } from 'lucide-react';
 import { dbService } from '../services/db';
+import { cleanProductName, formatStock } from '../utils/units';
 
 interface DashboardProps {
   onNavigate: (tab: string, extraData?: Record<string, unknown>) => void;
@@ -252,7 +253,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
                       style={{ cursor: 'pointer' }}
                       onClick={() => onNavigate('Achats', { prefillProductId: p.id })}
                     >
-                      {p.name} ({p.stock} {p.unit} restants) + Réapprovisionner
+                      {cleanProductName(p.name)} ({formatStock(p.stock)} {p.unit} restants) + Réapprovisionner
                     </span>
                   ))}
                 </div>

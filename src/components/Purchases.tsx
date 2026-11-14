@@ -10,7 +10,15 @@ import {
   FileText
 } from 'lucide-react';
 import { dbService } from '../services/db';
-import { convertUnitsWithInfo, normalizeUnit } from '../utils/units';
+import { 
+  convertUnits, 
+  convertUnitsWithInfo, 
+  normalizeUnit, 
+  cleanProductName, 
+  formatStock, 
+  getCompatiblePurchaseUnits, 
+  getLogicalStockUnit 
+} from '../utils/units';
 import { Product, Purchase, Store } from '../types';
 import { Drawer } from './Drawer';
 import { BarcodeScanner } from './BarcodeScanner';
@@ -129,7 +137,7 @@ export const Purchases: React.FC<PurchasesProps> = ({ initialTriggerScan, initia
     } else if (result.state === 'external_found' && result.externalProduct) {
       // Produit trouvé à l'externe : préremplir le Drawer de création rapide
       setQuickBarcode(result.externalProduct.barcode);
-      setQuickName(result.externalProduct.name);
+      setQuickName(cleanProductName(result.externalProduct.name));
       setQuickBrand(result.externalProduct.brand);
       setQuickFormat(result.externalProduct.format);
       
@@ -143,7 +151,7 @@ export const Purchases: React.FC<PurchasesProps> = ({ initialTriggerScan, initia
         if (matched) category = matched;
       }
       setQuickCategory(category);
-      setQuickUnit(settings.units[0] || 'kg');
+      setQuickUnit(getLogicalStockUnit(result.externalProduct.format || 'kg'));
       setIsQuickProductOpen(true);
     } else {
       // Produit non répertorié ou erreur réseau : préremplir uniquement le code-barres
@@ -168,7 +176,7 @@ export const Purchases: React.FC<PurchasesProps> = ({ initialTriggerScan, initia
     const newProd: Product = {
       id: 'P_' + Date.now(),
       barcode: quickBarcode,
-      name: quickName.trim(),
+      name: cleanProductName(quickName),
       category: quickCategory,
       unit: quickUnit,
       brand: quickBrand.trim(),
@@ -265,6 +273,23 @@ export const Purchases: React.FC<PurchasesProps> = ({ initialTriggerScan, initia
   const pricePaidNum = parseDecimalInput(formPricePaid);
   const calculatedUnitPrice = qtyNum > 0 ? (pricePaidNum / qtyNum).toFixed(2) : '0.00';
 
+  const selectedProduct = products.find(p => p.id === formProductId);
+  const compatiblePurchaseUnits = selectedProduct
+    ? getCompatiblePurchaseUnits(selectedProduct.unit)
+    : [formUnit || 'kg'];
+
+  const normFormUnit = normalizeUnit(formUnit) || formUnit;
+  const normProdStockUnit = selectedProduct ? (normalizeUnit(selectedProduct.unit) || selectedProduct.unit) : '';
+  const isUnitDifferent = Boolean(selectedProduct && normFormUnit !== normProdStockUnit);
+
+  let pricePerStockUnit: number | null = null;
+  if (isUnitDifferent && selectedProduct && qtyNum > 0 && pricePaidNum > 0) {
+    const qtyInStockUnit = convertUnits(qtyNum, formUnit, selectedProduct.unit);
+    if (qtyInStockUnit !== null && qtyInStockUnit > 0) {
+      pricePerStockUnit = pricePaidNum / qtyInStockUnit;
+    }
+  }
+
   return (
     <div>
       {/* En-tête */}
@@ -330,7 +355,7 @@ export const Purchases: React.FC<PurchasesProps> = ({ initialTriggerScan, initia
                       </div>
                     </td>
                     <td data-label="Produit" style={{ fontWeight: '600' }}>
-                      {prod ? prod.name : 'Produit inconnu'}
+                      {prod ? cleanProductName(prod.name) : 'Produit inconnu'}
                       {p.batchNo && (
                         <div style={{ fontSize: '10px', color: 'var(--color-dark-light)', fontWeight: 'normal' }}>
                           Lot: {p.batchNo} {p.expiryDate ? `• DLUO: ${p.expiryDate}` : ''}
@@ -453,7 +478,7 @@ export const Purchases: React.FC<PurchasesProps> = ({ initialTriggerScan, initia
             <select className="form-input" required value={formProductId} onChange={(e) => setFormProductId(e.target.value)}>
               <option value="" disabled>Sélectionner un produit...</option>
               {products.map(p => (
-                <option key={p.id} value={p.id}>{p.name} ({p.brand || 'Sans marque'} - Stock: {p.stock} {p.unit})</option>
+                <option key={p.id} value={p.id}>{cleanProductName(p.name)} ({p.brand || 'Sans marque'} - Stock: {formatStock(p.stock)} {p.unit})</option>
               ))}
             </select>
           </div>
@@ -472,9 +497,17 @@ export const Purchases: React.FC<PurchasesProps> = ({ initialTriggerScan, initia
                   value={formQty}
                   onChange={(e) => setFormQty(e.target.value)}
                 />
-                <span className="form-input" style={{ width: '70px', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'var(--color-light)', border: '1px solid var(--color-border)' }}>
-                  {formUnit}
-                </span>
+                <select
+                  className="form-input"
+                  style={{ width: '90px' }}
+                  value={formUnit}
+                  onChange={(e) => setFormUnit(e.target.value)}
+                  title="Unité d'achat"
+                >
+                  {compatiblePurchaseUnits.map(u => (
+                    <option key={u} value={u}>{u}</option>
+                  ))}
+                </select>
               </div>
             </div>
 
@@ -493,9 +526,17 @@ export const Purchases: React.FC<PurchasesProps> = ({ initialTriggerScan, initia
           </div>
 
           {/* Prix unitaire calculé en temps réel */}
-          <div style={{ padding: '10px 14px', backgroundColor: 'var(--color-light)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border)', display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: '16px' }}>
-            <span style={{ color: 'var(--color-dark-light)' }}>Prix unitaire calculé :</span>
-            <strong>{calculatedUnitPrice} {settings.currency}/{normalizeUnit(formUnit) || formUnit}</strong>
+          <div style={{ padding: '10px 14px', backgroundColor: 'var(--color-light)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border)', display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '13px', marginBottom: '16px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ color: 'var(--color-dark-light)' }}>Prix unitaire calculé :</span>
+              <strong>{calculatedUnitPrice} {settings.currency}/{normFormUnit}</strong>
+            </div>
+            {isUnitDifferent && pricePerStockUnit !== null && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--color-primary)', fontWeight: '600', borderTop: '1px dashed var(--color-border)', paddingTop: '4px', marginTop: '2px' }}>
+                <span>Équivalent unité du stock :</span>
+                <span>soit {pricePerStockUnit.toFixed(2)} {settings.currency}/{normProdStockUnit}</span>
+              </div>
+            )}
           </div>
 
           <div className="form-row">

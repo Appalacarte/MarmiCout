@@ -25,6 +25,9 @@ import {
   normalizeUnit,
   areUnitsCompatible,
   formatQtyFr,
+  cleanProductName,
+  formatStock,
+  getLogicalStockUnit,
 } from '../utils/units';
 import { generateUUID } from '../services/cloudDbService';
 import { Product, Recipe, RecipeIngredient, RecipePackaging, Production } from '../types';
@@ -91,6 +94,17 @@ export const Recipes: React.FC<RecipesProps> = ({ initialTriggerAdd, initialView
   const [detailCookResult, setDetailCookResult] = useState<'idle' | 'success' | 'error'>('idle');
   const [detailCookError, setDetailCookError] = useState('');
   const [quickProductError, setQuickProductError] = useState<string | null>(null);
+
+  // État du modal de confirmation de création rapide d'un produit
+  const [quickAddModal, setQuickAddModal] = useState<{
+    isOpen: boolean;
+    name: string;
+    unit: string;
+    cost: number;
+    source: 'details' | 'form';
+    recipeIngredient?: RecipeIngredient;
+    formIndex?: number;
+  } | null>(null);
 
   // États de la Liste de courses (sélection de recettes pour prestation)
   const [planningSelections, setPlanningSelections] = useState<Map<string, number>>(new Map());
@@ -221,98 +235,120 @@ export const Recipes: React.FC<RecipesProps> = ({ initialTriggerAdd, initialView
     return () => window.removeEventListener('marmicout-data-synced', handleDataSynced);
   }, [selectedRecipeDetails]);
 
-  // Créer un produit depuis un ingrédient non lié dans le détail de la recette et relier l'ingrédient
-  const handleAddIngredientToProductsFromDetails = async (ri: RecipeIngredient) => {
-    if (!selectedRecipeDetails) return;
-    const stores = dbService.getStores();
-    const newProduct: Product = {
-      id: generateUUID(),
-      barcode: '',
-      name: (ri.customName || 'Ingrédient').trim(),
-      category: settings.categories[0] || 'Épicerie',
-      unit: ri.unit || settings.units[0] || 'kg',
-      brand: '',
-      format: 'Unité',
-      stock: 0,
-      minStockAlert: settings.defaultMinStockAlert,
-      avgPurchasePrice: Number((ri.customCostPerUnit || 0).toFixed(4)),
-      mainStoreId: stores[0]?.id || '',
-      notes: '',
-      isActive: true
-    };
-
-    try {
-      setQuickProductError(null);
-      await dbService.saveProduct(newProduct);
-
-      const ings = dbService.getRecipeIngredients(selectedRecipeDetails.id).map(({ id, recipeId: _rId, ...rest }) => {
-        void _rId;
-        if (id === ri.id) {
-          return {
-            ...rest,
-            productId: newProduct.id,
-            customName: undefined,
-            customCostPerUnit: undefined
-          };
-        }
-        return rest;
-      });
-      const packs = dbService.getRecipePackagings(selectedRecipeDetails.id).map(({ id: _id, recipeId: _rId, ...rest }) => {
-        void _id;
-        void _rId;
-        return rest;
-      });
-
-      await dbService.saveRecipe(selectedRecipeDetails, ings, packs);
-      loadData();
-      const updatedRecipe = dbService.getRecipe(selectedRecipeDetails.id) || selectedRecipeDetails;
-      const costInfo = dbService.calculateRecipeCost(updatedRecipe.id);
-      setSelectedRecipeDetails(updatedRecipe);
-      setDetailsIngredients(dbService.getRecipeIngredients(updatedRecipe.id));
-      setDetailsPackagings(dbService.getRecipePackagings(updatedRecipe.id));
-      setDetailsCost(costInfo);
-    } catch (err: unknown) {
-      console.error('Erreur lors de la création rapide du produit:', err);
-      setQuickProductError(err instanceof Error ? err.message : "Échec de l'ajout du produit à vos stocks.");
-    }
+  // Préparer l'ajout d'un ingrédient non lié dans le détail de la recette (avec confirmation préalable)
+  const handleOpenAddIngredientFromDetails = (ri: RecipeIngredient) => {
+    const rawName = ri.customName || 'Ingrédient';
+    const cleaned = cleanProductName(rawName);
+    const stockUnit = getLogicalStockUnit(ri.unit);
+    setQuickAddModal({
+      isOpen: true,
+      name: cleaned,
+      unit: stockUnit,
+      cost: ri.customCostPerUnit || 0,
+      source: 'details',
+      recipeIngredient: ri
+    });
   };
 
-  // Créer un produit depuis un ingrédient non lié dans le formulaire de recette et relier l'ingrédient
-  const handleAddIngredientToProductsFromForm = async (index: number) => {
+  // Préparer l'ajout d'un ingrédient non lié dans le formulaire de recette (avec confirmation préalable)
+  const handleOpenAddIngredientFromForm = (index: number) => {
     const ing = formIngredients[index];
     if (!ing) return;
+    const rawName = ing.customName || 'Ingrédient';
+    const cleaned = cleanProductName(rawName);
+    const stockUnit = getLogicalStockUnit(ing.unit);
+    setQuickAddModal({
+      isOpen: true,
+      name: cleaned,
+      unit: stockUnit,
+      cost: ing.customCostPerUnit || 0,
+      source: 'form',
+      formIndex: index
+    });
+  };
+
+  // Confirmer la création rapide du produit et relier l'ingrédient
+  const handleConfirmQuickAdd = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!quickAddModal) return;
+    const finalName = cleanProductName(quickAddModal.name).trim();
+    if (!finalName) {
+      alert("Le nom du produit ne peut pas être vide.");
+      return;
+    }
+    const finalUnit = quickAddModal.unit || 'kg';
     const stores = dbService.getStores();
+
     const newProduct: Product = {
       id: generateUUID(),
       barcode: '',
-      name: (ing.customName || 'Ingrédient').trim(),
+      name: finalName,
       category: settings.categories[0] || 'Épicerie',
-      unit: ing.unit || settings.units[0] || 'kg',
+      unit: finalUnit,
       brand: '',
       format: 'Unité',
       stock: 0,
       minStockAlert: settings.defaultMinStockAlert,
-      avgPurchasePrice: Number((ing.customCostPerUnit || 0).toFixed(4)),
+      avgPurchasePrice: Number((quickAddModal.cost || 0).toFixed(4)),
       mainStoreId: stores[0]?.id || '',
       notes: '',
       isActive: true
     };
 
     try {
-      setSaveError(null);
-      await dbService.saveProduct(newProduct);
-      loadData();
-      const updated = [...formIngredients];
-      updated[index] = {
-        ...updated[index],
-        productId: newProduct.id,
-        customName: undefined,
-        customCostPerUnit: undefined
-      };
-      setFormIngredients(updated);
+      if (quickAddModal.source === 'details' && quickAddModal.recipeIngredient && selectedRecipeDetails) {
+        setQuickProductError(null);
+        await dbService.saveProduct(newProduct);
+
+        const targetId = quickAddModal.recipeIngredient.id;
+        const ings = dbService.getRecipeIngredients(selectedRecipeDetails.id).map(({ id, recipeId: _rId, ...rest }) => {
+          void _rId;
+          if (id === targetId) {
+            return {
+              ...rest,
+              productId: newProduct.id,
+              customName: undefined,
+              customCostPerUnit: undefined
+            };
+          }
+          return rest;
+        });
+        const packs = dbService.getRecipePackagings(selectedRecipeDetails.id).map(({ id: _id, recipeId: _rId, ...rest }) => {
+          void _id;
+          void _rId;
+          return rest;
+        });
+
+        await dbService.saveRecipe(selectedRecipeDetails, ings, packs);
+        loadData();
+        const updatedRecipe = dbService.getRecipe(selectedRecipeDetails.id) || selectedRecipeDetails;
+        const costInfo = dbService.calculateRecipeCost(updatedRecipe.id);
+        setSelectedRecipeDetails(updatedRecipe);
+        setDetailsIngredients(dbService.getRecipeIngredients(updatedRecipe.id));
+        setDetailsPackagings(dbService.getRecipePackagings(updatedRecipe.id));
+        setDetailsCost(costInfo);
+      } else if (quickAddModal.source === 'form' && quickAddModal.formIndex !== undefined) {
+        setSaveError(null);
+        await dbService.saveProduct(newProduct);
+        loadData();
+        const updated = [...formIngredients];
+        const idx = quickAddModal.formIndex;
+        updated[idx] = {
+          ...updated[idx],
+          productId: newProduct.id,
+          customName: undefined,
+          customCostPerUnit: undefined
+        };
+        setFormIngredients(updated);
+      }
+      setQuickAddModal(null);
     } catch (err: unknown) {
-      console.error('Erreur lors de la création rapide du produit dans le formulaire:', err);
-      setSaveError(err instanceof Error ? err.message : "Échec de l'ajout du produit à vos stocks.");
+      console.error('Erreur lors de la création rapide du produit:', err);
+      if (quickAddModal.source === 'details') {
+        setQuickProductError(err instanceof Error ? err.message : "Échec de l'ajout du produit à vos stocks.");
+      } else {
+        setSaveError(err instanceof Error ? err.message : "Échec de l'ajout du produit à vos stocks.");
+      }
     }
   };
 
@@ -1109,7 +1145,7 @@ export const Recipes: React.FC<RecipesProps> = ({ initialTriggerAdd, initialView
                         <option value="">-- Libre (non lié au stock) --</option>
                         {products.map(p => (
                           <option key={p.id} value={p.id}>
-                            {p.name} ({p.avgPurchasePrice.toFixed(2).replace('.', ',')} {settings.currency}/{normalizeUnit(p.unit) || p.unit})
+                            {cleanProductName(p.name)} ({p.avgPurchasePrice.toFixed(2).replace('.', ',')} {settings.currency}/{normalizeUnit(p.unit) || p.unit})
                           </option>
                         ))}
                       </select>
@@ -1133,7 +1169,7 @@ export const Recipes: React.FC<RecipesProps> = ({ initialTriggerAdd, initialView
                             type="button"
                             className="btn btn-secondary"
                             style={{ height: '30px', padding: '0 8px', fontSize: '11px', whiteSpace: 'nowrap' }}
-                            onClick={() => void handleAddIngredientToProductsFromForm(idx)}
+                            onClick={() => handleOpenAddIngredientFromForm(idx)}
                           >
                             <Plus size={12} /> Ajouter à mes produits
                           </button>
@@ -1672,13 +1708,13 @@ export const Recipes: React.FC<RecipesProps> = ({ initialTriggerAdd, initialView
                       const approxPrefix = conv.approximate ? '≈ ' : '';
                       if (prod.stock >= needed) {
                         stockStatus = 'ok';
-                        stockDetail = `En stock (${prod.stock.toFixed(1)} ${normProdUnit})`;
+                        stockDetail = `En stock (${formatStock(prod.stock)} ${normProdUnit})`;
                       } else if (prod.stock > 0) {
                         stockStatus = 'partial';
-                        stockDetail = `Insuffisant (Stock: ${prod.stock.toFixed(1)}, Manque: ${approxPrefix}${(needed - prod.stock).toFixed(1)} ${normProdUnit})`;
+                        stockDetail = `Insuffisant (Stock: ${formatStock(prod.stock)}, Manque: ${approxPrefix}${formatStock(needed - prod.stock)} ${normProdUnit})`;
                       } else {
                         stockStatus = 'empty';
-                        stockDetail = `Rupture (Requis: ${approxPrefix}${needed.toFixed(1)} ${normProdUnit})`;
+                        stockDetail = `Rupture (Requis: ${approxPrefix}${formatStock(needed)} ${normProdUnit})`;
                       }
                     }
                   }
@@ -1698,7 +1734,7 @@ export const Recipes: React.FC<RecipesProps> = ({ initialTriggerAdd, initialView
                     >
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', fontSize: '13px', fontWeight: '600' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                          <span>{prod?.name || ri.customName || 'Ingrédient'}</span>
+                          <span>{cleanProductName(prod?.name || ri.customName || 'Ingrédient')}</span>
                           {stockStatus === 'unlinked' && (
                             <button
                               type="button"
@@ -1711,7 +1747,7 @@ export const Recipes: React.FC<RecipesProps> = ({ initialTriggerAdd, initialView
                                 alignItems: 'center',
                                 gap: '3px'
                               }}
-                              onClick={() => void handleAddIngredientToProductsFromDetails(ri)}
+                              onClick={() => handleOpenAddIngredientFromDetails(ri)}
                             >
                               <Plus size={11} />
                               Ajouter à mes produits
@@ -1842,7 +1878,7 @@ export const Recipes: React.FC<RecipesProps> = ({ initialTriggerAdd, initialView
                                 alignItems: 'center',
                                 gap: '3px'
                               }}
-                              onClick={() => void handleAddIngredientToProductsFromDetails(m.unlinkedIngredient!)}
+                              onClick={() => handleOpenAddIngredientFromDetails(m.unlinkedIngredient!)}
                             >
                               <Plus size={10} />
                               Ajouter à mes produits
@@ -1957,6 +1993,74 @@ export const Recipes: React.FC<RecipesProps> = ({ initialTriggerAdd, initialView
           </div>
         )}
       </Drawer>
+
+      {/* Modal de confirmation d'ajout rapide d'un produit au stock */}
+      {quickAddModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 9999,
+          padding: '16px'
+        }}>
+          <div className="card" style={{ maxWidth: '420px', width: '100%', backgroundColor: '#fff', borderRadius: 'var(--radius-lg)', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.2)', padding: '24px' }}>
+            <h3 style={{ fontSize: '16px', fontWeight: '700', marginBottom: '8px' }}>
+              Ajouter à mes produits
+            </h3>
+            <p style={{ fontSize: '13px', color: 'var(--color-dark-light)', marginBottom: '16px' }}>
+              Vérifiez le nom et l'unité de stock de ce produit avant sa création :
+            </p>
+
+            <form onSubmit={handleConfirmQuickAdd}>
+              <div className="form-group" style={{ marginBottom: '12px' }}>
+                <label className="form-label" style={{ fontSize: '12px', fontWeight: '600' }}>Nom du produit *</label>
+                <input
+                  type="text"
+                  className="form-input"
+                  required
+                  value={quickAddModal.name}
+                  onChange={(e) => setQuickAddModal({ ...quickAddModal, name: e.target.value })}
+                />
+              </div>
+
+              <div className="form-group" style={{ marginBottom: '20px' }}>
+                <label className="form-label" style={{ fontSize: '12px', fontWeight: '600' }}>Unité de gestion du stock *</label>
+                <select
+                  className="form-input"
+                  value={quickAddModal.unit}
+                  onChange={(e) => setQuickAddModal({ ...quickAddModal, unit: e.target.value })}
+                >
+                  {settings.units.map(u => (
+                    <option key={u} value={u}>{u}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setQuickAddModal(null)}
+                >
+                  Annuler
+                </button>
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                >
+                  Créer le produit
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
