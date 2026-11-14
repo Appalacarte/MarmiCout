@@ -41,6 +41,9 @@ export const Stores: React.FC = () => {
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     loadData();
+    const handleDataSynced = () => loadData();
+    window.addEventListener('marmicout-data-synced', handleDataSynced);
+    return () => window.removeEventListener('marmicout-data-synced', handleDataSynced);
   }, []);
 
   const handleOpenAddForm = () => {
@@ -85,9 +88,9 @@ export const Stores: React.FC = () => {
       setIsFormOpen(false);
       setSaveError(null);
       loadData();
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Erreur sauvegarde fournisseur:', err);
-      setSaveError(err.message || "Échec de l'enregistrement dans le Cloud. Vos données sont conservées.");
+      setSaveError(err instanceof Error ? err.message : "Échec de l'enregistrement dans le Cloud. Vos données sont conservées.");
     } finally {
       setIsSaving(false);
     }

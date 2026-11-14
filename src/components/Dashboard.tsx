@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   TrendingUp,
   AlertTriangle,
@@ -16,6 +16,14 @@ interface DashboardProps {
 }
 
 export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
+  const [, setSyncTick] = useState(0);
+
+  useEffect(() => {
+    const handleDataSynced = () => setSyncTick(t => t + 1);
+    window.addEventListener('marmicout-data-synced', handleDataSynced);
+    return () => window.removeEventListener('marmicout-data-synced', handleDataSynced);
+  }, []);
+
   const products = dbService.getProducts();
   const recipes = dbService.getRecipes();
   const sales = dbService.getSales();

@@ -76,6 +76,9 @@ export const Purchases: React.FC<PurchasesProps> = ({ initialTriggerScan, initia
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     loadData();
+    const handleDataSynced = () => loadData();
+    window.addEventListener('marmicout-data-synced', handleDataSynced);
+    return () => window.removeEventListener('marmicout-data-synced', handleDataSynced);
   }, []);
 
   // Déclencher le scanneur ou le préremplissage initial
@@ -228,9 +231,9 @@ export const Purchases: React.FC<PurchasesProps> = ({ initialTriggerScan, initia
       setIsFormOpen(false);
       setSaveError(null);
       loadData();
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Erreur achat:', err);
-      setSaveError(err.message || "Échec de l'enregistrement de l'achat dans le Cloud.");
+      setSaveError(err instanceof Error ? err.message : "Échec de l'enregistrement de l'achat dans le Cloud.");
     } finally {
       setIsSaving(false);
     }

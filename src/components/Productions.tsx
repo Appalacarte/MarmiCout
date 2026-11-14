@@ -73,6 +73,12 @@ export const Productions: React.FC<ProductionsProps> = ({ initialTriggerAdd }) =
     }
   }, [initialTriggerAdd]);
 
+  useEffect(() => {
+    const handleDataSynced = () => loadData();
+    window.addEventListener('marmicout-data-synced', handleDataSynced);
+    return () => window.removeEventListener('marmicout-data-synced', handleDataSynced);
+  }, []);
+
   // Re-calculer le nombre de portions suggéré lorsqu'on change de recette
   useEffect(() => {
     if (formRecipeId) {
@@ -192,9 +198,9 @@ export const Productions: React.FC<ProductionsProps> = ({ initialTriggerAdd }) =
       } else {
         setSaveError(result.error || "Erreur de production");
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Erreur fabrication:', err);
-      setSaveError(err.message || "Échec de l'enregistrement de la fabrication dans le Cloud.");
+      setSaveError(err instanceof Error ? err.message : "Échec de l'enregistrement de la fabrication dans le Cloud.");
     } finally {
       setIsSaving(false);
     }

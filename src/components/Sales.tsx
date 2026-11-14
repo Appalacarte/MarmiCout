@@ -67,6 +67,12 @@ export const Sales: React.FC<SalesProps> = ({ initialTriggerAdd }) => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialTriggerAdd]);
 
+  useEffect(() => {
+    const handleDataSynced = () => loadData();
+    window.addEventListener('marmicout-data-synced', handleDataSynced);
+    return () => window.removeEventListener('marmicout-data-synced', handleDataSynced);
+  }, []);
+
   // Pré-remplir le prix unitaire conseillé lorsqu'on change d'article
   useEffect(() => {
     if (formItemId) {
@@ -150,9 +156,9 @@ export const Sales: React.FC<SalesProps> = ({ initialTriggerAdd }) => {
       setIsFormOpen(false);
       setSaveError(null);
       loadData();
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Erreur vente:', err);
-      setSaveError(err.message || "Échec de l'enregistrement de la vente dans le Cloud.");
+      setSaveError(err instanceof Error ? err.message : "Échec de l'enregistrement de la vente dans le Cloud.");
     } finally {
       setIsSaving(false);
     }

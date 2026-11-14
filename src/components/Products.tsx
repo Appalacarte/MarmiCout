@@ -95,6 +95,12 @@ export const Products: React.FC<ProductsProps> = ({ initialTriggerAdd, onNavigat
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialTriggerAdd]);
 
+  useEffect(() => {
+    const handleDataSynced = () => loadData();
+    window.addEventListener('marmicout-data-synced', handleDataSynced);
+    return () => window.removeEventListener('marmicout-data-synced', handleDataSynced);
+  }, []);
+
   // Ouvrir le formulaire en mode Édition
   const handleOpenEditForm = (prod: Product, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -168,9 +174,9 @@ export const Products: React.FC<ProductsProps> = ({ initialTriggerAdd, onNavigat
       setIsFormOpen(false);
       setSaveError(null);
       loadData();
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Erreur sauvegarde produit:', err);
-      setSaveError(err.message || "Échec de l'enregistrement dans le Cloud. Vos données sont conservées.");
+      setSaveError(err instanceof Error ? err.message : "Échec de l'enregistrement dans le Cloud. Vos données sont conservées.");
     } finally {
       setIsSaving(false);
     }

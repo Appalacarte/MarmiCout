@@ -19,6 +19,7 @@ import {
   ShoppingCart
 } from 'lucide-react';
 import { dbService, convertUnits } from '../services/db';
+import { generateUUID } from '../services/cloudDbService';
 import { Product, Recipe, RecipeIngredient, RecipePackaging, Production } from '../types';
 import { Drawer } from './Drawer';
 import { RecipeScanner } from './RecipeScanner';
@@ -188,6 +189,113 @@ export const Recipes: React.FC<RecipesProps> = ({ initialTriggerAdd, initialView
     // eslint-disable-next-line react-hooks/set-state-in-effect
     loadData();
   }, []);
+
+  useEffect(() => {
+    const handleDataSynced = () => {
+      loadData();
+      if (selectedRecipeDetails) {
+        const updatedRecipe = dbService.getRecipe(selectedRecipeDetails.id) || selectedRecipeDetails;
+        const costInfo = dbService.calculateRecipeCost(updatedRecipe.id);
+        setSelectedRecipeDetails(updatedRecipe);
+        setDetailsIngredients(dbService.getRecipeIngredients(updatedRecipe.id));
+        setDetailsPackagings(dbService.getRecipePackagings(updatedRecipe.id));
+        setDetailsCost(costInfo);
+      }
+    };
+    window.addEventListener('marmicout-data-synced', handleDataSynced);
+    return () => window.removeEventListener('marmicout-data-synced', handleDataSynced);
+  }, [selectedRecipeDetails]);
+
+  // Créer un produit depuis un ingrédient non lié dans le détail de la recette et relier l'ingrédient
+  const handleAddIngredientToProductsFromDetails = async (ri: RecipeIngredient) => {
+    if (!selectedRecipeDetails) return;
+    const stores = dbService.getStores();
+    const newProduct: Product = {
+      id: generateUUID(),
+      barcode: '',
+      name: (ri.customName || 'Ingrédient').trim(),
+      category: settings.categories[0] || 'Épicerie',
+      unit: ri.unit || settings.units[0] || 'kg',
+      brand: '',
+      format: 'Unité',
+      stock: 0,
+      minStockAlert: settings.defaultMinStockAlert,
+      avgPurchasePrice: Number((ri.customCostPerUnit || 0).toFixed(4)),
+      mainStoreId: stores[0]?.id || '',
+      notes: '',
+      isActive: true
+    };
+
+    try {
+      await dbService.saveProduct(newProduct);
+
+      const ings = dbService.getRecipeIngredients(selectedRecipeDetails.id).map(({ id, recipeId: _rId, ...rest }) => {
+        void _rId;
+        if (id === ri.id) {
+          return {
+            ...rest,
+            productId: newProduct.id,
+            customName: undefined,
+            customCostPerUnit: undefined
+          };
+        }
+        return rest;
+      });
+      const packs = dbService.getRecipePackagings(selectedRecipeDetails.id).map(({ id: _id, recipeId: _rId, ...rest }) => {
+        void _id;
+        void _rId;
+        return rest;
+      });
+
+      await dbService.saveRecipe(selectedRecipeDetails, ings, packs);
+      loadData();
+      const updatedRecipe = dbService.getRecipe(selectedRecipeDetails.id) || selectedRecipeDetails;
+      const costInfo = dbService.calculateRecipeCost(updatedRecipe.id);
+      setSelectedRecipeDetails(updatedRecipe);
+      setDetailsIngredients(dbService.getRecipeIngredients(updatedRecipe.id));
+      setDetailsPackagings(dbService.getRecipePackagings(updatedRecipe.id));
+      setDetailsCost(costInfo);
+    } catch (err) {
+      console.error('Erreur lors de la création rapide du produit:', err);
+    }
+  };
+
+  // Créer un produit depuis un ingrédient non lié dans le formulaire de recette et relier l'ingrédient
+  const handleAddIngredientToProductsFromForm = async (index: number) => {
+    const ing = formIngredients[index];
+    if (!ing) return;
+    const stores = dbService.getStores();
+    const newProduct: Product = {
+      id: generateUUID(),
+      barcode: '',
+      name: (ing.customName || 'Ingrédient').trim(),
+      category: settings.categories[0] || 'Épicerie',
+      unit: ing.unit || settings.units[0] || 'kg',
+      brand: '',
+      format: 'Unité',
+      stock: 0,
+      minStockAlert: settings.defaultMinStockAlert,
+      avgPurchasePrice: Number((ing.customCostPerUnit || 0).toFixed(4)),
+      mainStoreId: stores[0]?.id || '',
+      notes: '',
+      isActive: true
+    };
+
+    try {
+      await dbService.saveProduct(newProduct);
+      loadData();
+      const updated = [...formIngredients];
+      updated[index] = {
+        ...updated[index],
+        productId: newProduct.id,
+        customName: undefined,
+        customCostPerUnit: undefined
+      };
+      setFormIngredients(updated);
+    } catch (err) {
+      console.error('Erreur lors de la création rapide du produit dans le formulaire:', err);
+    }
+  };
 
   // Synchroniser le prix de vente simulé au chargement d'un détail de recette
   const handleOpenDetails = (recipe: Recipe) => {
@@ -437,9 +545,9 @@ export const Recipes: React.FC<RecipesProps> = ({ initialTriggerAdd, initialView
       if (selectedRecipeDetails && selectedRecipeDetails.id === recipeId) {
         handleOpenDetails(newRecipe);
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Erreur sauvegarde recette:', err);
-      setSaveError(err.message || "Échec de l'enregistrement dans le Cloud. Vos données sont conservées.");
+      setSaveError(err instanceof Error ? err.message : "Échec de l'enregistrement dans le Cloud. Vos données sont conservées.");
     } finally {
       setIsSaving(false);
     }
@@ -738,6 +846,17 @@ export const Recipes: React.FC<RecipesProps> = ({ initialTriggerAdd, initialView
         isOpen={isShoppingListOpen}
         onClose={() => setIsShoppingListOpen(false)}
         onUpdatePortions={updatePlanningPortions}
+        onDataChanged={() => {
+          loadData();
+          if (selectedRecipeDetails) {
+            const updatedRecipe = dbService.getRecipe(selectedRecipeDetails.id) || selectedRecipeDetails;
+            const costInfo = dbService.calculateRecipeCost(updatedRecipe.id);
+            setSelectedRecipeDetails(updatedRecipe);
+            setDetailsIngredients(dbService.getRecipeIngredients(updatedRecipe.id));
+            setDetailsPackagings(dbService.getRecipePackagings(updatedRecipe.id));
+            setDetailsCost(costInfo);
+          }
+        }}
         onCookDone={() => {
           loadData();
           clearAllSelections();
@@ -953,18 +1072,28 @@ export const Recipes: React.FC<RecipesProps> = ({ initialTriggerAdd, initialView
 
                       {/* Saisie coût estimé si libre */}
                       {!isLinked && (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                          <span style={{ fontSize: '11px', whiteSpace: 'nowrap' }}>Coût est. :</span>
-                          <input
-                            type="number"
-                            step="any"
-                            className="form-input"
-                            style={{ width: '50px', height: '30px', padding: '0 4px', fontSize: '12px', textAlign: 'center' }}
-                            value={ing.customCostPerUnit || 0}
-                            onChange={(e) => handleIngredientChange(idx, 'customCostPerUnit', parseDecimalInput(e.target.value))}
-                          />
-                          <span style={{ fontSize: '11px' }}>€/{ing.unit}</span>
-                        </div>
+                        <>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <span style={{ fontSize: '11px', whiteSpace: 'nowrap' }}>Coût est. :</span>
+                            <input
+                              type="number"
+                              step="any"
+                              className="form-input"
+                              style={{ width: '50px', height: '30px', padding: '0 4px', fontSize: '12px', textAlign: 'center' }}
+                              value={ing.customCostPerUnit || 0}
+                              onChange={(e) => handleIngredientChange(idx, 'customCostPerUnit', parseDecimalInput(e.target.value))}
+                            />
+                            <span style={{ fontSize: '11px' }}>€/{ing.unit}</span>
+                          </div>
+                          <button
+                            type="button"
+                            className="btn btn-secondary"
+                            style={{ height: '30px', padding: '0 8px', fontSize: '11px', whiteSpace: 'nowrap' }}
+                            onClick={() => void handleAddIngredientToProductsFromForm(idx)}
+                          >
+                            <Plus size={12} /> Ajouter à mes produits
+                          </button>
+                        </>
                       )}
 
                       {isLinked && selectedProd && (
@@ -1313,46 +1442,38 @@ export const Recipes: React.FC<RecipesProps> = ({ initialTriggerAdd, initialView
             {/* ALERTE DE DISPONIBILITÉ DES STOCKS */}
             {(() => {
               const scaleFactor = portionsCible / selectedRecipeDetails.portions;
-              let isFullyFeasible = true;
+              let isFullyFeasible = detailsIngredients.length > 0;
               let isPartiallyFeasible = false;
-              let hasLinked = false;
-              
+              const hasIngredients = detailsIngredients.length > 0;
+              let maxPortions = Infinity;
+
               detailsIngredients.forEach(ri => {
-                if (ri.productId) {
-                  hasLinked = true;
-                  const prod = products.find(p => p.id === ri.productId);
-                  if (prod) {
-                    const qtyOrig = ri.originalQtyUsed || ri.qtyUsed;
-                    const qtyAjust = qtyOrig * scaleFactor;
-                    const neededQty = convertUnits(qtyAjust, ri.unit, prod.unit);
-                    if (prod.stock < neededQty) {
-                      isFullyFeasible = false;
-                      if (prod.stock > 0) isPartiallyFeasible = true;
-                    }
+                const prod = ri.productId ? products.find(p => p.id === ri.productId) : undefined;
+                if (prod) {
+                  const qtyOrig = ri.originalQtyUsed || ri.qtyUsed;
+                  const qtyAjust = qtyOrig * scaleFactor;
+                  const neededQty = convertUnits(qtyAjust, ri.unit, prod.unit);
+                  if (prod.stock < neededQty) {
+                    isFullyFeasible = false;
+                    if (prod.stock > 0) isPartiallyFeasible = true;
                   }
+                  const qtyPerPortion = convertUnits(qtyOrig, ri.unit, prod.unit) / selectedRecipeDetails.portions;
+                  if (qtyPerPortion > 0) {
+                    const maxForThis = Math.floor(prod.stock / qtyPerPortion);
+                    if (maxForThis < maxPortions) maxPortions = maxForThis;
+                  }
+                } else {
+                  // Ingrédient non lié ou produit introuvable : stock considéré à 0
+                  isFullyFeasible = false;
+                  maxPortions = 0;
                 }
               });
 
-              // Calcul portions max faisables
-              let maxPortions = Infinity;
-              detailsIngredients.forEach(ri => {
-                if (ri.productId) {
-                  const prod = products.find(p => p.id === ri.productId);
-                  if (prod) {
-                    const qtyOrig = ri.originalQtyUsed || ri.qtyUsed;
-                    const qtyPerPortion = convertUnits(qtyOrig, ri.unit, prod.unit) / selectedRecipeDetails.portions;
-                    if (qtyPerPortion > 0) {
-                      const maxForThis = Math.floor(prod.stock / qtyPerPortion);
-                      if (maxForThis < maxPortions) maxPortions = maxForThis;
-                    }
-                  }
-                }
-              });
               const displayMaxPortions = maxPortions === Infinity ? 'N/A' : maxPortions;
 
               return (
                 <div style={{ marginBottom: '20px' }}>
-                  {hasLinked && (
+                  {hasIngredients && (
                     <div 
                       style={{ 
                         padding: '12px', 
@@ -1431,8 +1552,28 @@ export const Recipes: React.FC<RecipesProps> = ({ initialTriggerAdd, initialView
                         border: '1px solid var(--color-border)'
                       }}
                     >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', fontWeight: '600' }}>
-                        <span>{prod?.name || ri.customName || 'Ingrédient'}</span>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', fontSize: '13px', fontWeight: '600' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                          <span>{prod?.name || ri.customName || 'Ingrédient'}</span>
+                          {stockStatus === 'unlinked' && (
+                            <button
+                              type="button"
+                              className="btn btn-secondary"
+                              style={{
+                                height: '22px',
+                                padding: '0 8px',
+                                fontSize: '10px',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '3px'
+                              }}
+                              onClick={() => void handleAddIngredientToProductsFromDetails(ri)}
+                            >
+                              <Plus size={11} />
+                              Ajouter à mes produits
+                            </button>
+                          )}
+                        </div>
                         <strong>{costLine.toFixed(2)}€</strong>
                       </div>
                       
@@ -1477,25 +1618,30 @@ export const Recipes: React.FC<RecipesProps> = ({ initialTriggerAdd, initialView
             {/* LISTE DES INGRÉDIENTS MANQUANTS / LISTE DE COURSES */}
             {(() => {
               const scaleFactor = portionsCible / selectedRecipeDetails.portions;
-              const missingList: { name: string; qty: number; unit: string }[] = [];
+              const missingList: { name: string; qty: number; unit: string; unlinkedIngredient?: RecipeIngredient }[] = [];
               
               detailsIngredients.forEach(ri => {
-                if (ri.productId) {
-                  const prod = products.find(p => p.id === ri.productId);
-                  if (prod) {
-                    const qtyOrig = ri.originalQtyUsed || ri.qtyUsed;
-                    const qtyAjust = qtyOrig * scaleFactor;
-                    const needed = convertUnits(qtyAjust, ri.unit, prod.unit);
-                    if (prod.stock < needed) {
-                      const deficit = needed - prod.stock;
-                      const deficitRecipeUnit = convertUnits(deficit, prod.unit, ri.unit);
-                      missingList.push({
-                        name: prod.name,
-                        qty: deficitRecipeUnit,
-                        unit: ri.unit
-                      });
-                    }
+                const qtyOrig = ri.originalQtyUsed || ri.qtyUsed;
+                const qtyAjust = qtyOrig * scaleFactor;
+                const prod = ri.productId ? products.find(p => p.id === ri.productId) : undefined;
+                if (prod) {
+                  const needed = convertUnits(qtyAjust, ri.unit, prod.unit);
+                  if (prod.stock < needed) {
+                    const deficit = needed - prod.stock;
+                    const deficitRecipeUnit = convertUnits(deficit, prod.unit, ri.unit);
+                    missingList.push({
+                      name: prod.name,
+                      qty: deficitRecipeUnit,
+                      unit: ri.unit
+                    });
                   }
+                } else {
+                  missingList.push({
+                    name: ri.customName || 'Ingrédient',
+                    qty: qtyAjust,
+                    unit: ri.unit,
+                    unlinkedIngredient: ri
+                  });
                 }
               });
 
@@ -1507,11 +1653,31 @@ export const Recipes: React.FC<RecipesProps> = ({ initialTriggerAdd, initialView
                     <ClipboardList size={16} />
                     Ingrédients manquants (Liste de courses)
                   </h4>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: '12px' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '12px' }}>
                     {missingList.map((m, idx) => (
-                      <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: 'var(--color-dark)' }}>
-                        <span>• {m.name}</span>
-                        <strong style={{ color: 'var(--color-danger)' }}>Acheter : {m.qty.toFixed(1)} {m.unit}</strong>
+                      <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', fontSize: '12px', color: 'var(--color-dark)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                          <span>• {m.name}</span>
+                          {m.unlinkedIngredient && (
+                            <button
+                              type="button"
+                              className="btn btn-secondary"
+                              style={{
+                                height: '20px',
+                                padding: '0 6px',
+                                fontSize: '10px',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '3px'
+                              }}
+                              onClick={() => void handleAddIngredientToProductsFromDetails(m.unlinkedIngredient!)}
+                            >
+                              <Plus size={10} />
+                              Ajouter à mes produits
+                            </button>
+                          )}
+                        </div>
+                        <strong style={{ color: 'var(--color-danger)', whiteSpace: 'nowrap' }}>Acheter : {m.qty.toFixed(1)} {m.unit}</strong>
                       </div>
                     ))}
                   </div>

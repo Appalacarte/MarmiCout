@@ -4,6 +4,20 @@ Toutes les modifications notables apportées à ce projet sont documentées dans
 
 ---
 
+## [2.0.51] - 2026-11-14
+
+### Liste de Courses Complète (Ingrédients Non Liés), Bouton « Ajouter à mes produits » & Écoute Synchronisation Cloud
+- **Prise en compte des ingrédients non liés dans la liste de courses et la faisabilité** :
+  - Dans [`src/components/Recipes.tsx`](file:///d:/Aplli/Marmicout/Appli%20Marmicout/src/components/Recipes.tsx) : tout ingrédient sans produit lié (`customName`) ou dont le produit lié est introuvable est désormais considéré comme manquant en totalité. Il apparaît dans « Ingrédients manquants (Liste de courses) » avec la quantité complète pour le nombre de portions choisi et est inclus dans « Copier la liste de courses ».
+  - Le bandeau de faisabilité tient compte des ingrédients non liés ou introuvables (la recette n'est pas affichée comme « réalisable » tant qu'un ingrédient n'est pas en stock).
+  - Dans [`src/components/ShoppingListDrawer.tsx`](file:///d:/Aplli/Marmicout/Appli%20Marmicout/src/components/ShoppingListDrawer.tsx) : fusion des ingrédients non gérés en stock directement dans la section « À acheter » avec leur quantité totale, leur inclusion dans le texte copié et l'export CSV.
+- **Création rapide et liaison de produit (« Ajouter à mes produits »)** :
+  - Ajout du bouton « Ajouter à mes produits » à côté de chaque ingrédient non lié (dans le détail de recette, la liste de courses et le formulaire de recette) qui crée le produit (nom et unité pré-remplis, stock 0) et relie immédiatement l'ingrédient à ce produit.
+- **Réactivité à la synchronisation Cloud (`marmicout-data-synced`)** :
+  - Ajout d'un écouteur d'événement `marmicout-data-synced` dans `Recipes.tsx`, `Products.tsx`, `Dashboard.tsx`, `Purchases.tsx`, `Productions.tsx`, `Sales.tsx` et `Stores.tsx` pour recharger automatiquement les données (et recalculer les ingrédients et le coût si un détail de recette est ouvert).
+
+---
+
 ## [2.0.50] - 2026-11-14
 
 ### Bouton « Se déconnecter », Préservation des Données Hors-Ligne & Contrôle de Date de Fin Hors-Ligne

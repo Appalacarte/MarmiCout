@@ -4,7 +4,6 @@ import {
   ShoppingCart,
   Check,
   AlertTriangle,
-  HelpCircle,
   Copy,
   CheckCheck,
   ChevronDown,
@@ -12,10 +11,12 @@ import {
   X,
   FileSpreadsheet,
   ChefHat,
-  PackageCheck
+  PackageCheck,
+  Plus
 } from 'lucide-react';
-import { Recipe, Production } from '../types';
+import { Recipe, Production, Product } from '../types';
 import { dbService, convertUnits } from '../services/db';
+import { generateUUID } from '../services/cloudDbService';
 
 interface RecipeSelection {
   recipe: Recipe;
@@ -28,12 +29,15 @@ interface ShoppingListDrawerProps {
   onClose: () => void;
   /** Appelé après une production réussie — recharger les données + vider les sélections */
   onCookDone?: () => void;
+  /** Appelé quand un produit est créé / un ingrédient est lié depuis ce panneau */
+  onDataChanged?: () => void;
   /** Mettre à jour les portions d'une recette directement depuis cette fenêtre */
   onUpdatePortions?: (recipeId: string, portions: number) => void;
 }
 
 interface ShoppingItem {
-  productId: string;
+  key: string;
+  productId?: string;
   productName: string;
   productUnit: string;
   needed: number;
@@ -42,13 +46,8 @@ interface ShoppingItem {
   estimatedCost: number;
   avgPurchasePrice: number;
   fromRecipes: string[];
-}
-
-interface CustomItem {
-  name: string;
-  totalQty: number;
-  unit: string;
-  fromRecipes: string[];
+  isUnlinked?: boolean;
+  unlinkedRefs?: { recipeId: string; ingredientId: string }[];
 }
 
 export const ShoppingListDrawer: React.FC<ShoppingListDrawerProps> = ({
@@ -56,10 +55,12 @@ export const ShoppingListDrawer: React.FC<ShoppingListDrawerProps> = ({
   isOpen,
   onClose,
   onCookDone,
+  onDataChanged,
   onUpdatePortions
 }) => {
   const [copiedText, setCopiedText] = useState(false);
   const [showAvailable, setShowAvailable] = useState(false);
+  const [refreshTick, setRefreshTick] = useState(0);
 
   // États du flux cuisine
   type CookState = 'idle' | 'confirming' | 'done';
@@ -68,50 +69,63 @@ export const ShoppingListDrawer: React.FC<ShoppingListDrawerProps> = ({
 
   const settings = dbService.getSettings();
 
-  const { toOrderItems, availableItems, customItems, totalEstimatedCost } = useMemo(() => {
+  const { toOrderItems, availableItems, totalEstimatedCost } = useMemo(() => {
+    void refreshTick;
     if (!selections.length) {
-      return { toOrderItems: [], availableItems: [], customItems: [], totalEstimatedCost: 0 };
+      return { toOrderItems: [], availableItems: [], totalEstimatedCost: 0 };
     }
 
     const productNeeds = new Map<string, { needed: number; fromRecipes: string[] }>();
-    const customNeeds = new Map<string, { totalQty: number; unit: string; fromRecipes: string[] }>();
+    const customNeeds = new Map<string, {
+      name: string;
+      totalQty: number;
+      unit: string;
+      customCostSum: number;
+      fromRecipes: string[];
+      unlinkedRefs: { recipeId: string; ingredientId: string }[];
+    }>();
 
     for (const { recipe, portions } of selections) {
       const factor = portions / (recipe.portions || 1);
       const ingredients = dbService.getRecipeIngredients(recipe.id);
 
       for (const ing of ingredients) {
-        if (ing.productId) {
-          const product = dbService.getProduct(ing.productId);
-          if (!product) continue;
-
+        const product = ing.productId ? dbService.getProduct(ing.productId) : undefined;
+        if (product) {
           const qtyNeeded = convertUnits(ing.qtyUsed * factor, ing.unit, product.unit);
-          const existing = productNeeds.get(ing.productId);
+          const existing = productNeeds.get(product.id);
           if (existing) {
             existing.needed += qtyNeeded;
             if (!existing.fromRecipes.includes(recipe.name)) {
               existing.fromRecipes.push(recipe.name);
             }
           } else {
-            productNeeds.set(ing.productId, {
+            productNeeds.set(product.id, {
               needed: qtyNeeded,
               fromRecipes: [recipe.name]
             });
           }
-        } else if (ing.customName) {
-          const key = `${ing.customName.toLowerCase().trim()}_${ing.unit}`;
+        } else {
+          const rawName = (ing.customName || 'Ingrédient').trim();
+          const key = `custom_${rawName.toLowerCase()}_${ing.unit}`;
           const qtyNeeded = ing.qtyUsed * factor;
+          const lineCost = qtyNeeded * (ing.customCostPerUnit || 0);
           const existing = customNeeds.get(key);
           if (existing) {
             existing.totalQty += qtyNeeded;
+            existing.customCostSum += lineCost;
             if (!existing.fromRecipes.includes(recipe.name)) {
               existing.fromRecipes.push(recipe.name);
             }
+            existing.unlinkedRefs.push({ recipeId: recipe.id, ingredientId: ing.id });
           } else {
             customNeeds.set(key, {
+              name: rawName.charAt(0).toUpperCase() + rawName.slice(1),
               totalQty: qtyNeeded,
               unit: ing.unit,
-              fromRecipes: [recipe.name]
+              customCostSum: lineCost,
+              fromRecipes: [recipe.name],
+              unlinkedRefs: [{ recipeId: recipe.id, ingredientId: ing.id }]
             });
           }
         }
@@ -127,6 +141,7 @@ export const ShoppingListDrawer: React.FC<ShoppingListDrawerProps> = ({
 
       const toOrder = Math.max(0, needed - product.stock);
       const item: ShoppingItem = {
+        key: productId,
         productId,
         productName: product.name,
         productUnit: product.unit,
@@ -145,23 +160,93 @@ export const ShoppingListDrawer: React.FC<ShoppingListDrawerProps> = ({
       }
     }
 
-    toOrderItems.sort((a, b) => b.estimatedCost - a.estimatedCost);
-
-    const customItemsFinal: CustomItem[] = [];
     for (const [key, val] of customNeeds.entries()) {
-      const name = key.replace(/_[^_]+$/, '');
-      customItemsFinal.push({
-        name: name.charAt(0).toUpperCase() + name.slice(1),
-        totalQty: Math.round(val.totalQty * 1000) / 1000,
-        unit: val.unit,
-        fromRecipes: val.fromRecipes
-      });
+      const roundedQty = Math.round(val.totalQty * 1000) / 1000;
+      if (roundedQty > 0) {
+        toOrderItems.push({
+          key,
+          productName: val.name,
+          productUnit: val.unit,
+          needed: roundedQty,
+          inStock: 0,
+          toOrder: roundedQty,
+          estimatedCost: val.customCostSum,
+          avgPurchasePrice: val.totalQty > 0 ? val.customCostSum / val.totalQty : 0,
+          fromRecipes: val.fromRecipes,
+          isUnlinked: true,
+          unlinkedRefs: val.unlinkedRefs
+        });
+      }
     }
+
+    toOrderItems.sort((a, b) => b.estimatedCost - a.estimatedCost);
 
     const totalEstimatedCost = toOrderItems.reduce((sum, item) => sum + item.estimatedCost, 0);
 
-    return { toOrderItems, availableItems, customItems: customItemsFinal, totalEstimatedCost };
-  }, [selections]);
+    return { toOrderItems, availableItems, totalEstimatedCost };
+  }, [selections, refreshTick]);
+
+  // --- Créer le produit et relier l'ingrédient ---
+  const handleAddUnlinkedToProducts = async (item: ShoppingItem) => {
+    if (!item.unlinkedRefs || item.unlinkedRefs.length === 0) return;
+    const stores = dbService.getStores();
+    const newProduct: Product = {
+      id: generateUUID(),
+      barcode: '',
+      name: item.productName.trim() || 'Ingrédient',
+      category: settings.categories[0] || 'Épicerie',
+      unit: item.productUnit || settings.units[0] || 'kg',
+      brand: '',
+      format: 'Unité',
+      stock: 0,
+      minStockAlert: settings.defaultMinStockAlert,
+      avgPurchasePrice: Number((item.avgPurchasePrice || 0).toFixed(4)),
+      mainStoreId: stores[0]?.id || '',
+      notes: '',
+      isActive: true
+    };
+
+    try {
+      await dbService.saveProduct(newProduct);
+
+      // Regrouper les références par recette
+      const refsByRecipe = new Map<string, Set<string>>();
+      for (const ref of item.unlinkedRefs) {
+        if (!refsByRecipe.has(ref.recipeId)) {
+          refsByRecipe.set(ref.recipeId, new Set());
+        }
+        refsByRecipe.get(ref.recipeId)!.add(ref.ingredientId);
+      }
+
+      for (const [recipeId, ingIds] of refsByRecipe.entries()) {
+        const recipe = dbService.getRecipe(recipeId);
+        if (!recipe) continue;
+        const ings = dbService.getRecipeIngredients(recipeId).map(({ id, recipeId: _rId, ...rest }) => {
+          void _rId;
+          if (ingIds.has(id)) {
+            return {
+              ...rest,
+              productId: newProduct.id,
+              customName: undefined,
+              customCostPerUnit: undefined
+            };
+          }
+          return rest;
+        });
+        const packs = dbService.getRecipePackagings(recipeId).map(({ id: _id, recipeId: _rId, ...rest }) => {
+          void _id;
+          void _rId;
+          return rest;
+        });
+        await dbService.saveRecipe(recipe, ings, packs);
+      }
+
+      setRefreshTick(t => t + 1);
+      onDataChanged?.();
+    } catch (err) {
+      console.error('Erreur lors de la création rapide du produit:', err);
+    }
+  };
 
   // --- Copier la liste en texte ---
   const handleCopyText = () => {
@@ -187,17 +272,6 @@ export const ShoppingListDrawer: React.FC<ShoppingListDrawerProps> = ({
         );
       });
       lines.push('');
-    }
-
-    if (customItems.length > 0) {
-      lines.push('❓ Ingrédients non gérés en stock :');
-      customItems.forEach(item => {
-        lines.push(`  □ ${item.name} — ${item.totalQty} ${item.unit}`);
-      });
-      lines.push('');
-    }
-
-    if (toOrderItems.length > 0) {
       lines.push(`💰 Coût estimé des achats : ${totalEstimatedCost.toFixed(2)}${settings.currency}`);
     }
 
@@ -239,14 +313,6 @@ export const ShoppingListDrawer: React.FC<ShoppingListDrawerProps> = ({
       lines.push('');
     }
 
-    if (customItems.length > 0) {
-      lines.push('À VÉRIFIER MANUELLEMENT');
-      lines.push('Ingrédient,Quantité,Unité');
-      customItems.forEach(item => {
-        lines.push(`"${item.name}",${item.totalQty},"${item.unit}"`);
-      });
-    }
-
     const csvContent = bom + lines.join('\n');
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
@@ -284,11 +350,11 @@ export const ShoppingListDrawer: React.FC<ShoppingListDrawerProps> = ({
           success: result.success,
           error: result.error
         });
-      } catch (err: any) {
+      } catch (err: unknown) {
         results.push({
           recipeName: recipe.name,
           success: false,
-          error: err.message || String(err)
+          error: err instanceof Error ? err.message : String(err)
         });
       }
     }
@@ -442,7 +508,7 @@ export const ShoppingListDrawer: React.FC<ShoppingListDrawerProps> = ({
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                   {toOrderItems.map(item => (
                     <div
-                      key={item.productId}
+                      key={item.key}
                       style={{
                         display: 'flex',
                         alignItems: 'center',
@@ -463,11 +529,31 @@ export const ShoppingListDrawer: React.FC<ShoppingListDrawerProps> = ({
                         <AlertTriangle size={16} style={{ color: '#fff' }} />
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontWeight: '700', fontSize: '14px', color: 'var(--color-dark)', marginBottom: '2px' }}>
-                          {item.productName}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginBottom: '2px' }}>
+                          <span style={{ fontWeight: '700', fontSize: '14px', color: 'var(--color-dark)' }}>
+                            {item.productName}
+                          </span>
+                          {item.isUnlinked && (
+                            <button
+                              type="button"
+                              className="btn btn-secondary"
+                              style={{
+                                height: '22px',
+                                padding: '0 8px',
+                                fontSize: '10px',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '3px'
+                              }}
+                              onClick={() => void handleAddUnlinkedToProducts(item)}
+                            >
+                              <Plus size={11} />
+                              Ajouter à mes produits
+                            </button>
+                          )}
                         </div>
                         <div style={{ fontSize: '11px', color: 'var(--color-dark-light)' }}>
-                          Besoin : {item.needed} {item.productUnit} • Stock : {item.inStock} {item.productUnit}
+                          Besoin : {item.needed} {item.productUnit} • {item.isUnlinked ? 'Non suivi en stock' : `Stock : ${item.inStock} ${item.productUnit}`}
                         </div>
                         {item.fromRecipes.length > 0 && (
                           <div style={{ fontSize: '10px', color: 'var(--color-dark-light)', marginTop: '2px' }}>
@@ -485,60 +571,6 @@ export const ShoppingListDrawer: React.FC<ShoppingListDrawerProps> = ({
                           </div>
                         )}
                       </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Section Ingrédients non liés */}
-            {customItems.length > 0 && (
-              <div style={{ marginBottom: '20px' }}>
-                <h3 style={{
-                  fontSize: '13px',
-                  fontWeight: '700',
-                  color: 'var(--color-warning)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  marginBottom: '10px',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.5px'
-                }}>
-                  <HelpCircle size={14} />
-                  Non gérés en stock ({customItems.length})
-                </h3>
-                <p style={{ fontSize: '11px', color: 'var(--color-dark-light)', marginBottom: '8px', fontStyle: 'italic' }}>
-                  Ces ingrédients ne sont pas liés à vos produits en stock — à vérifier manuellement.
-                </p>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  {customItems.map((item, idx) => (
-                    <div
-                      key={idx}
-                      style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        padding: '10px 14px',
-                        backgroundColor: 'var(--color-warning-light)',
-                        borderRadius: 'var(--radius-sm)',
-                        border: '1px solid rgba(242, 185, 34, 0.2)'
-                      }}
-                    >
-                      <div>
-                        <span style={{ fontWeight: '600', fontSize: '13px' }}>
-                          <HelpCircle size={12} style={{ marginRight: '6px', color: 'var(--color-warning)' }} />
-                          {item.name}
-                        </span>
-                        {item.fromRecipes.length > 0 && (
-                          <div style={{ fontSize: '10px', color: 'var(--color-dark-light)', marginTop: '2px' }}>
-                            Pour : {item.fromRecipes.join(', ')}
-                          </div>
-                        )}
-                      </div>
-                      <span style={{ fontWeight: '700', fontSize: '13px', color: 'var(--color-dark)' }}>
-                        {item.totalQty} {item.unit}
-                      </span>
                     </div>
                   ))}
                 </div>
@@ -575,7 +607,7 @@ export const ShoppingListDrawer: React.FC<ShoppingListDrawerProps> = ({
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                     {availableItems.map(item => (
                       <div
-                        key={item.productId}
+                        key={item.key}
                         style={{
                           display: 'flex',
                           justifyContent: 'space-between',
@@ -604,15 +636,15 @@ export const ShoppingListDrawer: React.FC<ShoppingListDrawerProps> = ({
               </div>
             )}
 
-            {/* Si rien à acheter et rien de non géré */}
-            {toOrderItems.length === 0 && customItems.length === 0 && (
+            {/* Si rien à acheter */}
+            {toOrderItems.length === 0 && (
               <div style={{ textAlign: 'center', padding: '40px 20px' }}>
                 <Check size={48} style={{ margin: '0 auto 16px', color: 'var(--color-secondary)', opacity: 0.7 }} />
                 <p style={{ fontWeight: '700', fontSize: '16px', color: 'var(--color-secondary)' }}>
                   Vous avez tout en stock ! 🎉
                 </p>
                 <p style={{ fontSize: '13px', color: 'var(--color-dark-light)', marginTop: '8px' }}>
-                  Tous les ingrédients liés sont disponibles en quantité suffisante.
+                  Tous les ingrédients sont disponibles en quantité suffisante.
                 </p>
               </div>
             )}
