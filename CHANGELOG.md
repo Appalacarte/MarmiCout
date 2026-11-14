@@ -4,6 +4,28 @@ Toutes les modifications notables apportées à ce projet sont documentées dans
 
 ---
 
+## [2.0.62] - 2026-11-14
+
+### Affichage par fournisseur, suivi des achats et validation dans le stock
+- **Regroupement par fournisseur habituel (`src/components/ShoppingListDrawer.tsx`, `src/utils/shoppingList.ts`)** :
+  - Ajout d'un sélecteur de vue permettant d'afficher les articles de courses « Par fournisseur » ou en liste globale « Tous ».
+  - Regroupement des articles à acheter selon le magasin habituel du produit (`mainStoreId`), avec calcul du sous-total estimé par magasin.
+  - Gestion automatique des articles sans magasin ou non encore créés en stock sous le groupe dédié « Sans fournisseur ».
+- **Case à cocher « Acheté » mémorisée** :
+  - Chaque article dispose d'une case à cocher « Acheté » mémorisée pendant toute l'ouverture de la liste.
+  - Mise en valeur visuelle immédiate de l'article avec badge « Acheté », marquage de la case et texte barré.
+- **Validation et enregistrement des achats réels dans les stocks (`dbService.addPurchase`)** :
+  - Ajout d'un bouton « Enregistrer mes achats » activé dès qu'au moins un article lié à un produit est coché.
+  - Ouverture d'un écran dédié de validation où l'utilisateur confirme ou corrige la quantité, l'unité, le magasin et le prix total payé de chaque article, avec calcul en temps réel du prix unitaire.
+  - Rien n'est enregistré dans la base de données sans validation explicite de l'utilisateur.
+  - À la confirmation, les achats sont enregistrés via `dbService.addPurchase`, incrémentant automatiquement le stock et mettant à jour le PMP (Prix Moyen Pondéré).
+- **Synchronisation du texte copié et de l'export CSV** :
+  - Le texte copié vers le presse-papier et l'export CSV (compatible Excel avec BOM UTF-8) adoptent fidèlement le regroupement par fournisseur actif, en indiquant le magasin et le statut acheté de chaque ligne.
+- **Tests unitaires dédiés (`src/utils/shoppingList.test.ts`)** :
+  - Couverture complète du regroupement par fournisseur habituel, du groupe sans fournisseur, du calcul des coûts et du formatage texte / CSV.
+
+---
+
 ## [2.0.61] - 2026-11-14
 
 ### Alertes d'écart de prix d'achat, courbe d'évolution produit et recettes sous marge cible

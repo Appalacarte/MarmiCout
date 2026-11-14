@@ -12,9 +12,11 @@ import {
   FileSpreadsheet,
   ChefHat,
   PackageCheck,
-  Plus
+  Plus,
+  Store as StoreIcon,
+  ShoppingBag
 } from 'lucide-react';
-import { Recipe, Production, Product } from '../types';
+import { Recipe, Production, Product, Purchase } from '../types';
 import { dbService } from '../services/db';
 import {
   convertUnitsWithInfo,
@@ -23,6 +25,11 @@ import {
   formatStock,
   getLogicalStockUnit,
 } from '../utils/units';
+import {
+  groupShoppingItemsByStore,
+  generateShoppingListText,
+  generateShoppingListCsv,
+} from '../utils/shoppingList';
 import { generateUUID } from '../services/cloudDbService';
 import { ProductDuplicateSuggestions } from './ProductDuplicateSuggestions';
 import { findExactDuplicateProduct } from '../utils/productDuplicate';
@@ -58,6 +65,18 @@ interface ShoppingItem {
   isUnlinked?: boolean;
   isApproximate?: boolean;
   unlinkedRefs?: { recipeId: string; ingredientId: string }[];
+  mainStoreId?: string;
+}
+
+interface PurchaseValidationRow {
+  itemKey: string;
+  productId: string;
+  productName: string;
+  productUnit: string;
+  storeId: string;
+  qty: number;
+  unit: string;
+  pricePaid: number;
 }
 
 interface IncompatibleShoppingItem {
@@ -80,6 +99,19 @@ export const ShoppingListDrawer: React.FC<ShoppingListDrawerProps> = ({
   const [showAvailable, setShowAvailable] = useState(false);
   const [refreshTick, setRefreshTick] = useState(0);
   const [quickAddError, setQuickAddError] = useState<string | null>(null);
+
+  // Mode de regroupement : 'store' (par fournisseur) ou 'all' (liste globale)
+  const [groupBy, setGroupBy] = useState<'store' | 'all'>('store');
+
+  // Articles cochés « achetés », mémorisés tant que la liste est ouverte
+  const [checkedKeys, setCheckedKeys] = useState<Set<string>>(new Set());
+
+  // État de validation des achats
+  const [isPurchasing, setIsPurchasing] = useState(false);
+  const [purchaseRows, setPurchaseRows] = useState<PurchaseValidationRow[]>([]);
+  const [purchaseError, setPurchaseError] = useState<string | null>(null);
+  const [purchaseSuccessMessage, setPurchaseSuccessMessage] = useState<string | null>(null);
+  const [isSubmittingPurchases, setIsSubmittingPurchases] = useState(false);
 
   // Modal de confirmation de création rapide d'un produit
   const [quickAddModal, setQuickAddModal] = useState<{
@@ -194,6 +226,7 @@ export const ShoppingListDrawer: React.FC<ShoppingListDrawerProps> = ({
         avgPurchasePrice: product.avgPurchasePrice,
         fromRecipes,
         isApproximate,
+        mainStoreId: product.mainStoreId || '',
       };
 
       if (toOrder > 0) {
@@ -217,7 +250,8 @@ export const ShoppingListDrawer: React.FC<ShoppingListDrawerProps> = ({
           avgPurchasePrice: val.totalQty > 0 ? val.customCostSum / val.totalQty : 0,
           fromRecipes: val.fromRecipes,
           isUnlinked: true,
-          unlinkedRefs: val.unlinkedRefs
+          unlinkedRefs: val.unlinkedRefs,
+          mainStoreId: '',
         });
       }
     }
@@ -229,6 +263,116 @@ export const ShoppingListDrawer: React.FC<ShoppingListDrawerProps> = ({
 
     return { toOrderItems, availableItems, incompatibleItems, totalEstimatedCost, hasApproximateCost };
   }, [selections, refreshTick]);
+
+  const stores = useMemo(() => {
+    void refreshTick;
+    return dbService.getStores();
+  }, [refreshTick]);
+  const storeMap = useMemo(() => new Map<string, string>(stores.map(s => [s.id, s.name])), [stores]);
+
+  const storeGroups = useMemo(() => {
+    return groupShoppingItemsByStore(toOrderItems, storeMap);
+  }, [toOrderItems, storeMap]);
+
+  // Cocher / Décocher un article (mémorisé tant que le drawer est ouvert)
+  const toggleChecked = (key: string) => {
+    setCheckedKeys(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  // Articles cochés et liés à un produit en stock
+  const checkedLinkedItems = useMemo(() => {
+    return toOrderItems.filter(i => checkedKeys.has(i.key) && i.productId && !i.isUnlinked);
+  }, [toOrderItems, checkedKeys]);
+
+  // Ouvrir l'écran de validation des achats
+  const handleStartPurchaseValidation = () => {
+    if (checkedLinkedItems.length === 0) return;
+
+    const rows: PurchaseValidationRow[] = checkedLinkedItems.map(item => {
+      const product = item.productId ? dbService.getProduct(item.productId) : undefined;
+      const storeId = product?.mainStoreId || stores[0]?.id || '';
+      return {
+        itemKey: item.key,
+        productId: item.productId!,
+        productName: item.productName,
+        productUnit: item.productUnit,
+        storeId,
+        qty: item.toOrder,
+        unit: item.productUnit,
+        pricePaid: Number(item.estimatedCost.toFixed(2)),
+      };
+    });
+
+    setPurchaseRows(rows);
+    setPurchaseError(null);
+    setIsPurchasing(true);
+  };
+
+  // Confirmer et enregistrer les achats avec dbService.addPurchase
+  const handleConfirmPurchases = async () => {
+    if (purchaseRows.length === 0) return;
+
+    for (const row of purchaseRows) {
+      if (!row.qty || row.qty <= 0) {
+        setPurchaseError(`Quantité invalide pour « ${cleanProductName(row.productName)} ». Elle doit être supérieure à 0.`);
+        return;
+      }
+      if (row.pricePaid === undefined || row.pricePaid < 0 || isNaN(row.pricePaid)) {
+        setPurchaseError(`Prix payé invalide pour « ${cleanProductName(row.productName)} ».`);
+        return;
+      }
+    }
+
+    setIsSubmittingPurchases(true);
+    setPurchaseError(null);
+
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const recordedKeys = new Set<string>();
+
+      for (const row of purchaseRows) {
+        const newPurchase: Purchase = {
+          id: generateUUID(),
+          date: today,
+          productId: row.productId,
+          qty: row.qty,
+          unit: row.unit,
+          pricePaid: row.pricePaid,
+          unitPrice: row.qty > 0 ? Number((row.pricePaid / row.qty).toFixed(4)) : 0,
+          storeId: row.storeId || stores[0]?.id || '',
+          notes: 'Enregistré depuis la liste de courses',
+        };
+        await dbService.addPurchase(newPurchase);
+        recordedKeys.add(row.itemKey);
+      }
+
+      // Décocher les articles enregistrés
+      setCheckedKeys(prev => {
+        const next = new Set(prev);
+        recordedKeys.forEach(k => next.delete(k));
+        return next;
+      });
+
+      setPurchaseSuccessMessage(`${purchaseRows.length} achat(s) enregistré(s) avec succès ! Les stocks et prix moyens ont été mis à jour.`);
+      setTimeout(() => {
+        setPurchaseSuccessMessage(null);
+      }, 5000);
+
+      setRefreshTick(t => t + 1);
+      onDataChanged?.();
+      setIsPurchasing(false);
+    } catch (err: unknown) {
+      console.error("Erreur lors de l'enregistrement des achats:", err);
+      setPurchaseError(err instanceof Error ? err.message : "Erreur lors de l'enregistrement des achats.");
+    } finally {
+      setIsSubmittingPurchases(false);
+    }
+  };
 
   // --- Ouvrir le modal de confirmation d'ajout rapide ---
   const handleOpenAddModal = (item: ShoppingItem) => {
@@ -386,32 +530,18 @@ export const ShoppingListDrawer: React.FC<ShoppingListDrawerProps> = ({
 
   // --- Copier la liste en texte ---
   const handleCopyText = () => {
-    const lines: string[] = [];
-    lines.push('🛒 LISTE DE COURSES — MarmiCout');
-    lines.push(`📅 ${new Date().toLocaleDateString('fr-FR')}`);
-    lines.push('');
+    const text = generateShoppingListText({
+      date: new Date().toLocaleDateString('fr-FR'),
+      selections: selections.map(s => ({ recipeName: s.recipe.name, portions: s.portions })),
+      toOrderItems,
+      totalEstimatedCost,
+      currency: settings.currency,
+      groupBy,
+      storeGroups,
+      checkedKeys,
+    });
 
-    if (selections.length > 0) {
-      lines.push('📋 Recettes planifiées :');
-      selections.forEach(({ recipe, portions }) => {
-        lines.push(`  • ${recipe.name} — ${portions} portion(s)`);
-      });
-      lines.push('');
-    }
-
-    if (toOrderItems.length > 0) {
-      lines.push('🛒 À ACHETER :');
-      toOrderItems.forEach(item => {
-        lines.push(
-          `  □ ${item.productName} — ${item.toOrder} ${item.productUnit}` +
-          (item.estimatedCost > 0 ? ` (~${item.estimatedCost.toFixed(2)}${settings.currency})` : '')
-        );
-      });
-      lines.push('');
-      lines.push(`💰 Coût estimé des achats : ${totalEstimatedCost.toFixed(2)}${settings.currency}`);
-    }
-
-    navigator.clipboard.writeText(lines.join('\n')).then(() => {
+    navigator.clipboard.writeText(text).then(() => {
       setCopiedText(true);
       setTimeout(() => setCopiedText(false), 2500);
     });
@@ -419,37 +549,19 @@ export const ShoppingListDrawer: React.FC<ShoppingListDrawerProps> = ({
 
   // --- Exporter en CSV (compatible Excel) ---
   const handleExportCsv = () => {
-    const bom = '\uFEFF'; // BOM UTF-8 pour Excel
-    const lines: string[] = [];
-
-    lines.push('RECETTES PLANIFIÉES');
-    lines.push('Recette,Portions cible');
-    selections.forEach(({ recipe, portions }) => {
-      lines.push(`"${recipe.name}",${portions}`);
+    const csvContent = generateShoppingListCsv({
+      selections: selections.map(s => ({ recipeName: s.recipe.name, portions: s.portions })),
+      toOrderItems,
+      availableItems: availableItems.map(a => ({
+        productName: a.productName,
+        needed: a.needed,
+        inStock: a.inStock,
+        productUnit: a.productUnit,
+      })),
+      groupBy,
+      storeGroups,
+      checkedKeys,
     });
-    lines.push('');
-
-    if (toOrderItems.length > 0) {
-      lines.push('INGRÉDIENTS À ACHETER');
-      lines.push('Ingrédient,Qté à commander,Unité,En stock,Besoin total,Coût estimé');
-      toOrderItems.forEach(item => {
-        lines.push(
-          `"${item.productName}",${item.toOrder},"${item.productUnit}",${item.inStock},${item.needed},${item.estimatedCost.toFixed(2)}`
-        );
-      });
-      lines.push('');
-    }
-
-    if (availableItems.length > 0) {
-      lines.push('DÉJÀ EN STOCK');
-      lines.push('Ingrédient,Besoin,Stock actuel,Unité');
-      availableItems.forEach(item => {
-        lines.push(`"${item.productName}",${item.needed},${item.inStock},"${item.productUnit}"`);
-      });
-      lines.push('');
-    }
-
-    const csvContent = bom + lines.join('\n');
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -504,6 +616,150 @@ export const ShoppingListDrawer: React.FC<ShoppingListDrawerProps> = ({
     }
   };
 
+  // --- Rendu d'une carte d'article de course ---
+  const renderItemCard = (item: ShoppingItem, showStoreBadge = false) => {
+    const isChecked = checkedKeys.has(item.key);
+    const rawStoreId = item.mainStoreId || '';
+    const storeName = rawStoreId && storeMap.has(rawStoreId)
+      ? storeMap.get(rawStoreId)
+      : 'Sans fournisseur';
+
+    return (
+      <div
+        key={item.key}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '12px',
+          padding: '12px 14px',
+          backgroundColor: isChecked ? 'rgba(74, 155, 120, 0.08)' : 'var(--color-danger-light)',
+          borderRadius: 'var(--radius-md)',
+          border: isChecked ? '1px solid rgba(74, 155, 120, 0.35)' : '1px solid rgba(255, 75, 75, 0.15)',
+          transition: 'all 0.15s ease'
+        }}
+      >
+        {/* Case à cocher Acheté */}
+        <label
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            cursor: 'pointer',
+            flexShrink: 0
+          }}
+          title={isChecked ? 'Article marqué comme acheté' : 'Cocher comme acheté'}
+        >
+          <input
+            type="checkbox"
+            checked={isChecked}
+            onChange={() => toggleChecked(item.key)}
+            style={{
+              width: '18px',
+              height: '18px',
+              cursor: 'pointer',
+              accentColor: 'var(--color-secondary)'
+            }}
+          />
+        </label>
+
+        {/* Pastille icône */}
+        <div style={{
+          width: '32px', height: '32px',
+          borderRadius: '50%',
+          backgroundColor: isChecked ? 'var(--color-secondary)' : 'var(--color-danger)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          flexShrink: 0,
+          color: '#fff'
+        }}>
+          {isChecked ? <Check size={16} /> : <AlertTriangle size={16} />}
+        </div>
+
+        {/* Détails produit */}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginBottom: '2px' }}>
+            <span style={{
+              fontWeight: '700',
+              fontSize: '14px',
+              color: 'var(--color-dark)',
+              textDecoration: isChecked ? 'line-through' : 'none',
+              opacity: isChecked ? 0.8 : 1
+            }}>
+              {cleanProductName(item.productName)}
+            </span>
+
+            {isChecked && (
+              <span style={{
+                fontSize: '10px',
+                fontWeight: '700',
+                padding: '1px 6px',
+                borderRadius: '4px',
+                backgroundColor: 'var(--color-secondary)',
+                color: '#fff'
+              }}>
+                Acheté
+              </span>
+            )}
+
+            {showStoreBadge && (
+              <span style={{
+                fontSize: '10px',
+                fontWeight: '600',
+                padding: '1px 6px',
+                borderRadius: '4px',
+                backgroundColor: 'rgba(99, 102, 241, 0.1)',
+                color: 'var(--color-primary)'
+              }}>
+                🏪 {storeName}
+              </span>
+            )}
+
+            {item.isUnlinked && (
+              <button
+                type="button"
+                className="btn btn-secondary"
+                style={{
+                  height: '22px',
+                  padding: '0 8px',
+                  fontSize: '10px',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '3px'
+                }}
+                onClick={() => handleOpenAddModal(item)}
+              >
+                <Plus size={11} />
+                Ajouter à mes produits
+              </button>
+            )}
+          </div>
+          <div style={{ fontSize: '11px', color: 'var(--color-dark-light)' }}>
+            Besoin : {item.isApproximate ? '≈ ' : ''}{formatStock(item.needed)} {item.productUnit} • {item.isUnlinked ? 'Non suivi en stock' : `Stock : ${formatStock(item.inStock)} ${item.productUnit}`} • {item.avgPurchasePrice.toFixed(2)} {settings.currency}/{item.productUnit}
+          </div>
+          {item.fromRecipes.length > 0 && (
+            <div style={{ fontSize: '10px', color: 'var(--color-dark-light)', marginTop: '2px' }}>
+              Pour : {item.fromRecipes.join(', ')}
+            </div>
+          )}
+        </div>
+
+        {/* Quantité & coût */}
+        <div style={{ textAlign: 'right', flexShrink: 0 }}>
+          <div style={{
+            fontWeight: '700',
+            fontSize: '15px',
+            color: isChecked ? 'var(--color-secondary)' : 'var(--color-danger)'
+          }}>
+            {item.isApproximate ? '≈ ' : ''}{formatStock(item.toOrder)} {item.productUnit}
+          </div>
+          {item.estimatedCost > 0 && (
+            <div style={{ fontSize: '11px', color: 'var(--color-dark-light)' }}>
+              {item.isApproximate ? '≈ ' : '~'}{item.estimatedCost.toFixed(2)} {settings.currency}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -543,16 +799,31 @@ export const ShoppingListDrawer: React.FC<ShoppingListDrawerProps> = ({
           <ShoppingCart size={24} style={{ color: 'var(--color-primary)', flexShrink: 0 }} />
           <div style={{ flex: 1 }}>
             <h2 style={{ fontSize: '18px', fontWeight: '700', color: 'var(--color-dark)', margin: 0 }}>
-              {cookingState === 'confirming' ? 'Confirmer la production' : cookingState === 'done' ? 'Production terminée' : 'Liste de courses'}
+              {isPurchasing
+                ? 'Enregistrer mes achats'
+                : cookingState === 'confirming'
+                ? 'Confirmer la production'
+                : cookingState === 'done'
+                ? 'Production terminée'
+                : 'Liste de courses'}
             </h2>
             <p style={{ fontSize: '12px', color: 'var(--color-dark-light)', margin: 0, marginTop: '2px' }}>
-              {selections.length} recette(s) — {selections.reduce((s, x) => s + x.portions, 0)} portion(s) total
+              {isPurchasing
+                ? `${purchaseRows.length} article(s) à confirmer`
+                : `${selections.length} recette(s) — ${selections.reduce((s, x) => s + x.portions, 0)} portion(s) total`}
             </p>
           </div>
           <button
             type="button"
             className="btn btn-secondary btn-icon-only"
-            onClick={onClose}
+            onClick={() => {
+              if (isPurchasing) {
+                setIsPurchasing(false);
+                setPurchaseError(null);
+              } else {
+                onClose();
+              }
+            }}
             style={{ height: '36px', width: '36px' }}
           >
             <X size={18} />
@@ -560,7 +831,8 @@ export const ShoppingListDrawer: React.FC<ShoppingListDrawerProps> = ({
         </div>
 
         {/* Récapitulatif recettes avec portions éditables */}
-        <div style={{
+        {!isPurchasing && cookingState === 'idle' && (
+          <div style={{
           padding: '12px 24px',
           borderBottom: '1px solid var(--color-border)',
           backgroundColor: 'var(--color-light)',
@@ -598,166 +870,474 @@ export const ShoppingListDrawer: React.FC<ShoppingListDrawerProps> = ({
             ↑ Changez le nombre de portions — la liste se recalcule instantanément.
           </p>
         </div>
+      )}
 
-        {/* ── ÉTAT NORMAL : liste de courses ── */}
+        {/* ── ÉTAT NORMAL / ACHATS : liste de courses ou validation ── */}
         {cookingState === 'idle' && (
-          <div style={{ flex: 1, overflowY: 'auto', padding: '16px 24px' }}>
-            {quickAddError && (
+          isPurchasing ? (
+            <div style={{ flex: 1, overflowY: 'auto', padding: '16px 24px' }}>
               <div style={{
                 marginBottom: '16px',
-                padding: '10px 14px',
-                backgroundColor: 'var(--color-danger-light)',
-                border: '1px solid rgba(255, 75, 75, 0.3)',
-                borderRadius: 'var(--radius-md)',
-                fontSize: '12px',
-                color: 'var(--color-danger)',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                gap: '8px'
-              }}>
-                <span>❌ {quickAddError}</span>
-                <button
-                  type="button"
-                  onClick={() => setQuickAddError(null)}
-                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-danger)', fontWeight: 700, fontSize: '16px', lineHeight: 1 }}
-                >×</button>
-              </div>
-            )}
-
-            {/* Avertissement unités incompatibles */}
-            {incompatibleItems.length > 0 && (
-              <div style={{
-                marginBottom: '16px',
-                padding: '12px 14px',
-                backgroundColor: 'var(--color-danger-light)',
-                border: '1px solid rgba(255, 75, 75, 0.3)',
-                borderRadius: 'var(--radius-md)',
-                fontSize: '12px',
-                color: 'var(--color-danger)',
-                fontWeight: '600'
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
-                  <AlertTriangle size={16} />
-                  <span>Unités incompatibles détectées (production bloquée) :</span>
-                </div>
-                {incompatibleItems.map(inc => (
-                  <div key={inc.key} style={{ fontWeight: '500', marginTop: '2px' }}>
-                    • <strong>{inc.productName}</strong> ({inc.recipeName}) : Unités incompatibles : recette en {inc.recipeUnit}, stock en {inc.stockUnit}
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Total estimé */}
-            {toOrderItems.length > 0 && (
-              <div style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
                 padding: '14px 16px',
-                backgroundColor: 'var(--color-warning-light)',
+                backgroundColor: 'var(--color-primary-light)',
                 borderRadius: 'var(--radius-md)',
-                border: '1px solid rgba(242, 185, 34, 0.3)',
-                marginBottom: '20px'
+                border: '1px solid rgba(99, 102, 241, 0.2)'
               }}>
-                <span style={{ fontSize: '13px', fontWeight: '600', color: 'var(--color-dark)' }}>
-                  💰 Coût estimé des achats
-                </span>
-                <strong style={{ fontSize: '18px', color: 'var(--color-primary)' }}>
-                  {hasApproximateCost ? '≈ ' : '~'}{totalEstimatedCost.toFixed(2)} {settings.currency}
-                </strong>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                  <ShoppingBag size={18} style={{ color: 'var(--color-primary)' }} />
+                  <h3 style={{ fontSize: '14px', fontWeight: '700', color: 'var(--color-primary)', margin: 0 }}>
+                    Validation de vos achats
+                  </h3>
+                </div>
+                <p style={{ fontSize: '12px', color: 'var(--color-dark)', margin: 0, lineHeight: 1.4 }}>
+                  Confirmez ou corrigez la quantité, l'unité, le magasin et le prix payé de chaque article.
+                  <strong> Rien ne sera enregistré sans votre validation ci-dessous.</strong>
+                </p>
               </div>
-            )}
 
-            {/* Section À ACHETER */}
-            {toOrderItems.length > 0 && (
-              <div style={{ marginBottom: '20px' }}>
-                <h3 style={{
-                  fontSize: '13px',
-                  fontWeight: '700',
-                  color: 'var(--color-danger)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  marginBottom: '10px',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.5px'
+              {purchaseError && (
+                <div style={{
+                  marginBottom: '16px',
+                  padding: '10px 14px',
+                  backgroundColor: 'var(--color-danger-light)',
+                  border: '1px solid rgba(255, 75, 75, 0.3)',
+                  borderRadius: 'var(--radius-md)',
+                  fontSize: '12px',
+                  color: 'var(--color-danger)'
                 }}>
-                  <ShoppingCart size={14} />
-                  À acheter ({toOrderItems.length})
-                </h3>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  {toOrderItems.map(item => (
+                  ⚠️ {purchaseError}
+                </div>
+              )}
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                {purchaseRows.map((row, index) => {
+                  const calculatedUnit = row.qty > 0 ? (row.pricePaid / row.qty) : 0;
+                  return (
                     <div
-                      key={item.key}
+                      key={row.itemKey}
                       style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '12px',
-                        padding: '12px 14px',
-                        backgroundColor: 'var(--color-danger-light)',
+                        padding: '14px 16px',
+                        backgroundColor: 'var(--color-white)',
                         borderRadius: 'var(--radius-md)',
-                        border: '1px solid rgba(255, 75, 75, 0.15)'
+                        border: '1px solid var(--color-border)',
+                        boxShadow: '0 1px 4px rgba(0,0,0,0.05)'
                       }}
                     >
-                      <div style={{
-                        width: '32px', height: '32px',
-                        borderRadius: '50%',
-                        backgroundColor: 'var(--color-danger)',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        flexShrink: 0
-                      }}>
-                        <AlertTriangle size={16} style={{ color: '#fff' }} />
-                      </div>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginBottom: '2px' }}>
-                          <span style={{ fontWeight: '700', fontSize: '14px', color: 'var(--color-dark)' }}>
-                            {cleanProductName(item.productName)}
-                          </span>
-                          {item.isUnlinked && (
-                            <button
-                              type="button"
-                              className="btn btn-secondary"
-                              style={{
-                                height: '22px',
-                                padding: '0 8px',
-                                fontSize: '10px',
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '3px'
-                              }}
-                              onClick={() => handleOpenAddModal(item)}
-                            >
-                              <Plus size={11} />
-                              Ajouter à mes produits
-                            </button>
-                          )}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                        <div style={{ fontWeight: '700', fontSize: '14px', color: 'var(--color-dark)' }}>
+                          {cleanProductName(row.productName)}
                         </div>
-                        <div style={{ fontSize: '11px', color: 'var(--color-dark-light)' }}>
-                          Besoin : {item.isApproximate ? '≈ ' : ''}{formatStock(item.needed)} {item.productUnit} • {item.isUnlinked ? 'Non suivi en stock' : `Stock : ${formatStock(item.inStock)} ${item.productUnit}`} • {item.avgPurchasePrice.toFixed(2)} {settings.currency}/{item.productUnit}
-                        </div>
-                        {item.fromRecipes.length > 0 && (
-                          <div style={{ fontSize: '10px', color: 'var(--color-dark-light)', marginTop: '2px' }}>
-                            Pour : {item.fromRecipes.join(', ')}
-                          </div>
-                        )}
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-icon-only"
+                          style={{ width: '28px', height: '28px', color: 'var(--color-danger)' }}
+                          onClick={() => {
+                            setPurchaseRows(prev => prev.filter((_, i) => i !== index));
+                          }}
+                          title="Ne pas enregistrer cet article"
+                        >
+                          <X size={14} />
+                        </button>
                       </div>
-                      <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                        <div style={{ fontWeight: '700', fontSize: '15px', color: 'var(--color-danger)' }}>
-                          {item.isApproximate ? '≈ ' : ''}{formatStock(item.toOrder)} {item.productUnit}
+
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '10px', marginBottom: '10px' }}>
+                        <div>
+                          <label style={{ display: 'block', fontSize: '11px', fontWeight: '600', color: 'var(--color-dark-light)', marginBottom: '4px' }}>
+                            Quantité achetée *
+                          </label>
+                          <input
+                            type="number"
+                            min="0.001"
+                            step="any"
+                            value={row.qty}
+                            onChange={e => {
+                              const val = parseDecimalInput(e.target.value);
+                              setPurchaseRows(prev => prev.map((r, i) => i === index ? { ...r, qty: val } : r));
+                            }}
+                            style={{
+                              width: '100%',
+                              height: '36px',
+                              border: '1px solid var(--color-border)',
+                              borderRadius: '6px',
+                              padding: '0 8px',
+                              fontSize: '13px',
+                              fontWeight: '600'
+                            }}
+                          />
                         </div>
-                        {item.estimatedCost > 0 && (
-                          <div style={{ fontSize: '11px', color: 'var(--color-dark-light)' }}>
-                            {item.isApproximate ? '≈ ' : '~'}{item.estimatedCost.toFixed(2)} {settings.currency}
-                          </div>
-                        )}
+
+                        <div>
+                          <label style={{ display: 'block', fontSize: '11px', fontWeight: '600', color: 'var(--color-dark-light)', marginBottom: '4px' }}>
+                            Unité *
+                          </label>
+                          <select
+                            value={row.unit}
+                            onChange={e => {
+                              const unitVal = e.target.value;
+                              setPurchaseRows(prev => prev.map((r, i) => i === index ? { ...r, unit: unitVal } : r));
+                            }}
+                            style={{
+                              width: '100%',
+                              height: '36px',
+                              border: '1px solid var(--color-border)',
+                              borderRadius: '6px',
+                              padding: '0 8px',
+                              fontSize: '13px',
+                              backgroundColor: '#fff'
+                            }}
+                          >
+                            {settings.units.map(u => (
+                              <option key={u} value={u}>{u}</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div>
+                          <label style={{ display: 'block', fontSize: '11px', fontWeight: '600', color: 'var(--color-dark-light)', marginBottom: '4px' }}>
+                            Prix payé ({settings.currency}) *
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={row.pricePaid}
+                            onChange={e => {
+                              const val = parseDecimalInput(e.target.value);
+                              setPurchaseRows(prev => prev.map((r, i) => i === index ? { ...r, pricePaid: val } : r));
+                            }}
+                            style={{
+                              width: '100%',
+                              height: '36px',
+                              border: '1px solid var(--color-border)',
+                              borderRadius: '6px',
+                              padding: '0 8px',
+                              fontSize: '13px',
+                              fontWeight: '600'
+                            }}
+                          />
+                        </div>
                       </div>
+
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '6px', flexWrap: 'wrap', gap: '8px' }}>
+                        <div style={{ flex: 1, minWidth: '160px' }}>
+                          <label style={{ display: 'block', fontSize: '11px', fontWeight: '600', color: 'var(--color-dark-light)', marginBottom: '4px' }}>
+                            Fournisseur / Magasin
+                          </label>
+                          <select
+                            value={row.storeId}
+                            onChange={e => {
+                              const storeVal = e.target.value;
+                              setPurchaseRows(prev => prev.map((r, i) => i === index ? { ...r, storeId: storeVal } : r));
+                            }}
+                            style={{
+                              width: '100%',
+                              height: '34px',
+                              border: '1px solid var(--color-border)',
+                              borderRadius: '6px',
+                              padding: '0 8px',
+                              fontSize: '12px',
+                              backgroundColor: '#fff'
+                            }}
+                          >
+                            <option value="">-- Sans fournisseur --</option>
+                            {stores.map(s => (
+                              <option key={s.id} value={s.id}>{s.name}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div style={{ textAlign: 'right', fontSize: '11px', color: 'var(--color-dark-light)' }}>
+                          Prix unitaire calculé :
+                          <strong style={{ color: 'var(--color-primary)', marginLeft: '4px' }}>
+                            {calculatedUnit.toFixed(2)} {settings.currency}/{row.unit}
+                          </strong>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {purchaseRows.length === 0 && (
+                <div style={{ textAlign: 'center', padding: '40px 10px', color: 'var(--color-dark-light)' }}>
+                  Tous les articles ont été retirés. Cliquez sur « Annuler » ci-dessous pour revenir à la liste.
+                </div>
+              )}
+            </div>
+          ) : (
+            <div style={{ flex: 1, overflowY: 'auto', padding: '16px 24px' }}>
+              {purchaseSuccessMessage && (
+                <div style={{
+                  marginBottom: '16px',
+                  padding: '10px 14px',
+                  backgroundColor: 'rgba(74, 155, 120, 0.15)',
+                  border: '1px solid rgba(74, 155, 120, 0.4)',
+                  borderRadius: 'var(--radius-md)',
+                  fontSize: '12px',
+                  color: 'var(--color-secondary)',
+                  fontWeight: '600',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center'
+                }}>
+                  <span>🎉 {purchaseSuccessMessage}</span>
+                  <button
+                    type="button"
+                    onClick={() => setPurchaseSuccessMessage(null)}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-secondary)', fontWeight: 700, fontSize: '14px' }}
+                  >×</button>
+                </div>
+              )}
+
+              {quickAddError && (
+                <div style={{
+                  marginBottom: '16px',
+                  padding: '10px 14px',
+                  backgroundColor: 'var(--color-danger-light)',
+                  border: '1px solid rgba(255, 75, 75, 0.3)',
+                  borderRadius: 'var(--radius-md)',
+                  fontSize: '12px',
+                  color: 'var(--color-danger)',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}>
+                  <span>❌ {quickAddError}</span>
+                  <button
+                    type="button"
+                    onClick={() => setQuickAddError(null)}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-danger)', fontWeight: 700, fontSize: '16px', lineHeight: 1 }}
+                  >×</button>
+                </div>
+              )}
+
+              {/* Avertissement unités incompatibles */}
+              {incompatibleItems.length > 0 && (
+                <div style={{
+                  marginBottom: '16px',
+                  padding: '12px 14px',
+                  backgroundColor: 'var(--color-danger-light)',
+                  border: '1px solid rgba(255, 75, 75, 0.3)',
+                  borderRadius: 'var(--radius-md)',
+                  fontSize: '12px',
+                  color: 'var(--color-danger)',
+                  fontWeight: '600'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
+                    <AlertTriangle size={16} />
+                    <span>Unités incompatibles détectées (production bloquée) :</span>
+                  </div>
+                  {incompatibleItems.map(inc => (
+                    <div key={inc.key} style={{ fontWeight: '500', marginTop: '2px' }}>
+                      • <strong>{inc.productName}</strong> ({inc.recipeName}) : Unités incompatibles : recette en {inc.recipeUnit}, stock en {inc.stockUnit}
                     </div>
                   ))}
                 </div>
-              </div>
-            )}
+              )}
+
+              {/* Bannière d'action si articles cochés prêts à être enregistrés */}
+              {checkedLinkedItems.length > 0 && (
+                <div style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  padding: '10px 14px',
+                  backgroundColor: 'rgba(74, 155, 120, 0.12)',
+                  borderRadius: 'var(--radius-md)',
+                  border: '1px solid rgba(74, 155, 120, 0.3)',
+                  marginBottom: '16px',
+                  gap: '8px',
+                  flexWrap: 'wrap'
+                }}>
+                  <span style={{ fontSize: '12px', fontWeight: '600', color: 'var(--color-secondary)' }}>
+                    ✓ {checkedLinkedItems.length} article{checkedLinkedItems.length > 1 ? 's' : ''} coché{checkedLinkedItems.length > 1 ? 's' : ''} prêt{checkedLinkedItems.length > 1 ? 's' : ''} à enregistrer
+                  </span>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    style={{
+                      height: '32px',
+                      fontSize: '12px',
+                      fontWeight: '700',
+                      padding: '0 12px',
+                      backgroundColor: 'var(--color-secondary)',
+                      color: '#fff',
+                      border: 'none',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px'
+                    }}
+                    onClick={handleStartPurchaseValidation}
+                  >
+                    <ShoppingBag size={14} />
+                    Enregistrer mes achats ({checkedLinkedItems.length})
+                  </button>
+                </div>
+              )}
+
+              {/* Total estimé */}
+              {toOrderItems.length > 0 && (
+                <div style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  padding: '14px 16px',
+                  backgroundColor: 'var(--color-warning-light)',
+                  borderRadius: 'var(--radius-md)',
+                  border: '1px solid rgba(242, 185, 34, 0.3)',
+                  marginBottom: '20px'
+                }}>
+                  <span style={{ fontSize: '13px', fontWeight: '600', color: 'var(--color-dark)' }}>
+                    💰 Coût estimé des achats
+                  </span>
+                  <strong style={{ fontSize: '18px', color: 'var(--color-primary)' }}>
+                    {hasApproximateCost ? '≈ ' : '~'}{totalEstimatedCost.toFixed(2)} {settings.currency}
+                  </strong>
+                </div>
+              )}
+
+              {/* Section À ACHETER */}
+              {toOrderItems.length > 0 && (
+                <div style={{ marginBottom: '20px' }}>
+                  <div style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    marginBottom: '12px',
+                    flexWrap: 'wrap',
+                    gap: '8px'
+                  }}>
+                    <h3 style={{
+                      fontSize: '13px',
+                      fontWeight: '700',
+                      color: 'var(--color-danger)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      margin: 0,
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.5px'
+                    }}>
+                      <ShoppingCart size={14} />
+                      À acheter ({toOrderItems.length})
+                    </h3>
+
+                    {/* Sélecteur de regroupement : Par fournisseur vs Tous */}
+                    <div style={{
+                      display: 'inline-flex',
+                      backgroundColor: 'var(--color-light)',
+                      padding: '2px',
+                      borderRadius: '6px',
+                      border: '1px solid var(--color-border)'
+                    }}>
+                      <button
+                        type="button"
+                        onClick={() => setGroupBy('store')}
+                        style={{
+                          padding: '4px 10px',
+                          fontSize: '11px',
+                          fontWeight: '600',
+                          borderRadius: '4px',
+                          border: 'none',
+                          cursor: 'pointer',
+                          backgroundColor: groupBy === 'store' ? '#fff' : 'transparent',
+                          color: groupBy === 'store' ? 'var(--color-primary)' : 'var(--color-dark-light)',
+                          boxShadow: groupBy === 'store' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '4px'
+                        }}
+                      >
+                        <StoreIcon size={12} />
+                        Par fournisseur
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setGroupBy('all')}
+                        style={{
+                          padding: '4px 10px',
+                          fontSize: '11px',
+                          fontWeight: '600',
+                          borderRadius: '4px',
+                          border: 'none',
+                          cursor: 'pointer',
+                          backgroundColor: groupBy === 'all' ? '#fff' : 'transparent',
+                          color: groupBy === 'all' ? 'var(--color-primary)' : 'var(--color-dark-light)',
+                          boxShadow: groupBy === 'all' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none'
+                        }}
+                      >
+                        Tous ({toOrderItems.length})
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Affichage groupé par fournisseur */}
+                  {groupBy === 'store' ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                      {storeGroups.map(group => (
+                        <div
+                          key={group.storeId}
+                          style={{
+                            backgroundColor: 'var(--color-light)',
+                            borderRadius: 'var(--radius-md)',
+                            padding: '12px',
+                            border: '1px solid var(--color-border)'
+                          }}
+                        >
+                          {/* En-tête fournisseur avec coût estimé par magasin */}
+                          <div style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            marginBottom: '10px',
+                            paddingBottom: '8px',
+                            borderBottom: '1px solid rgba(0,0,0,0.06)'
+                          }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <div style={{
+                                width: '28px', height: '28px',
+                                borderRadius: '6px',
+                                backgroundColor: 'var(--color-primary-light)',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                color: 'var(--color-primary)'
+                              }}>
+                                <StoreIcon size={16} />
+                              </div>
+                              <div>
+                                <span style={{ fontWeight: '700', fontSize: '13px', color: 'var(--color-dark)' }}>
+                                  {group.storeName}
+                                </span>
+                                <span style={{ fontSize: '11px', color: 'var(--color-dark-light)', marginLeft: '6px' }}>
+                                  ({group.items.length} article{group.items.length > 1 ? 's' : ''})
+                                </span>
+                              </div>
+                            </div>
+
+                            <div style={{ textAlign: 'right' }}>
+                              <div style={{ fontSize: '10px', color: 'var(--color-dark-light)', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+                                Estimé magasin
+                              </div>
+                              <strong style={{ fontSize: '13px', color: 'var(--color-primary)' }}>
+                                ~{group.estimatedCost.toFixed(2)} {settings.currency}
+                              </strong>
+                            </div>
+                          </div>
+
+                          {/* Liste des articles du magasin */}
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                            {group.items.map(item => renderItemCard(item, false))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    /* Affichage liste globale */
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      {toOrderItems.map(item => renderItemCard(item, true))}
+                    </div>
+                  )}
+                </div>
+              )}
 
             {/* Section En stock */}
             {availableItems.length > 0 && (
@@ -831,7 +1411,7 @@ export const ShoppingListDrawer: React.FC<ShoppingListDrawerProps> = ({
               </div>
             )}
           </div>
-        )}
+        ))}
 
         {/* ── ÉTAT CONFIRMATION ── */}
         {cookingState === 'confirming' && (
@@ -944,7 +1524,42 @@ export const ShoppingListDrawer: React.FC<ShoppingListDrawerProps> = ({
           gap: '8px',
           flexWrap: 'wrap'
         }}>
-          {cookingState === 'idle' && (
+          {cookingState === 'idle' && isPurchasing && (
+            <>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                style={{ height: '46px', padding: '0 20px' }}
+                onClick={() => {
+                  setIsPurchasing(false);
+                  setPurchaseError(null);
+                }}
+                disabled={isSubmittingPurchases}
+              >
+                ← Annuler
+              </button>
+              <div style={{ flex: 1, display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                <div style={{ textAlign: 'right', fontSize: '12px' }}>
+                  <span style={{ color: 'var(--color-dark-light)' }}>Total payé : </span>
+                  <strong style={{ fontSize: '15px', color: 'var(--color-primary)' }}>
+                    {purchaseRows.reduce((sum, r) => sum + (r.pricePaid || 0), 0).toFixed(2)} {settings.currency}
+                  </strong>
+                </div>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  style={{ height: '46px', padding: '0 20px', minWidth: '160px' }}
+                  disabled={purchaseRows.length === 0 || isSubmittingPurchases}
+                  onClick={handleConfirmPurchases}
+                >
+                  <PackageCheck size={18} />
+                  {isSubmittingPurchases ? 'Enregistrement...' : `Confirmer (${purchaseRows.length})`}
+                </button>
+              </div>
+            </>
+          )}
+
+          {cookingState === 'idle' && !isPurchasing && (
             <>
               {/* Bouton principal : Cuisiner */}
               <button
@@ -963,6 +1578,27 @@ export const ShoppingListDrawer: React.FC<ShoppingListDrawerProps> = ({
               >
                 <ChefHat size={18} />
                 {incompatibleItems.length > 0 ? 'Cuisiner bloqué (unités incompatibles)' : 'Cuisiner & déduire du stock'}
+              </button>
+
+              {/* Bouton Enregistrer mes achats */}
+              <button
+                type="button"
+                className="btn btn-secondary"
+                disabled={checkedLinkedItems.length === 0}
+                style={{
+                  height: '46px',
+                  padding: '0 16px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  opacity: checkedLinkedItems.length === 0 ? 0.55 : 1,
+                  cursor: checkedLinkedItems.length === 0 ? 'not-allowed' : 'pointer'
+                }}
+                onClick={handleStartPurchaseValidation}
+                title={checkedLinkedItems.length === 0 ? "Cochez des articles pour enregistrer vos achats" : "Enregistrer les achats cochés"}
+              >
+                <ShoppingBag size={18} />
+                <span>Enregistrer mes achats {checkedLinkedItems.length > 0 ? `(${checkedLinkedItems.length})` : ''}</span>
               </button>
 
               {/* Export Excel (CSV) */}

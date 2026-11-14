@@ -1,11 +1,11 @@
 {
   "name": "appli-marmicout",
   "private": true,
-  "version": "2.0.61",
+  "version": "2.0.62",
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "test": "node --experimental-strip-types src/utils/units.test.ts && node --experimental-strip-types src/utils/productDuplicate.test.ts && node --experimental-strip-types src/utils/expiry.test.ts && node --experimental-strip-types src/utils/dashboardPeriod.test.ts && node --experimental-strip-types src/utils/purchasePriceAlert.test.ts && node --experimental-strip-types src/utils/recipeMarginAlert.test.ts",
+    "test": "node --experimental-strip-types src/utils/units.test.ts && node --experimental-strip-types src/utils/productDuplicate.test.ts && node --experimental-strip-types src/utils/expiry.test.ts && node --experimental-strip-types src/utils/dashboardPeriod.test.ts && node --experimental-strip-types src/utils/purchasePriceAlert.test.ts && node --experimental-strip-types src/utils/recipeMarginAlert.test.ts && node --experimental-strip-types src/utils/shoppingList.test.ts",
     "check:legal": "node scripts/sync-legal-from-central.mjs && node scripts/verify-legal.mjs",
     "build": "node scripts/sync-legal-from-central.mjs && node scripts/verify-legal.mjs && tsc -b && vite build",
     "lint": "eslint .",
