@@ -9,7 +9,8 @@ import {
   ChefHat,
   X,
   TrendingDown,
-  PackageCheck
+  PackageCheck,
+  RotateCcw
 } from 'lucide-react';
 import { dbService } from '../services/db';
 import { convertUnitsWithInfo, normalizeUnit } from '../utils/units';
@@ -58,10 +59,62 @@ export const Productions: React.FC<ProductionsProps> = ({ initialTriggerAdd }) =
     consumed: { name: string; required: number; unit: string }[];
   } | null>(null);
 
+  // Bandeau d'annulation
+  const [cancelBanner, setCancelBanner] = useState<{
+    recipeName: string;
+    portions: number;
+  } | null>(null);
+  const [isCancellingId, setIsCancellingId] = useState<string | null>(null);
+
   const loadData = () => {
     setProductions(dbService.getProductions().sort((a, b) => b.date.localeCompare(a.date)));
     setRecipes(dbService.getRecipes().filter(r => r.isActive));
     setProducts(dbService.getProducts());
+  };
+
+  const handleCancelProduction = async (prod: Production) => {
+    const recipe = dbService.getRecipe(prod.recipeId);
+    const recipeName = recipe ? recipe.name : 'cette recette';
+    const currentStock = recipe ? recipe.stock : 0;
+    const hasBeenSold = recipe && currentStock < prod.portionsProduced;
+
+    const confirmMessage = hasBeenSold
+      ? `⚠️ ATTENTION : PRODUITS FINIS DÉJÀ VENDUS OU SORTIS DU STOCK !\n\n` +
+        `Cette fabrication avait produit ${prod.portionsProduced} portion(s) de « ${recipeName} ».\n` +
+        `Or, votre stock actuel n'est plus que de ${currentStock} portion(s) (certaines portions ont déjà été vendues).\n\n` +
+        `Si vous confirmez l'annulation :\n` +
+        `• Les ingrédients et emballages consommés seront intégralement réintégrés dans votre stock.\n` +
+        `• Le stock de la recette « ${recipeName} » sera ramené à 0.\n` +
+        `• La fabrication et ses mouvements de stock seront supprimés.\n\n` +
+        `Confirmez-vous l'annulation de cette fabrication ?`
+      : `Êtes-vous sûr de vouloir annuler cette fabrication de ${prod.portionsProduced} portion(s) de « ${recipeName} » ?\n\n` +
+        `• Les ingrédients et emballages consommés seront réintégrés dans vos stocks.\n` +
+        `• Les portions produites seront retirées du stock de la recette.\n` +
+        `• La fabrication et ses mouvements de stock seront supprimés.`;
+
+    if (!window.confirm(confirmMessage)) {
+      return;
+    }
+
+    setIsCancellingId(prod.id);
+    try {
+      const res = await dbService.deleteProduction(prod.id);
+      if (res.success) {
+        setSuccessBanner(null);
+        setCancelBanner({
+          recipeName,
+          portions: prod.portionsProduced,
+        });
+        loadData();
+      } else {
+        alert(res.error || "Impossible d'annuler cette fabrication.");
+      }
+    } catch (err: unknown) {
+      console.error('Erreur annulation fabrication:', err);
+      alert(err instanceof Error ? err.message : "Échec de l'annulation de la fabrication.");
+    } finally {
+      setIsCancellingId(null);
+    }
   };
 
   const handleOpenAddForm = () => {
@@ -302,6 +355,35 @@ export const Productions: React.FC<ProductionsProps> = ({ initialTriggerAdd }) =
         </div>
       )}
 
+      {/* ── Bandeau d'annulation de production ── */}
+      {cancelBanner && (
+        <div style={{
+          backgroundColor: '#fef2f2',
+          border: '1px solid rgba(239, 68, 68, 0.35)',
+          borderRadius: 'var(--radius-md)',
+          padding: '14px 18px',
+          marginBottom: '20px',
+          display: 'flex',
+          gap: '14px',
+          alignItems: 'center',
+          justifyContent: 'space-between'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <RotateCcw size={20} style={{ color: 'var(--color-danger)', flexShrink: 0 }} />
+            <span style={{ fontSize: '13px', color: '#991b1b' }}>
+              Fabrication annulée avec succès : les <strong>{cancelBanner.portions} portion(s)</strong> de <strong>« {cancelBanner.recipeName} »</strong> ont été déduites du stock de produits finis et les ingrédients consommés ont été réintégrés dans vos stocks.
+            </span>
+          </div>
+          <button
+            onClick={() => setCancelBanner(null)}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#991b1b', padding: '2px', flexShrink: 0 }}
+            aria-label="Fermer"
+          >
+            <X size={16} />
+          </button>
+        </div>
+      )}
+
       {/* Liste de l'historique des productions */}
       <div className="table-container">
         <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--color-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -324,6 +406,7 @@ export const Productions: React.FC<ProductionsProps> = ({ initialTriggerAdd }) =
                 <th>Coût réel du lot</th>
                 <th>Coût par portion</th>
                 <th>Notes</th>
+                <th style={{ textAlign: 'right' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -356,6 +439,27 @@ export const Productions: React.FC<ProductionsProps> = ({ initialTriggerAdd }) =
                     </td>
                     <td data-label="Notes" style={{ fontStyle: 'italic', fontSize: '13px', color: 'var(--color-dark-light)' }}>
                       {p.notes || '-'}
+                    </td>
+                    <td data-label="Actions" style={{ textAlign: 'right' }}>
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        style={{
+                          padding: '4px 10px',
+                          fontSize: '12px',
+                          color: 'var(--color-danger)',
+                          borderColor: 'rgba(239, 68, 68, 0.35)',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '5px'
+                        }}
+                        disabled={isCancellingId === p.id}
+                        onClick={() => handleCancelProduction(p)}
+                        title="Annuler cette fabrication, restituer les ingrédients en stock et déduire les portions"
+                      >
+                        <RotateCcw size={13} />
+                        <span>{isCancellingId === p.id ? 'Annulation...' : 'Annuler'}</span>
+                      </button>
                     </td>
                   </tr>
                 );

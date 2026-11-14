@@ -205,8 +205,8 @@ const INITIAL_SETTINGS: Settings = {
   units: [...DEFAULT_UNITS],
   salesLocations: ['Marché', 'Commande', 'En Ligne', 'Domicile', 'Autre'],
   defaultMinStockAlert: 2,
-  googleSheetId: '1SU8ypH5aufwKVoZLlCfhcw6nwdS6nBwNDvj8hKr0F2k',
-  googleSheetLink: 'https://docs.google.com/spreadsheets/d/1SU8ypH5aufwKVoZLlCfhcw6nwdS6nBwNDvj8hKr0F2k/edit?usp=sharing',
+  googleSheetId: '',
+  googleSheetLink: '',
   googleWebAppUrl: ''
 };
 
@@ -224,17 +224,12 @@ const initDB = () => {
     localStorage.setItem(KEYS.SALES, JSON.stringify(INITIAL_SALES));
     localStorage.setItem(KEYS.STOCK_MOVEMENTS, JSON.stringify(INITIAL_STOCK_MOVEMENTS));
   } else {
-    // S'assurer que le Google Sheet et les unités cs/cc sont bien présents dans les paramètres existants
+    // S'assurer que les unités cs/cc sont bien présentes sans jamais écraser les réglages utilisateur
     try {
       const settingsStr = localStorage.getItem(KEYS.SETTINGS);
       if (settingsStr) {
         const currentSettings = JSON.parse(settingsStr);
         let changed = false;
-        if (currentSettings.googleSheetId !== '1SU8ypH5aufwKVoZLlCfhcw6nwdS6nBwNDvj8hKr0F2k') {
-          currentSettings.googleSheetId = '1SU8ypH5aufwKVoZLlCfhcw6nwdS6nBwNDvj8hKr0F2k';
-          currentSettings.googleSheetLink = 'https://docs.google.com/spreadsheets/d/1SU8ypH5aufwKVoZLlCfhcw6nwdS6nBwNDvj8hKr0F2k/edit?usp=sharing';
-          changed = true;
-        }
         const ensuredUnits = ensureRequiredUnits(currentSettings.units);
         if (JSON.stringify(ensuredUnits) !== JSON.stringify(currentSettings.units)) {
           currentSettings.units = ensuredUnits;
@@ -338,6 +333,31 @@ function saveTable<T>(key: string, data: T[]): void {
   // En mode cloud, aucune écriture dans localStorage pour les données métier (Point 6)
   if (isCloudMode()) return;
   localStorage.setItem(key, JSON.stringify(data));
+}
+
+// --- CONVERSION DÉTERMINISTE DES IDENTIFIANTS VERS UUID (POUR IMPORT CLOUD / LOCAL) ---
+export function toDeterministicUUID(rawId: unknown): string {
+  if (!rawId || typeof rawId !== 'string') return generateUUID();
+  const trimmed = rawId.trim();
+  if (isUUID(trimmed)) return trimmed;
+  // Algorithme FNV-1a compact produisant un UUID v4 déterministe
+  let h1 = 0xdeadbeef, h2 = 0x41c6ce57, h3 = 0x7fedcba9, h4 = 0x1337c0de;
+  for (let i = 0; i < trimmed.length; i++) {
+    const ch = trimmed.charCodeAt(i);
+    h1 = Math.imul(h1 ^ ch, 2654435761);
+    h2 = Math.imul(h2 ^ ch, 1597334677);
+    h3 = Math.imul(h3 ^ ch, 2246822519);
+    h4 = Math.imul(h4 ^ ch, 3266489917);
+  }
+  const toHex = (n: number) => (n >>> 0).toString(16).padStart(8, '0');
+  const hex = toHex(h1) + toHex(h2) + toHex(h3) + toHex(h4);
+  const p1 = hex.substring(0, 8);
+  const p2 = hex.substring(8, 12);
+  const p3 = '4' + hex.substring(13, 16);
+  const vChar = ['8', '9', 'a', 'b'][parseInt(hex.charAt(16), 16) % 4];
+  const p4 = vChar + hex.substring(17, 20);
+  const p5 = hex.substring(20, 32);
+  return `${p1}-${p2}-${p3}-${p4}-${p5}`;
 }
 
 // --- API DE DONNÉES ---
@@ -736,6 +756,31 @@ export const dbService = {
     await indexedDbService.setAll('stock_movements', movements);
   },
 
+  async savePurchase(purchase: Purchase): Promise<void> {
+    assertAccessKnown();
+    if (!isUUID(purchase.id)) {
+      purchase.id = generateUUID();
+    }
+    if (isCloudMode()) {
+      try {
+        await cloudDbService.savePurchase(purchase);
+      } catch (err: unknown) {
+        notifyCloudError('Enregistrement achat cloud refusé', err instanceof Error ? err.message : String(err));
+        throw err;
+      }
+      const purchases = (inMemoryCache.purchases as Purchase[]).filter(p => p.id !== purchase.id);
+      purchases.push(purchase);
+      inMemoryCache.purchases = purchases;
+      await indexedDbService.put('purchases', purchase);
+      return;
+    }
+    const purchases = this.getPurchases().filter(p => p.id !== purchase.id);
+    purchases.push(purchase);
+    inMemoryCache.purchases = purchases;
+    saveTable(KEYS.PURCHASES, purchases);
+    await indexedDbService.put('purchases', purchase);
+  },
+
   // --- MOUVEMENTS DE STOCK (STOCK MOVEMENTS) ---
   getStockMovements(): StockMovement[] {
     return getTableData<StockMovement>('stock_movements', KEYS.STOCK_MOVEMENTS);
@@ -829,8 +874,8 @@ export const dbService = {
 
   async saveRecipe(
     recipe: Recipe,
-    ingredients: Omit<RecipeIngredient, 'id' | 'recipeId'>[],
-    packagings: Omit<RecipePackaging, 'id' | 'recipeId'>[]
+    ingredients?: Omit<RecipeIngredient, 'id' | 'recipeId'>[],
+    packagings?: Omit<RecipePackaging, 'id' | 'recipeId'>[]
   ): Promise<void> {
     assertAccessKnown();
     if (!isUUID(recipe.id)) {
@@ -851,15 +896,19 @@ export const dbService = {
       inMemoryCache.recipes = recipes;
       await indexedDbService.put('recipes', recipe);
 
-      const allIngs = (inMemoryCache.recipe_ingredients as RecipeIngredient[]).filter(ri => ri.recipeId !== recipe.id);
-      const newIngs = ingredients.map(ing => ({ ...ing, id: generateUUID(), recipeId: recipe.id }));
-      inMemoryCache.recipe_ingredients = [...allIngs, ...newIngs];
-      await indexedDbService.setAll('recipe_ingredients', [...allIngs, ...newIngs]);
+      if (ingredients) {
+        const allIngs = (inMemoryCache.recipe_ingredients as RecipeIngredient[]).filter(ri => ri.recipeId !== recipe.id);
+        const newIngs = ingredients.map(ing => ({ ...ing, id: generateUUID(), recipeId: recipe.id }));
+        inMemoryCache.recipe_ingredients = [...allIngs, ...newIngs];
+        await indexedDbService.setAll('recipe_ingredients', [...allIngs, ...newIngs]);
+      }
 
-      const allPacks = (inMemoryCache.recipe_packaging as RecipePackaging[]).filter(rp => rp.recipeId !== recipe.id);
-      const newPacks = packagings.map(p => ({ ...p, id: generateUUID(), recipeId: recipe.id }));
-      inMemoryCache.recipe_packaging = [...allPacks, ...newPacks];
-      await indexedDbService.setAll('recipe_packaging', [...allPacks, ...newPacks]);
+      if (packagings) {
+        const allPacks = (inMemoryCache.recipe_packaging as RecipePackaging[]).filter(rp => rp.recipeId !== recipe.id);
+        const newPacks = packagings.map(p => ({ ...p, id: generateUUID(), recipeId: recipe.id }));
+        inMemoryCache.recipe_packaging = [...allPacks, ...newPacks];
+        await indexedDbService.setAll('recipe_packaging', [...allPacks, ...newPacks]);
+      }
       return;
     }
 
@@ -875,25 +924,71 @@ export const dbService = {
     saveTable(KEYS.RECIPES, recipes);
     await indexedDbService.put('recipes', recipe);
 
-    const allIngredients = getTable<RecipeIngredient>(KEYS.RECIPE_INGREDIENTS).filter(ri => ri.recipeId !== recipe.id);
-    const newIngredients = ingredients.map((ing) => ({
-      ...ing,
-      id: generateUUID(),
-      recipeId: recipe.id
-    }));
-    inMemoryCache.recipe_ingredients = [...allIngredients, ...newIngredients];
-    saveTable(KEYS.RECIPE_INGREDIENTS, [...allIngredients, ...newIngredients]);
-    await indexedDbService.setAll('recipe_ingredients', [...allIngredients, ...newIngredients]);
+    if (ingredients) {
+      const allIngredients = getTable<RecipeIngredient>(KEYS.RECIPE_INGREDIENTS).filter(ri => ri.recipeId !== recipe.id);
+      const newIngredients = ingredients.map((ing) => ({
+        ...ing,
+        id: generateUUID(),
+        recipeId: recipe.id
+      }));
+      inMemoryCache.recipe_ingredients = [...allIngredients, ...newIngredients];
+      saveTable(KEYS.RECIPE_INGREDIENTS, [...allIngredients, ...newIngredients]);
+      await indexedDbService.setAll('recipe_ingredients', [...allIngredients, ...newIngredients]);
+    }
 
-    const allPackagings = getTable<RecipePackaging>(KEYS.RECIPE_PACKAGING).filter(rp => rp.recipeId !== recipe.id);
-    const newPackagings = packagings.map((pack) => ({
-      ...pack,
-      id: generateUUID(),
-      recipeId: recipe.id
-    }));
-    inMemoryCache.recipe_packaging = [...allPackagings, ...newPackagings];
-    saveTable(KEYS.RECIPE_PACKAGING, [...allPackagings, ...newPackagings]);
-    await indexedDbService.setAll('recipe_packaging', [...allPackagings, ...newPackagings]);
+    if (packagings) {
+      const allPackagings = getTable<RecipePackaging>(KEYS.RECIPE_PACKAGING).filter(rp => rp.recipeId !== recipe.id);
+      const newPackagings = packagings.map((pack) => ({
+        ...pack,
+        id: generateUUID(),
+        recipeId: recipe.id
+      }));
+      inMemoryCache.recipe_packaging = [...allPackagings, ...newPackagings];
+      saveTable(KEYS.RECIPE_PACKAGING, [...allPackagings, ...newPackagings]);
+      await indexedDbService.setAll('recipe_packaging', [...allPackagings, ...newPackagings]);
+    }
+  },
+
+  async saveRecipeIngredient(ingredient: RecipeIngredient): Promise<void> {
+    assertAccessKnown();
+    if (!isUUID(ingredient.id)) ingredient.id = generateUUID();
+    if (isCloudMode()) {
+      try {
+        await cloudDbService.saveRecipeIngredient(ingredient);
+      } catch (err: unknown) {
+        notifyCloudError('Enregistrement ingrédient cloud refusé', err instanceof Error ? err.message : String(err));
+        throw err;
+      }
+      const list = (inMemoryCache.recipe_ingredients as RecipeIngredient[]).filter(i => i.id !== ingredient.id);
+      list.push(ingredient);
+      inMemoryCache.recipe_ingredients = list;
+      await indexedDbService.put('recipe_ingredients', ingredient);
+      return;
+    }
+    const list = this.getAllRecipeIngredients().filter(i => i.id !== ingredient.id);
+    list.push(ingredient);
+    this.setAllRecipeIngredients(list);
+  },
+
+  async saveRecipePackaging(packaging: RecipePackaging): Promise<void> {
+    assertAccessKnown();
+    if (!isUUID(packaging.id)) packaging.id = generateUUID();
+    if (isCloudMode()) {
+      try {
+        await cloudDbService.saveRecipePackaging(packaging);
+      } catch (err: unknown) {
+        notifyCloudError('Enregistrement emballage cloud refusé', err instanceof Error ? err.message : String(err));
+        throw err;
+      }
+      const list = (inMemoryCache.recipe_packaging as RecipePackaging[]).filter(p => p.id !== packaging.id);
+      list.push(packaging);
+      inMemoryCache.recipe_packaging = list;
+      await indexedDbService.put('recipe_packaging', packaging);
+      return;
+    }
+    const list = this.getAllRecipePackagings().filter(p => p.id !== packaging.id);
+    list.push(packaging);
+    this.setAllRecipePackagings(list);
   },
 
   async deleteRecipe(id: string): Promise<void> {
@@ -1147,6 +1242,13 @@ export const dbService = {
     const recipeIndex = recipes.findIndex(r => r.id === recipe.id);
     if (recipeIndex >= 0) {
       recipes[recipeIndex].stock += production.portionsProduced;
+      if (isCloudMode()) {
+        try {
+          await cloudDbService.saveRecipe(recipes[recipeIndex]);
+        } catch (err: unknown) {
+          console.warn('[dbService] Erreur mise à jour stock recette cloud:', err);
+        }
+      }
       inMemoryCache.recipes = recipes;
       saveTable(KEYS.RECIPES, recipes);
       await indexedDbService.put('recipes', recipes[recipeIndex]);
@@ -1164,6 +1266,134 @@ export const dbService = {
       inMemoryCache.productions = productions;
       saveTable(KEYS.PRODUCTIONS, productions);
       await indexedDbService.put('productions', production);
+    }
+
+    return { success: true };
+  },
+
+  async saveProduction(production: Production): Promise<void> {
+    assertAccessKnown();
+    if (!isUUID(production.id)) {
+      production.id = generateUUID();
+    }
+    if (isCloudMode()) {
+      try {
+        await cloudDbService.saveProduction(production);
+      } catch (err: unknown) {
+        notifyCloudError('Enregistrement fabrication cloud refusé', err instanceof Error ? err.message : String(err));
+        throw err;
+      }
+      const prods = (inMemoryCache.productions as Production[]).filter(p => p.id !== production.id);
+      prods.push(production);
+      inMemoryCache.productions = prods;
+      await indexedDbService.put('productions', production);
+      return;
+    }
+    const prods = this.getProductions().filter(p => p.id !== production.id);
+    prods.push(production);
+    inMemoryCache.productions = prods;
+    saveTable(KEYS.PRODUCTIONS, prods);
+    await indexedDbService.put('productions', production);
+  },
+
+  async deleteProduction(id: string): Promise<{ success: boolean; error?: string }> {
+    assertAccessKnown();
+    const productions = this.getProductions();
+    const production = productions.find(p => p.id === id);
+    if (!production) {
+      return { success: false, error: 'Fabrication introuvable.' };
+    }
+
+    const recipe = this.getRecipe(production.recipeId);
+
+    // 1. Remettre en stock les ingrédients consommés (d’après les mouvements de stock liés à cette production)
+    const allMovements = this.getStockMovements();
+    const prodMovements = allMovements.filter(m => m.refId === production.id);
+
+    if (prodMovements.length > 0) {
+      for (const m of prodMovements) {
+        const prod = this.getProduct(m.productId);
+        if (prod) {
+          prod.stock += Math.abs(m.qty);
+          await this.saveProduct(prod);
+        }
+      }
+    } else if (recipe) {
+      // Fallback si la fabrication n'avait pas de mouvements de stock explicites (anciennes données démo)
+      const ingredients = this.getRecipeIngredients(production.recipeId);
+      const packagings = this.getRecipePackagings(production.recipeId);
+      const factor = production.portionsProduced / recipe.portions;
+      const products = this.getProducts();
+
+      for (const ing of ingredients) {
+        const prod = products.find(p => p.id === ing.productId);
+        if (prod) {
+          const qtyNeeded = convertUnits(ing.qtyUsed * factor, ing.unit, prod.unit);
+          if (qtyNeeded !== null) {
+            prod.stock += qtyNeeded;
+            await this.saveProduct(prod);
+          }
+        }
+      }
+
+      for (const pack of packagings) {
+        const prod = products.find(p => p.name.toLowerCase() === pack.name.toLowerCase());
+        if (prod) {
+          const qtyNeeded = pack.qtyUsed * factor;
+          prod.stock += qtyNeeded;
+          await this.saveProduct(prod);
+        }
+      }
+    }
+
+    // 2. Retirer les portions du stock de produits finis
+    if (recipe) {
+      recipe.stock = Math.max(0, recipe.stock - production.portionsProduced);
+      if (isCloudMode()) {
+        try {
+          await cloudDbService.saveRecipe(recipe);
+        } catch (err: unknown) {
+          console.warn('[dbService] Erreur mise à jour stock recette cloud lors de l\'annulation:', err);
+        }
+      }
+      const recipes = this.getRecipes();
+      const rIdx = recipes.findIndex(r => r.id === recipe.id);
+      if (rIdx >= 0) {
+        recipes[rIdx].stock = recipe.stock;
+        inMemoryCache.recipes = recipes;
+        saveTable(KEYS.RECIPES, recipes);
+        await indexedDbService.put('recipes', recipes[rIdx]);
+      }
+    }
+
+    // 3. Supprimer les mouvements de stock associés à cette production
+    if (isCloudMode()) {
+      try {
+        await cloudDbService.deleteStockMovementsByRefId(production.id);
+      } catch (err: unknown) {
+        console.warn('[dbService] Erreur suppression mouvements cloud:', err);
+      }
+      inMemoryCache.stock_movements = (inMemoryCache.stock_movements as StockMovement[]).filter(m => m.refId !== production.id);
+      await indexedDbService.setAll('stock_movements', inMemoryCache.stock_movements as StockMovement[]);
+    } else {
+      const remainingMovements = allMovements.filter(m => m.refId !== production.id);
+      this.setStockMovements(remainingMovements);
+    }
+
+    // 4. Supprimer la fabrication
+    if (isCloudMode()) {
+      try {
+        await cloudDbService.deleteProduction(production.id);
+      } catch (err: unknown) {
+        notifyCloudError('Suppression de la fabrication refusée', err instanceof Error ? err.message : String(err));
+        throw err;
+      }
+      inMemoryCache.productions = (inMemoryCache.productions as Production[]).filter(p => p.id !== production.id);
+      await indexedDbService.delete('productions', production.id);
+    } else {
+      const remainingProds = productions.filter(p => p.id !== production.id);
+      this.setProductions(remainingProds);
+      await indexedDbService.delete('productions', production.id);
     }
 
     return { success: true };
@@ -1290,9 +1520,48 @@ export const dbService = {
     }
   },
 
+  async saveSale(sale: Sale): Promise<void> {
+    assertAccessKnown();
+    if (!isUUID(sale.id)) {
+      sale.id = generateUUID();
+    }
+    if (isCloudMode()) {
+      try {
+        await cloudDbService.saveSale(sale);
+      } catch (err: unknown) {
+        notifyCloudError('Enregistrement vente cloud refusé', err instanceof Error ? err.message : String(err));
+        throw err;
+      }
+      const sales = (inMemoryCache.sales as Sale[]).filter(s => s.id !== sale.id);
+      sales.push(sale);
+      inMemoryCache.sales = sales;
+      await indexedDbService.put('sales', sale);
+      return;
+    }
+    const sales = this.getSales().filter(s => s.id !== sale.id);
+    sales.push(sale);
+    inMemoryCache.sales = sales;
+    saveTable(KEYS.SALES, sales);
+    await indexedDbService.put('sales', sale);
+  },
+
   // --- EXPORTATION ET IMPORTATION CSV (GOOGLE SHEETS COMPATIBLE) ---
   exportToCSV(tableName: keyof typeof KEYS): string {
-    const data = getTable<Record<string, unknown>>(KEYS[tableName]);
+    const dataMap: Record<keyof typeof KEYS, () => Record<string, unknown>[]> = {
+      PRODUCTS: () => this.getProducts() as unknown as Record<string, unknown>[],
+      PURCHASES: () => this.getPurchases() as unknown as Record<string, unknown>[],
+      STORES: () => this.getStores() as unknown as Record<string, unknown>[],
+      RECIPES: () => this.getRecipes() as unknown as Record<string, unknown>[],
+      RECIPE_INGREDIENTS: () => this.getAllRecipeIngredients() as unknown as Record<string, unknown>[],
+      RECIPE_PACKAGING: () => this.getAllRecipePackagings() as unknown as Record<string, unknown>[],
+      PRODUCTIONS: () => this.getProductions() as unknown as Record<string, unknown>[],
+      SALES: () => this.getSales() as unknown as Record<string, unknown>[],
+      STOCK_MOVEMENTS: () => this.getStockMovements() as unknown as Record<string, unknown>[],
+      SETTINGS: () => [this.getSettings() as unknown as Record<string, unknown>],
+    };
+
+    const getter = dataMap[tableName];
+    const data = getter ? getter() : getTable<Record<string, unknown>>(KEYS[tableName]);
     if (data.length === 0) return '';
 
     // Déterminer les colonnes (les clés du premier objet)
@@ -1327,7 +1596,11 @@ export const dbService = {
     return csvRows.join('\n');
   },
 
-  importFromCSV(tableName: keyof typeof KEYS, csvText: string, merge = true): { success: boolean; count: number; error?: string } {
+  async importFromCSV(
+    tableName: keyof typeof KEYS,
+    csvText: string,
+    merge = true
+  ): Promise<{ success: boolean; count: number; error?: string }> {
     try {
       const lines = csvText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
       if (lines.length <= 1) return { success: false, count: 0, error: 'Fichier vide ou sans en-tête' };
@@ -1342,11 +1615,8 @@ export const dbService = {
 
       for (let i = 1; i < lines.length; i++) {
         const line = lines[i];
-        // Split simple (attention aux quotes, mais pour Google Sheets simple c'est suffisant)
-        // Expression régulière pour splitter par le séparateur en ignorant ceux dans les guillemets
         let cells: string[] = [];
         if (sep === ';') {
-          // Split par ; en gérant les textes entre guillemets
           cells = line.match(/(".*?"|[^;]+)(?=\s*;|\s*$)/g) || line.split(';');
         } else {
           cells = line.match(/(".*?"|[^,]+)(?=\s*,|\s*$)/g) || line.split(',');
@@ -1356,10 +1626,9 @@ export const dbService = {
 
         const obj: Record<string, unknown> = {};
         headers.forEach((header, idx) => {
-          const rawCell = cells[idx] || '';
+          const rawCell = cells[idx] !== undefined ? cells[idx] : '';
           let cellValue: string | number | boolean;
 
-          // Typage intelligent
           if (rawCell === 'true') cellValue = true;
           else if (rawCell === 'false') cellValue = false;
           else if (rawCell !== '' && !isNaN(Number(rawCell.replace(',', '.')))) {
@@ -1371,24 +1640,229 @@ export const dbService = {
           obj[header] = cellValue;
         });
 
-        if (obj.id) {
+        if (obj.id || obj.name || obj.businessName) {
           parsedData.push(obj);
         }
       }
 
-      if (parsedData.length === 0) return { success: false, count: 0, error: 'Aucune ligne valide avec une colonne "id" n\'a été trouvée.' };
+      if (parsedData.length === 0) {
+        return { success: false, count: 0, error: 'Aucune ligne valide trouvée dans le fichier.' };
+      }
+
+      // En mode Cloud : passer obligatoirement par les services dbService existants avec UUID valides
+      if (isCloudMode()) {
+        let importedCount = 0;
+        for (const row of parsedData) {
+          const rowId = toDeterministicUUID(row.id);
+          switch (tableName) {
+            case 'STORES': {
+              const store: Store = {
+                id: rowId,
+                name: String(row.name || '').trim(),
+                type: String(row.type || 'Autre'),
+                address: row.address ? String(row.address) : undefined,
+                phone: row.phone ? String(row.phone) : undefined,
+                notes: row.notes ? String(row.notes) : undefined,
+              };
+              await this.saveStore(store);
+              importedCount++;
+              break;
+            }
+            case 'PRODUCTS': {
+              const product: Product = {
+                id: rowId,
+                barcode: row.barcode ? String(row.barcode) : '',
+                name: String(row.name || '').trim(),
+                category: String(row.category || 'Épicerie'),
+                unit: String(row.unit || 'kg'),
+                brand: row.brand ? String(row.brand) : '',
+                format: row.format ? String(row.format) : '',
+                stock: Number(row.stock ?? 0),
+                minStockAlert: Number(row.minStockAlert ?? 0),
+                avgPurchasePrice: Number(row.avgPurchasePrice ?? 0),
+                mainStoreId: row.mainStoreId ? toDeterministicUUID(row.mainStoreId) : '',
+                notes: row.notes ? String(row.notes) : '',
+                isActive: row.isActive !== false,
+                photo: row.photo ? String(row.photo) : undefined,
+              };
+              await this.saveProduct(product);
+              importedCount++;
+              break;
+            }
+            case 'RECIPES': {
+              const recipe: Recipe = {
+                id: rowId,
+                name: String(row.name || '').trim(),
+                category: String(row.category || 'Plats'),
+                description: row.description ? String(row.description) : '',
+                portions: Number(row.portions ?? 1),
+                yieldQty: Number(row.yieldQty ?? 1),
+                yieldUnit: String(row.yieldUnit || 'portion'),
+                stock: Number(row.stock ?? 0),
+                prepTimeMinutes: row.prepTimeMinutes ? Number(row.prepTimeMinutes) : undefined,
+                utensilsNotes: row.utensilsNotes ? String(row.utensilsNotes) : undefined,
+                notes: row.notes ? String(row.notes) : undefined,
+                isActive: row.isActive !== false,
+                photo: row.photo ? String(row.photo) : undefined,
+                instructions: row.instructions ? String(row.instructions) : undefined,
+              };
+              await this.saveRecipe(recipe);
+              importedCount++;
+              break;
+            }
+            case 'RECIPE_INGREDIENTS': {
+              const ing: RecipeIngredient = {
+                id: rowId,
+                recipeId: toDeterministicUUID(row.recipeId),
+                productId: row.productId ? toDeterministicUUID(row.productId) : '',
+                customName: row.customName ? String(row.customName) : undefined,
+                qtyUsed: Number(row.qtyUsed ?? 0),
+                unit: String(row.unit || 'g'),
+                customCostPerUnit: row.customCostPerUnit ? Number(row.customCostPerUnit) : undefined,
+              };
+              await this.saveRecipeIngredient(ing);
+              importedCount++;
+              break;
+            }
+            case 'RECIPE_PACKAGING': {
+              const pack: RecipePackaging = {
+                id: rowId,
+                recipeId: toDeterministicUUID(row.recipeId),
+                name: String(row.name || '').trim(),
+                qtyUsed: Number(row.qtyUsed ?? 1),
+                costPerUnit: Number(row.costPerUnit ?? 0),
+              };
+              await this.saveRecipePackaging(pack);
+              importedCount++;
+              break;
+            }
+            case 'PURCHASES': {
+              const purchase: Purchase = {
+                id: rowId,
+                date: String(row.date || new Date().toISOString().split('T')[0]),
+                productId: toDeterministicUUID(row.productId),
+                qty: Number(row.qty ?? 0),
+                unit: String(row.unit || 'kg'),
+                pricePaid: Number(row.pricePaid ?? 0),
+                unitPrice: Number(row.unitPrice ?? 0),
+                storeId: row.storeId ? toDeterministicUUID(row.storeId) : '',
+                batchNo: row.batchNo ? String(row.batchNo) : undefined,
+                expiryDate: row.expiryDate ? String(row.expiryDate) : undefined,
+                notes: row.notes ? String(row.notes) : undefined,
+              };
+              await this.savePurchase(purchase);
+              importedCount++;
+              break;
+            }
+            case 'PRODUCTIONS': {
+              const prod: Production = {
+                id: rowId,
+                date: String(row.date || new Date().toISOString().split('T')[0]),
+                recipeId: toDeterministicUUID(row.recipeId),
+                portionsProduced: Number(row.portionsProduced ?? 1),
+                calculatedCost: Number(row.calculatedCost ?? 0),
+                notes: row.notes ? String(row.notes) : undefined,
+              };
+              await this.saveProduction(prod);
+              importedCount++;
+              break;
+            }
+            case 'SALES': {
+              const sale: Sale = {
+                id: rowId,
+                date: String(row.date || new Date().toISOString().split('T')[0]),
+                itemId: toDeterministicUUID(row.itemId),
+                itemType: (row.itemType === 'PRODUCT' ? 'PRODUCT' : 'RECIPE') as 'RECIPE' | 'PRODUCT',
+                qtySold: Number(row.qtySold ?? 1),
+                unitPrice: Number(row.unitPrice ?? 0),
+                location: String(row.location || 'Boutique'),
+                notes: row.notes ? String(row.notes) : undefined,
+              };
+              await this.saveSale(sale);
+              importedCount++;
+              break;
+            }
+            case 'STOCK_MOVEMENTS': {
+              const movement: StockMovement = {
+                id: rowId,
+                date: String(row.date || new Date().toISOString().split('T')[0]),
+                productId: toDeterministicUUID(row.productId),
+                qty: Number(row.qty ?? 0),
+                type: (row.type as StockMovement['type']) || 'AJUSTEMENT',
+                refId: row.refId ? (row.refId === 'MANUAL' ? 'MANUAL' : toDeterministicUUID(row.refId)) : 'MANUAL',
+                notes: row.notes ? String(row.notes) : undefined,
+              };
+              await this.addStockMovement(movement);
+              importedCount++;
+              break;
+            }
+            case 'SETTINGS': {
+              const settings: Settings = {
+                ...INITIAL_SETTINGS,
+                ...row,
+              } as Settings;
+              await this.saveSettings(settings);
+              importedCount++;
+              break;
+            }
+          }
+        }
+
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('marmicout-data-synced'));
+          window.dispatchEvent(new Event('storage'));
+        }
+
+        return { success: true, count: importedCount };
+      }
+
+      // Mode Local (Essentiel) : mise à jour avec conversion UUID déterministe et stockage local
+      const mappedData = parsedData.map(row => {
+        const normalized = { ...row };
+        if (normalized.id) normalized.id = toDeterministicUUID(normalized.id);
+        if (normalized.mainStoreId) normalized.mainStoreId = toDeterministicUUID(normalized.mainStoreId);
+        if (normalized.recipeId) normalized.recipeId = toDeterministicUUID(normalized.recipeId);
+        if (normalized.productId) normalized.productId = toDeterministicUUID(normalized.productId);
+        if (normalized.storeId) normalized.storeId = toDeterministicUUID(normalized.storeId);
+        if (normalized.itemId) normalized.itemId = toDeterministicUUID(normalized.itemId);
+        if (normalized.refId && normalized.refId !== 'MANUAL') normalized.refId = toDeterministicUUID(normalized.refId);
+        return normalized;
+      });
 
       const existingData = merge ? getTable<Record<string, unknown>>(KEYS[tableName]) : [];
-      
-      // Fusionner les données (écraser par ID)
       const mergedMap = new Map();
       existingData.forEach(item => mergedMap.set(item.id, item));
-      parsedData.forEach(item => mergedMap.set(item.id, item));
+      mappedData.forEach(item => mergedMap.set(item.id, item));
 
       const finalData = Array.from(mergedMap.values());
       saveTable(KEYS[tableName], finalData);
 
-      return { success: true, count: parsedData.length };
+      // Synchroniser également le cache mémoire et IndexedDB en local
+      const storeNameMap: Record<keyof typeof KEYS, string> = {
+        PRODUCTS: 'products',
+        PURCHASES: 'purchases',
+        STORES: 'stores',
+        RECIPES: 'recipes',
+        RECIPE_INGREDIENTS: 'recipe_ingredients',
+        RECIPE_PACKAGING: 'recipe_packaging',
+        PRODUCTIONS: 'productions',
+        SALES: 'sales',
+        STOCK_MOVEMENTS: 'stock_movements',
+        SETTINGS: 'settings',
+      };
+      const storeName = storeNameMap[tableName];
+      if (storeName && storeName !== 'settings') {
+        inMemoryCache[storeName] = finalData;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        await indexedDbService.setAll(storeName as any, finalData);
+      }
+
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('marmicout-data-synced'));
+        window.dispatchEvent(new Event('storage'));
+      }
+
+      return { success: true, count: mappedData.length };
     } catch (err: unknown) {
       return { success: false, count: 0, error: (err as Error).message || 'Erreur inconnue de lecture CSV' };
     }

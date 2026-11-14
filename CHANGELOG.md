@@ -4,6 +4,30 @@ Toutes les modifications notables apportées à ce projet sont documentées dans
 
 ---
 
+## [2.0.57] - 2026-11-14
+
+### Suppression de l'ID Google Sheet en Dur, Import/Export Cloud & Annulation des Fabrications
+- **Nettoyage et sécurisation Google Sheets ([`src/services/db.ts`](file:///d:/Aplli/Marmicout/Appli%20Marmicout/src/services/db.ts), [`src/components/Settings.tsx`](file:///d:/Aplli/Marmicout/Appli%20Marmicout/src/components/Settings.tsx))** :
+  - Suppression intégrale de l'ID Google Sheet hardcodé (`1SU8ypH5aufwKVoZLlCfhcw6nwdS6nBwNDvj8hKr0F2k`) dans `INITIAL_SETTINGS` et élimination de sa réimposition automatique au démarrage dans `initDB`.
+  - Par défaut, `googleSheetId` et `googleSheetLink` sont vides (`''`), et les réglages personnalisés de l'utilisateur ne sont jamais écrasés.
+  - Gestion propre et soignée de l'écran Paramètres lorsqu'aucun Google Sheet n'est configuré (encart explicatif clair, désactivation des boutons de synchronisation/envoi).
+- **Importation & Exportation CSV et Google Sheets adaptées au Cloud ([`src/services/db.ts`](file:///d:/Aplli/Marmicout/Appli%20Marmicout/src/services/db.ts), [`src/components/Settings.tsx`](file:///d:/Aplli/Marmicout/Appli%20Marmicout/src/components/Settings.tsx))** :
+  - `exportToCSV` et l'envoi vers Google Sheets lisent dynamiquement les données du mode en cours (Cloud via cache mémoire/Supabase, ou Local via localStorage/IndexedDB).
+  - `importFromCSV` devient asynchrone : en mode Cloud, l'importation passe directement par les méthodes existantes de `dbService` (`saveProduct`, `saveStore`, `saveRecipe`, `savePurchase`, `saveProduction`, `saveSale`, `addStockMovement`, etc.).
+  - Conservation stricte des liens et relations inter-tables via une génération déterministe d'identifiants UUID (`toDeterministicUUID`) pour tous les identifiants non-UUID (magasins, produits, recettes, fabrications, mouvements de stock).
+  - Affichage précis et vérifié du nombre exact de lignes synchronisées ou message d'erreur explicite en cas d'anomalie.
+  - Déclenchement automatique de l'événement `marmicout-data-synced` pour rafraîchir instantanément toutes les vues de l'application après import.
+- **Annulation des Fabrications ([`src/components/Productions.tsx`](file:///d:/Aplli/Marmicout/Appli%20Marmicout/src/components/Productions.tsx), [`src/services/db.ts`](file:///d:/Aplli/Marmicout/Appli%20Marmicout/src/services/db.ts), [`src/services/cloudDbService.ts`](file:///d:/Aplli/Marmicout/Appli%20Marmicout/src/services/cloudDbService.ts))** :
+  - Ajout d'une colonne « Actions » et d'un bouton « Annuler » avec confirmation sur chaque fabrication dans l'historique.
+  - Avertissement renforcé si le stock de produit fini restant est inférieur aux portions produites (cas où une partie ou la totalité du lot a déjà été vendue).
+  - Nouvelle méthode `deleteProduction` dans `dbService` et `cloudDbService` :
+    - Réintégration en stock des ingrédients et emballages consommés (sur la base des mouvements de stock `PRODUCTION_CONSOMMATION` liés à la fabrication).
+    - Déduction des portions produites du stock de produits finis de la recette (avec mise à jour Supabase et locale).
+    - Suppression sécurisée de la fabrication et de ses mouvements de stock, aussi bien en mode Cloud qu'en mode Local.
+    - Bannière de confirmation visuelle après annulation réussie.
+
+---
+
 ## [2.0.56] - 2026-11-14
 
 ### Détection de Doublons à la Saisie, Suggestions Interactives, Avertissements et Liaison Rapide

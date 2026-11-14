@@ -465,6 +465,56 @@ export class CloudDbService {
     await indexedDbService.delete('recipes', id);
   }
 
+  public async saveRecipeIngredient(ingredient: RecipeIngredient): Promise<string> {
+    if (!this.isOnline()) {
+      throw new Error('Hors connexion : consultation seule pendant 72 h.');
+    }
+    const estId = await this.ensureEstablishmentId();
+    const ingUUID = isUUID(ingredient.id) ? ingredient.id : generateUUID();
+    ingredient.id = ingUUID;
+    const payload = {
+      id: ingUUID,
+      establishment_id: estId,
+      recipe_id: ingredient.recipeId,
+      product_id: ingredient.productId && isUUID(ingredient.productId) ? ingredient.productId : null,
+      custom_name: ingredient.customName ?? '',
+      qty_used: Number(ingredient.qtyUsed ?? 0),
+      unit: ingredient.unit || 'g',
+      custom_cost_per_unit: Number(ingredient.customCostPerUnit ?? 0),
+    };
+    const { error } = await supabase.from('marmicout_recipe_ingredients').upsert(payload, { onConflict: 'id' });
+    if (error) {
+      notifyCloudError('Enregistrement ingrédient refusé', error.message);
+      throw new Error(`Erreur Supabase marmicout_recipe_ingredients: ${error.message}`);
+    }
+    await indexedDbService.put('recipe_ingredients', ingredient);
+    return ingUUID;
+  }
+
+  public async saveRecipePackaging(pack: RecipePackaging): Promise<string> {
+    if (!this.isOnline()) {
+      throw new Error('Hors connexion : consultation seule pendant 72 h.');
+    }
+    const estId = await this.ensureEstablishmentId();
+    const packUUID = isUUID(pack.id) ? pack.id : generateUUID();
+    pack.id = packUUID;
+    const payload = {
+      id: packUUID,
+      establishment_id: estId,
+      recipe_id: pack.recipeId,
+      name: (pack.name || '').trim(),
+      qty_used: Number(pack.qtyUsed ?? 1),
+      cost_per_unit: Number(pack.costPerUnit ?? 0),
+    };
+    const { error } = await supabase.from('marmicout_recipe_packaging').upsert(payload, { onConflict: 'id' });
+    if (error) {
+      notifyCloudError('Enregistrement emballage refusé', error.message);
+      throw new Error(`Erreur Supabase marmicout_recipe_packaging: ${error.message}`);
+    }
+    await indexedDbService.put('recipe_packaging', pack);
+    return packUUID;
+  }
+
   // --- PURCHASES ---
   public async getPurchases(): Promise<Purchase[]> {
     if (!this.isOnline()) {
@@ -596,6 +646,18 @@ export class CloudDbService {
     return prodUUID;
   }
 
+  public async deleteProduction(id: string): Promise<void> {
+    if (!this.isOnline()) {
+      throw new Error('Hors connexion : consultation seule pendant 72 h.');
+    }
+    const { error } = await supabase.from('marmicout_productions').delete().eq('id', id);
+    if (error) {
+      notifyCloudError('Suppression de fabrication refusée', error.message);
+      throw new Error(`Erreur suppression fabrication: ${error.message}`);
+    }
+    await indexedDbService.delete('productions', id);
+  }
+
   // --- SALES ---
   public async getSales(): Promise<Sale[]> {
     if (!this.isOnline()) {
@@ -722,6 +784,20 @@ export class CloudDbService {
     }
     await indexedDbService.put('stock_movements', movement);
     return smUUID;
+  }
+
+  public async deleteStockMovementsByRefId(refId: string): Promise<void> {
+    if (!this.isOnline()) {
+      throw new Error('Hors connexion : consultation seule pendant 72 h.');
+    }
+    const { error } = await supabase.from('marmicout_stock_movements').delete().eq('ref_id', refId);
+    if (error) {
+      notifyCloudError('Suppression des mouvements de stock refusée', error.message);
+      throw new Error(`Erreur suppression mouvements de stock: ${error.message}`);
+    }
+    const movements = await indexedDbService.getAll<StockMovement>('stock_movements');
+    const filtered = movements.filter((m) => m.refId !== refId);
+    await indexedDbService.setAll('stock_movements', filtered);
   }
 
   // --- SETTINGS ---

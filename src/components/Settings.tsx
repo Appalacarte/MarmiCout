@@ -138,29 +138,38 @@ export const Settings: React.FC<SettingsProps> = ({ initialSubTab = 'general' })
   };
 
   // Importer le CSV manuellement
-  const handleImportCSVSubmit = (e: React.FormEvent) => {
+  const handleImportCSVSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!importText.trim()) {
       setImportStatus({ type: 'error', message: 'Veuillez coller le contenu CSV ou charger un fichier.' });
       return;
     }
 
-    const result = dbService.importFromCSV(
-      importTable as Parameters<typeof dbService.importFromCSV>[0],
-      importText,
-      importMerge
-    );
+    setImportStatus({ type: null, message: 'Importation en cours...' });
 
-    if (result.success) {
-      setImportStatus({ 
-        type: 'success', 
-        message: `Import réussi ! ${result.count} ligne(s) synchronisée(s) dans la table.` 
-      });
-      setImportText('');
-    } else {
-      setImportStatus({ 
-        type: 'error', 
-        message: `Erreur d'importation : ${result.error}` 
+    try {
+      const result = await dbService.importFromCSV(
+        importTable as Parameters<typeof dbService.importFromCSV>[0],
+        importText,
+        importMerge
+      );
+
+      if (result.success) {
+        setImportStatus({ 
+          type: 'success', 
+          message: `Import réussi ! ${result.count} ligne(s) synchronisée(s) avec succès dans la table.` 
+        });
+        setImportText('');
+      } else {
+        setImportStatus({ 
+          type: 'error', 
+          message: `Erreur d'importation : ${result.error || 'Format ou contrainte non respectée'}` 
+        });
+      }
+    } catch (err: unknown) {
+      setImportStatus({
+        type: 'error',
+        message: `Erreur d'importation : ${(err as Error).message || 'Erreur inconnue'}`
       });
     }
   };
@@ -189,6 +198,7 @@ export const Settings: React.FC<SettingsProps> = ({ initialSubTab = 'general' })
     ];
 
     let successCount = 0;
+    let totalImportedRows = 0;
     const errors: string[] = [];
 
     for (const sheet of sheetsToSync) {
@@ -209,9 +219,10 @@ export const Settings: React.FC<SettingsProps> = ({ initialSubTab = 'general' })
           throw new Error("Feuille inaccessible. Assurez-vous d'avoir configuré le partage en 'Tous les utilisateurs disposant du lien peuvent lire'.");
         }
 
-        const importResult = dbService.importFromCSV(sheet.key as Parameters<typeof dbService.importFromCSV>[0], csvText, false); // Écrasement total local
+        const importResult = await dbService.importFromCSV(sheet.key as Parameters<typeof dbService.importFromCSV>[0], csvText, false);
         if (importResult.success) {
           successCount++;
+          totalImportedRows += importResult.count;
         } else {
           throw new Error(importResult.error || "Format de données invalide");
         }
@@ -224,19 +235,20 @@ export const Settings: React.FC<SettingsProps> = ({ initialSubTab = 'general' })
     if (successCount === sheetsToSync.length) {
       setSyncStatus({
         type: 'success',
-        message: `Synchronisation réussie ! Les 9 tables de données ont été mises à jour avec succès depuis votre Google Sheets.`
+        message: `Synchronisation réussie ! Les ${sheetsToSync.length} tables de données (${totalImportedRows} lignes au total) ont été mises à jour avec succès depuis votre Google Sheets.`
       });
-      // Rafraîchir les alertes globales de l'application
+      // Rafraîchir les alertes globales et données de l'application
+      window.dispatchEvent(new CustomEvent('marmicout-data-synced'));
       window.dispatchEvent(new Event('storage'));
     } else {
       setSyncStatus({
         type: 'error',
-        message: `Synchronisation partielle (${successCount}/9 feuilles importées). Échecs :\n- ${errors.join('\n- ')}\n\n💡 Vérifications requises :\n1. Le partage de votre Google Sheet doit être réglé sur 'Tous les utilisateurs disposant du lien' en Lecteur.\n2. Le script d'initialisation Apps Script doit avoir été exécuté dans Sheets pour nommer les onglets.`
+        message: `Synchronisation partielle (${successCount}/${sheetsToSync.length} feuilles importées, ${totalImportedRows} lignes enregistrées). Échecs :\n- ${errors.join('\n- ')}\n\n💡 Vérifications requises :\n1. Le partage de votre Google Sheet doit être réglé sur 'Tous les utilisateurs disposant du lien' en Lecteur.\n2. Le script d'initialisation Apps Script doit avoir été exécuté dans Sheets pour nommer les onglets.`
       });
     }
   };
 
-  // Exporter / Pousser les données locales de l'App vers Google Sheets
+  // Exporter / Pousser les données de l'App vers Google Sheets
   const handlePushLiveGoogleSheets = async () => {
     if (!googleWebAppUrl.trim()) {
       setPushStatus({ type: 'error', message: "Veuillez renseigner l'URL Web App de votre Apps Script." });
@@ -245,20 +257,20 @@ export const Settings: React.FC<SettingsProps> = ({ initialSubTab = 'general' })
     
     setIsPushing(true);
     setPushStatus({ type: null, message: '' });
-    setPushMessage("Collecte des données locales...");
+    setPushMessage("Collecte des données de l'application...");
 
     try {
-      // Regrouper toutes les tables de localStorage
+      // Regrouper toutes les tables selon le mode actif (Cloud ou Local)
       const payload = {
-        PRODUCTS: JSON.parse(localStorage.getItem('marmicout_products') || '[]'),
-        PURCHASES: JSON.parse(localStorage.getItem('marmicout_purchases') || '[]'),
-        STORES: JSON.parse(localStorage.getItem('marmicout_stores') || '[]'),
-        RECIPES: JSON.parse(localStorage.getItem('marmicout_recipes') || '[]'),
-        RECIPE_INGREDIENTS: JSON.parse(localStorage.getItem('marmicout_recipe_ingredients') || '[]'),
-        RECIPE_PACKAGING: JSON.parse(localStorage.getItem('marmicout_recipe_packaging') || '[]'),
-        PRODUCTIONS: JSON.parse(localStorage.getItem('marmicout_productions') || '[]'),
-        SALES: JSON.parse(localStorage.getItem('marmicout_sales') || '[]'),
-        STOCK_MOVEMENTS: JSON.parse(localStorage.getItem('marmicout_stock_movements') || '[]')
+        PRODUCTS: dbService.getProducts(),
+        PURCHASES: dbService.getPurchases(),
+        STORES: dbService.getStores(),
+        RECIPES: dbService.getRecipes(),
+        RECIPE_INGREDIENTS: dbService.getAllRecipeIngredients(),
+        RECIPE_PACKAGING: dbService.getAllRecipePackagings(),
+        PRODUCTIONS: dbService.getProductions(),
+        SALES: dbService.getSales(),
+        STOCK_MOVEMENTS: dbService.getStockMovements()
       };
 
       setPushMessage("Envoi des données vers Google Sheets...");
@@ -279,7 +291,7 @@ export const Settings: React.FC<SettingsProps> = ({ initialSubTab = 'general' })
       setIsPushing(false);
       setPushStatus({
         type: 'success',
-        message: "Envoi réussi ! Vos données locales (ingrédients, achats, recettes, ventes...) ont été envoyées vers votre Google Sheet.\n\n💡 Actualisez votre document Google Sheets pour voir les données s'afficher !"
+        message: "Envoi réussi ! Vos données (ingrédients, achats, recettes, ventes...) ont été envoyées vers votre Google Sheet.\n\n💡 Actualisez votre document Google Sheets pour voir les données s'afficher !"
       });
 
     } catch (err: unknown) {
@@ -533,7 +545,7 @@ export const Settings: React.FC<SettingsProps> = ({ initialSubTab = 'general' })
               <input
                 type="text"
                 className="form-input"
-                placeholder="Ex: 1SU8ypH5aufwKVoZLlCfhcw6nwd..."
+                placeholder="Ex: 1a2b3c4d5e6f7g8h9i..."
                 value={googleSheetId}
                 onChange={(e) => setGoogleSheetId(e.target.value)}
               />
@@ -632,13 +644,27 @@ export const Settings: React.FC<SettingsProps> = ({ initialSubTab = 'general' })
               <div style={{ marginBottom: '16px', fontSize: '12px', wordBreak: 'break-all', padding: '10px', backgroundColor: 'var(--color-light)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border)' }}>
                 <strong>ID Google Sheet détecté :</strong> {googleSheetId}
                 <br />
-                <a href={googleSheetLink} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--color-primary)', textDecoration: 'underline', display: 'inline-block', marginTop: '4px' }}>
+                <a href={googleSheetLink || `https://docs.google.com/spreadsheets/d/${googleSheetId}/edit`} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--color-primary)', textDecoration: 'underline', display: 'inline-block', marginTop: '4px' }}>
                   Ouvrir votre document Google Sheets ↗
                 </a>
               </div>
             ) : (
-              <div style={{ marginBottom: '16px', fontSize: '12px', color: 'var(--color-danger)' }}>
-                ⚠️ Renseignez le lien de votre Google Sheet dans le formulaire à gauche pour activer la synchronisation.
+              <div style={{
+                marginBottom: '16px',
+                fontSize: '12px',
+                padding: '12px 14px',
+                backgroundColor: 'rgba(234, 179, 8, 0.08)',
+                border: '1px solid rgba(234, 179, 8, 0.35)',
+                borderRadius: 'var(--radius-sm)',
+                color: '#854d0e',
+                lineHeight: '1.4'
+              }}>
+                <div style={{ fontWeight: '600', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  ℹ️ Aucun Google Sheet configuré
+                </div>
+                <div>
+                  Pour synchroniser vos données avec Google Sheets, collez le lien de votre document dans le formulaire « Paramètres généraux » à gauche.
+                </div>
               </div>
             )}
 

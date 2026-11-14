@@ -77,8 +77,8 @@ const initialSettings = {
   units: ['kg', 'g', 'l', 'pièce'],
   salesLocations: ['Boutique', 'Marché'],
   defaultMinStockAlert: 3,
-  googleSheetId: '1SU8ypH5aufwKVoZLlCfhcw6nwdS6nBwNDvj8hKr0F2k',
-  googleSheetLink: 'https://docs.google.com/spreadsheets/d/1SU8ypH5aufwKVoZLlCfhcw6nwdS6nBwNDvj8hKr0F2k/edit?usp=sharing',
+  googleSheetId: '',
+  googleSheetLink: '',
 };
 
 // Injection
