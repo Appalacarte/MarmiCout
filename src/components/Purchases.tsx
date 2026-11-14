@@ -272,7 +272,7 @@ export const Purchases: React.FC<PurchasesProps> = ({ initialTriggerScan, initia
     // Comparer le prix unitaire ramené à l'unité de stock au prix moyen précédent
     const targetProduct = products.find(p => p.id === formProductId) || dbService.getProduct(formProductId);
     const prevAvg = targetProduct ? targetProduct.avgPurchasePrice : 0;
-    const qtyInStockUnit = targetProduct ? convertUnits(qtyNum, formUnit, targetProduct.unit) : qtyNum;
+    const qtyInStockUnit = targetProduct ? convertUnits(qtyNum, formUnit, targetProduct.unit, targetProduct) : qtyNum;
     const pricePerStockUnit = (qtyInStockUnit !== null && qtyInStockUnit > 0)
       ? (pricePaidNum / qtyInStockUnit)
       : (qtyNum > 0 ? pricePaidNum / qtyNum : 0);
@@ -328,7 +328,7 @@ export const Purchases: React.FC<PurchasesProps> = ({ initialTriggerScan, initia
     for (const p of scannedPurchases) {
       const prod = dbService.getProduct(p.productId);
       if (prod && prod.avgPurchasePrice > 0) {
-        const qtyInStock = convertUnits(p.qty, p.unit, prod.unit);
+        const qtyInStock = convertUnits(p.qty, p.unit, prod.unit, prod);
         const stockPrice = (qtyInStock !== null && qtyInStock > 0) ? p.pricePaid / qtyInStock : p.unitPrice;
         const comp = comparePurchasePrice(stockPrice, prod.avgPurchasePrice);
         if (comp.hasAlert && comp.message) {
@@ -374,7 +374,7 @@ export const Purchases: React.FC<PurchasesProps> = ({ initialTriggerScan, initia
 
   let pricePerStockUnit: number | null = null;
   if (isUnitDifferent && selectedProduct && qtyNum > 0 && pricePaidNum > 0) {
-    const qtyInStockUnit = convertUnits(qtyNum, formUnit, selectedProduct.unit);
+    const qtyInStockUnit = convertUnits(qtyNum, formUnit, selectedProduct.unit, selectedProduct);
     if (qtyInStockUnit !== null && qtyInStockUnit > 0) {
       pricePerStockUnit = pricePaidNum / qtyInStockUnit;
     }
@@ -486,7 +486,7 @@ export const Purchases: React.FC<PurchasesProps> = ({ initialTriggerScan, initia
                 const prod = dbService.getProduct(p.productId);
                 const store = stores.find(s => s.id === p.storeId);
                 const normPUnit = normalizeUnit(p.unit) || p.unit;
-                const conv = prod ? convertUnitsWithInfo(p.qty, normPUnit, prod.unit) : { value: p.qty, approximate: false };
+                const conv = prod ? convertUnitsWithInfo(p.qty, normPUnit, prod.unit, prod) : { value: p.qty, approximate: false };
                 
                 return (
                   <tr key={p.id}>

@@ -665,7 +665,7 @@ export const dbService = {
 
     const products = this.getProducts();
     const product = products.find(p => p.id === purchase.productId);
-    const qtyInProductUnit = product ? convertUnits(purchase.qty, purchase.unit, product.unit) : purchase.qty;
+    const qtyInProductUnit = product ? convertUnits(purchase.qty, purchase.unit, product.unit, product) : purchase.qty;
 
     if (product && qtyInProductUnit === null) {
       throw new Error(
@@ -745,7 +745,7 @@ export const dbService = {
     const products = this.getProducts();
     const product = products.find(p => p.id === purchase.productId);
     if (product) {
-      const qtyInProductUnit = convertUnits(purchase.qty, purchase.unit, product.unit);
+      const qtyInProductUnit = convertUnits(purchase.qty, purchase.unit, product.unit, product);
       if (qtyInProductUnit !== null) {
         product.stock = Math.max(0, product.stock - qtyInProductUnit);
         await this.saveProduct(product);
@@ -1075,7 +1075,7 @@ export const dbService = {
         const prod = products.find(p => p.id === ing.productId);
         if (prod) {
           // Convertir la quantité de la recette vers l'unité de stock du produit
-          const conv = convertUnitsWithInfo(ing.qtyUsed, ing.unit, prod.unit);
+          const conv = convertUnitsWithInfo(ing.qtyUsed, ing.unit, prod.unit, prod);
           if (conv.value === null) {
             hasIncompatibleUnits = true;
             incompatibleDetails.push(
@@ -1151,7 +1151,7 @@ export const dbService = {
     ingredients.forEach(ing => {
       const prod = products.find(p => p.id === ing.productId);
       if (prod) {
-        const qtyNeeded = convertUnits(ing.qtyUsed * factor, ing.unit, prod.unit);
+        const qtyNeeded = convertUnits(ing.qtyUsed * factor, ing.unit, prod.unit, prod);
         if (qtyNeeded === null) {
           incompatibleItems.push(
             `${prod.name} (Unités incompatibles : recette en ${normalizeUnit(ing.unit) || ing.unit}, stock en ${normalizeUnit(prod.unit) || prod.unit})`
@@ -1205,7 +1205,7 @@ export const dbService = {
     for (const ing of ingredients) {
       const prod = products.find(p => p.id === ing.productId);
       if (prod) {
-        const qtyNeeded = convertUnits(ing.qtyUsed * factor, ing.unit, prod.unit);
+        const qtyNeeded = convertUnits(ing.qtyUsed * factor, ing.unit, prod.unit, prod);
         if (qtyNeeded === null) continue;
         prod.stock = Math.max(0, prod.stock - qtyNeeded);
         await this.saveProduct(prod);
@@ -1335,7 +1335,7 @@ export const dbService = {
       for (const ing of ingredients) {
         const prod = products.find(p => p.id === ing.productId);
         if (prod) {
-          const qtyNeeded = convertUnits(ing.qtyUsed * factor, ing.unit, prod.unit);
+          const qtyNeeded = convertUnits(ing.qtyUsed * factor, ing.unit, prod.unit, prod);
           if (qtyNeeded !== null) {
             prod.stock += qtyNeeded;
             await this.saveProduct(prod);
@@ -1691,6 +1691,8 @@ export const dbService = {
                 notes: row.notes ? String(row.notes) : '',
                 isActive: row.isActive !== false,
                 photo: row.photo ? String(row.photo) : undefined,
+                unitWeightG: row.unitWeightG != null && !isNaN(Number(row.unitWeightG)) ? Number(row.unitWeightG) : (row.unit_weight_g != null && !isNaN(Number(row.unit_weight_g)) ? Number(row.unit_weight_g) : undefined),
+                densityGPerMl: row.densityGPerMl != null && !isNaN(Number(row.densityGPerMl)) ? Number(row.densityGPerMl) : (row.density_g_per_ml != null && !isNaN(Number(row.density_g_per_ml)) ? Number(row.density_g_per_ml) : undefined),
               };
               await this.saveProduct(product);
               importedCount++;

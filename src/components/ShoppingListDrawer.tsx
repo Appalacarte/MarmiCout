@@ -152,7 +152,7 @@ export const ShoppingListDrawer: React.FC<ShoppingListDrawerProps> = ({
       for (const ing of ingredients) {
         const product = ing.productId ? dbService.getProduct(ing.productId) : undefined;
         if (product) {
-          const conv = convertUnitsWithInfo(ing.qtyUsed * factor, ing.unit, product.unit);
+          const conv = convertUnitsWithInfo(ing.qtyUsed * factor, ing.unit, product.unit, product);
           if (conv.value === null) {
             incompatibleItems.push({
               key: `${recipe.id}_${ing.id}`,

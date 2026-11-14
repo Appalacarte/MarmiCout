@@ -13,6 +13,8 @@ export interface Product {
   notes: string;
   isActive: boolean;
   photo?: string;
+  unitWeightG?: number; // Poids d'une pièce, d'un sachet, d'un pot… en grammes (facultatif)
+  densityGPerMl?: number; // Densité en g/ml (facultatif)
 }
 
 export interface Purchase {

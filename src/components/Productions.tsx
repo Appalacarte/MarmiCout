@@ -172,7 +172,7 @@ export const Productions: React.FC<ProductionsProps> = ({ initialTriggerAdd }) =
       if (prod) {
         const normIngUnit = normalizeUnit(ing.unit) || ing.unit;
         const normProdUnit = normalizeUnit(prod.unit) || prod.unit;
-        const conv = convertUnitsWithInfo(ing.qtyUsed * factor, normIngUnit, normProdUnit);
+        const conv = convertUnitsWithInfo(ing.qtyUsed * factor, normIngUnit, normProdUnit, prod);
 
         if (conv.value === null) {
           isFeasible = false;

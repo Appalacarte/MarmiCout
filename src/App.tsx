@@ -262,6 +262,8 @@ function App() {
           <Products
             initialTriggerAdd={Boolean(extra?.triggerAdd)}
             initialSelectedProductId={extra?.selectedProductId as string | undefined}
+            initialEditProductId={extra?.editProductId as string | undefined}
+            initialFocusEquivalence={Boolean(extra?.focusEquivalence)}
             onNavigate={handleNavigate}
           />
         );
@@ -277,6 +279,7 @@ function App() {
           <Recipes
             initialTriggerAdd={Boolean(extra?.triggerAdd)}
             initialViewRecipeId={extra?.viewRecipeId as string | undefined}
+            onNavigate={handleNavigate}
           />
         );
       case 'Production':

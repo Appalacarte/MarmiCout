@@ -41,13 +41,20 @@ import { findExactDuplicateProduct } from '../utils/productDuplicate';
 interface RecipesProps {
   initialTriggerAdd?: boolean;
   initialViewRecipeId?: string;
+  onNavigate?: (tab: string, extraData?: Record<string, unknown>) => void;
 }
 
-export const Recipes: React.FC<RecipesProps> = ({ initialTriggerAdd, initialViewRecipeId }) => {
+export const Recipes: React.FC<RecipesProps> = ({ initialTriggerAdd, initialViewRecipeId, onNavigate }) => {
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [allProducts, setAllProducts] = useState<Product[]>([]);
   const settings = dbService.getSettings();
+
+  const handleOpenProductEquivalence = (productId: string) => {
+    if (onNavigate) {
+      onNavigate('Produits', { editProductId: productId, focusEquivalence: true });
+    }
+  };
 
   // Recherche & Filtres
   const [searchQuery, setSearchQuery] = useState('');
@@ -1126,7 +1133,7 @@ export const Recipes: React.FC<RecipesProps> = ({ initialTriggerAdd, initialView
                 
                 // Calcul coût ligne à la volée dans le formulaire
                 const conv = isLinked && selectedProd
-                  ? convertUnitsWithInfo(ing.qtyUsed, normIngUnit, selectedProd.unit)
+                  ? convertUnitsWithInfo(ing.qtyUsed, normIngUnit, selectedProd.unit, selectedProd)
                   : { value: ing.qtyUsed, approximate: false };
                 const isIncompatible = isLinked && selectedProd && conv.value === null;
                 let lineCost: number | null = 0;
@@ -1263,13 +1270,31 @@ export const Recipes: React.FC<RecipesProps> = ({ initialTriggerAdd, initialView
                     {/* Détail du calcul ou avertissement d'unités incompatibles */}
                     <div style={{ fontSize: '12px', marginTop: '2px' }}>
                       {isIncompatible && selectedProd ? (
-                        <div style={{ color: 'var(--color-danger)', fontWeight: '700', backgroundColor: 'rgba(220, 38, 38, 0.08)', padding: '6px 8px', borderRadius: 'var(--radius-sm)' }}>
-                          ⚠️ Unités incompatibles : recette en {normIngUnit}, stock en {normalizeUnit(selectedProd.unit) || selectedProd.unit}
+                        <div style={{ color: 'var(--color-danger)', fontWeight: '700', backgroundColor: 'rgba(220, 38, 38, 0.08)', padding: '6px 8px', borderRadius: 'var(--radius-sm)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap' }}>
+                          <span>⚠️ Unités incompatibles : recette en {normIngUnit}, stock en {normalizeUnit(selectedProd.unit) || selectedProd.unit}</span>
+                          <button
+                            type="button"
+                            onClick={() => handleOpenProductEquivalence(selectedProd.id)}
+                            style={{ background: 'none', border: 'none', color: 'var(--color-primary)', textDecoration: 'underline', cursor: 'pointer', fontSize: '11px', fontWeight: '600', padding: 0 }}
+                          >
+                            Préciser l'équivalence
+                          </button>
                         </div>
                       ) : isLinked && selectedProd && lineCost !== null ? (
-                        <span style={{ color: 'var(--color-dark-light)', fontWeight: '500' }}>
-                          {formatQtyFr(ing.qtyUsed)} {normIngUnit} × {selectedProd.avgPurchasePrice.toFixed(2).replace('.', ',')} {settings.currency}/{normalizeUnit(selectedProd.unit) || selectedProd.unit} {conv.approximate ? '≈' : '='} <strong style={{ color: 'var(--color-dark)' }}>{conv.approximate ? '≈ ' : ''}{lineCost.toFixed(2).replace('.', ',')} {settings.currency}</strong>
-                        </span>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap' }}>
+                          <span style={{ color: 'var(--color-dark-light)', fontWeight: '500' }}>
+                            {formatQtyFr(ing.qtyUsed)} {normIngUnit} × {selectedProd.avgPurchasePrice.toFixed(2).replace('.', ',')} {settings.currency}/{normalizeUnit(selectedProd.unit) || selectedProd.unit} {conv.approximate ? '≈' : '='} <strong style={{ color: 'var(--color-dark)' }}>{conv.approximate ? '≈ ' : ''}{lineCost.toFixed(2).replace('.', ',')} {settings.currency}</strong>
+                          </span>
+                          {conv.approximate && (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenProductEquivalence(selectedProd.id)}
+                              style={{ background: 'none', border: 'none', color: 'var(--color-primary)', textDecoration: 'underline', cursor: 'pointer', fontSize: '11px', fontWeight: '600', padding: 0 }}
+                            >
+                              Préciser l'équivalence
+                            </button>
+                          )}
+                        </div>
                       ) : (
                         <span style={{ color: 'var(--color-dark-light)', fontWeight: '500' }}>
                           {formatQtyFr(ing.qtyUsed)} {normIngUnit} × {(ing.customCostPerUnit || 0).toFixed(2).replace('.', ',')} {settings.currency}/{normIngUnit} = <strong style={{ color: 'var(--color-dark)' }}>{(lineCost || 0).toFixed(2).replace('.', ',')} {settings.currency}</strong>
@@ -1666,8 +1691,8 @@ export const Recipes: React.FC<RecipesProps> = ({ initialTriggerAdd, initialView
                 if (prod) {
                   const qtyOrig = ri.originalQtyUsed || ri.qtyUsed;
                   const qtyAjust = qtyOrig * scaleFactor;
-                  const neededQty = convertUnits(qtyAjust, ri.unit, prod.unit);
-                  const origConv = convertUnits(qtyOrig, ri.unit, prod.unit);
+                  const neededQty = convertUnits(qtyAjust, ri.unit, prod.unit, prod);
+                  const origConv = convertUnits(qtyOrig, ri.unit, prod.unit, prod);
                   if (neededQty === null || origConv === null) {
                     hasIncompatible = true;
                     isFullyFeasible = false;
@@ -1766,7 +1791,7 @@ export const Recipes: React.FC<RecipesProps> = ({ initialTriggerAdd, initialView
                   const normProdUnit = prod ? (normalizeUnit(prod.unit) || prod.unit) : normRiUnit;
                   
                   const conv = prod
-                    ? convertUnitsWithInfo(qtyAjust, normRiUnit, normProdUnit)
+                    ? convertUnitsWithInfo(qtyAjust, normRiUnit, normProdUnit, prod)
                     : { value: qtyAjust, approximate: false };
                   const isIncompatible = Boolean(ri.productId && prod && conv.value === null);
                   const costLine = prod
@@ -1850,13 +1875,33 @@ export const Recipes: React.FC<RecipesProps> = ({ initialTriggerAdd, initialView
                       </div>
 
                       {/* Détail du calcul unitaire */}
-                      <div style={{ fontSize: '11px', color: isIncompatible ? 'var(--color-danger)' : 'var(--color-dark-light)', marginTop: '2px', fontWeight: isIncompatible ? '700' : '500' }}>
+                      <div style={{ fontSize: '11px', color: isIncompatible ? 'var(--color-danger)' : 'var(--color-dark-light)', marginTop: '2px', fontWeight: isIncompatible ? '700' : '500', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap' }}>
                         {isIncompatible && prod ? (
-                          <span>⚠️ Unités incompatibles : recette en {normRiUnit}, stock en {normProdUnit}</span>
+                          <>
+                            <span>⚠️ Unités incompatibles : recette en {normRiUnit}, stock en {normProdUnit}</span>
+                            <button
+                              type="button"
+                              onClick={() => handleOpenProductEquivalence(prod.id)}
+                              style={{ background: 'none', border: 'none', color: 'var(--color-primary)', textDecoration: 'underline', cursor: 'pointer', fontSize: '11px', fontWeight: '600', padding: 0 }}
+                            >
+                              Préciser l'équivalence
+                            </button>
+                          </>
                         ) : prod && costLine !== null ? (
-                          <span>
-                            {formatQtyFr(qtyAjust)} {normRiUnit} × {prod.avgPurchasePrice.toFixed(2).replace('.', ',')} {settings.currency}/{normProdUnit} {conv.approximate ? '≈' : '='} <strong>{conv.approximate ? '≈ ' : ''}{costLine.toFixed(2).replace('.', ',')} {settings.currency}</strong>
-                          </span>
+                          <>
+                            <span>
+                              {formatQtyFr(qtyAjust)} {normRiUnit} × {prod.avgPurchasePrice.toFixed(2).replace('.', ',')} {settings.currency}/{normProdUnit} {conv.approximate ? '≈' : '='} <strong>{conv.approximate ? '≈ ' : ''}{costLine.toFixed(2).replace('.', ',')} {settings.currency}</strong>
+                            </span>
+                            {conv.approximate && (
+                              <button
+                                type="button"
+                                onClick={() => handleOpenProductEquivalence(prod.id)}
+                                style={{ background: 'none', border: 'none', color: 'var(--color-primary)', textDecoration: 'underline', cursor: 'pointer', fontSize: '11px', fontWeight: '600', padding: 0 }}
+                              >
+                                Préciser l'équivalence
+                              </button>
+                            )}
+                          </>
                         ) : (
                           <span>
                             {formatQtyFr(qtyAjust)} {normRiUnit} × {(ri.customCostPerUnit || 0).toFixed(2).replace('.', ',')} {settings.currency}/{normRiUnit} = <strong>{(costLine || 0).toFixed(2).replace('.', ',')} {settings.currency}</strong>
@@ -1902,7 +1947,7 @@ export const Recipes: React.FC<RecipesProps> = ({ initialTriggerAdd, initialView
                 const prod = ri.productId ? products.find(p => p.id === ri.productId) : undefined;
                 if (prod) {
                   const normProdUnit = normalizeUnit(prod.unit) || prod.unit;
-                  const conv = convertUnitsWithInfo(qtyAjust, normRiUnit, normProdUnit);
+                  const conv = convertUnitsWithInfo(qtyAjust, normRiUnit, normProdUnit, prod);
                   if (conv.value === null) {
                     missingList.push({
                       name: prod.name,
@@ -1912,7 +1957,7 @@ export const Recipes: React.FC<RecipesProps> = ({ initialTriggerAdd, initialView
                     });
                   } else if (prod.stock < conv.value) {
                     const deficit = conv.value - prod.stock;
-                    const deficitBack = convertUnitsWithInfo(deficit, normProdUnit, normRiUnit);
+                    const deficitBack = convertUnitsWithInfo(deficit, normProdUnit, normRiUnit, prod);
                     missingList.push({
                       name: prod.name,
                       qty: deficitBack.value !== null ? deficitBack.value : deficit,

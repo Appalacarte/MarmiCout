@@ -59,7 +59,7 @@ export function getHeaviestIngredient(
       const prod = products.find(p => p.id === ing.productId);
       if (prod) {
         ingName = prod.name;
-        const conv = convertUnitsWithInfo(ing.qtyUsed, ing.unit, prod.unit);
+        const conv = convertUnitsWithInfo(ing.qtyUsed, ing.unit, prod.unit, prod);
         if (conv.value !== null) {
           ingCost = conv.value * prod.avgPurchasePrice;
         }

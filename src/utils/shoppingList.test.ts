@@ -1,4 +1,13 @@
-import assert from 'node:assert';
+function assert(condition: unknown, message?: string): asserts condition {
+  if (!condition) {
+    throw new Error(message || 'Assertion failed');
+  }
+}
+assert.strictEqual = function strictEqual<T>(actual: T, expected: T, message?: string): void {
+  if (actual !== expected) {
+    throw new Error(`${message ? message + ' — ' : ''}Attendu : ${String(expected)}, obtenu : ${String(actual)}`);
+  }
+};
 import {
   groupShoppingItemsByStore,
   generateShoppingListText,

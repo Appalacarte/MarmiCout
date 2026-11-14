@@ -11,7 +11,8 @@ import {
   Trash2,
   SlidersHorizontal,
   Calendar,
-  TrendingUp
+  TrendingUp,
+  Scale
 } from 'lucide-react';
 import { dbService } from '../services/db';
 import { generateUUID } from '../services/cloudDbService';
@@ -34,8 +35,19 @@ import { findExactDuplicateProduct } from '../utils/productDuplicate';
 interface ProductsProps {
   initialTriggerAdd?: boolean;
   initialSelectedProductId?: string;
+  initialEditProductId?: string;
+  initialFocusEquivalence?: boolean;
   onNavigate?: (tab: string, extraData?: Record<string, unknown>) => void;
 }
+
+const PROPOSED_DENSITIES = [
+  { label: 'eau', value: '1' },
+  { label: 'huile', value: '0.92' },
+  { label: 'lait', value: '1.03' },
+  { label: 'farine', value: '0.55' },
+  { label: 'sucre', value: '0.85' },
+  { label: 'miel', value: '1.4' },
+] as const;
 
 const STOCK_CORRECTION_REASONS = [
   'Inventaire',
@@ -44,7 +56,13 @@ const STOCK_CORRECTION_REASONS = [
   'Autre'
 ] as const;
 
-export const Products: React.FC<ProductsProps> = ({ initialTriggerAdd, initialSelectedProductId, onNavigate }) => {
+export const Products: React.FC<ProductsProps> = ({
+  initialTriggerAdd,
+  initialSelectedProductId,
+  initialEditProductId,
+  initialFocusEquivalence,
+  onNavigate,
+}) => {
   const [products, setProducts] = useState<Product[]>([]);
   const [stores, setStores] = useState<Store[]>([]);
   const settings = dbService.getSettings();
@@ -75,6 +93,8 @@ export const Products: React.FC<ProductsProps> = ({ initialTriggerAdd, initialSe
   const [formMainStore, setFormMainStore] = useState('');
   const [formNotes, setFormNotes] = useState('');
   const [formIsActive, setFormIsActive] = useState(true);
+  const [formUnitWeight, setFormUnitWeight] = useState('');
+  const [formDensity, setFormDensity] = useState('');
 
   // État du scanneur dans le formulaire
   const [isScannerOpen, setIsScannerOpen] = useState(false);
@@ -138,6 +158,8 @@ export const Products: React.FC<ProductsProps> = ({ initialTriggerAdd, initialSe
     setFormMainStore(stores[0]?.id || '');
     setFormNotes('');
     setFormIsActive(true);
+    setFormUnitWeight('');
+    setFormDensity('');
     setIsFormOpen(true);
   };
 
@@ -177,6 +199,8 @@ export const Products: React.FC<ProductsProps> = ({ initialTriggerAdd, initialSe
     setFormMainStore(prod.mainStoreId);
     setFormNotes(prod.notes);
     setFormIsActive(prod.isActive);
+    setFormUnitWeight(prod.unitWeightG != null ? prod.unitWeightG.toString() : '');
+    setFormDensity(prod.densityGPerMl != null ? prod.densityGPerMl.toString() : '');
     setIsFormOpen(true);
   };
 
@@ -255,6 +279,26 @@ export const Products: React.FC<ProductsProps> = ({ initialTriggerAdd, initialSe
       }
     }
   }, [initialSelectedProductId, products]);
+
+  useEffect(() => {
+    if (initialEditProductId && products.length > 0) {
+      const target = products.find(p => p.id === initialEditProductId);
+      if (target) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        handleOpenEditForm(target);
+        if (initialFocusEquivalence) {
+          setTimeout(() => {
+            const el = document.getElementById('product-equivalences-section');
+            if (el) {
+              el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              const input = el.querySelector('input');
+              if (input) (input as HTMLInputElement).focus();
+            }
+          }, 250);
+        }
+      }
+    }
+  }, [initialEditProductId, initialFocusEquivalence, products]);
 
   // Ouvrir la fenêtre « Corriger le stock »
   const handleOpenStockCorrection = (prod: Product) => {
@@ -431,6 +475,8 @@ export const Products: React.FC<ProductsProps> = ({ initialTriggerAdd, initialSe
     const stockNum = parseDecimalInput(formStock);
     const minStockNum = parseDecimalInput(formMinStock);
     const avgPriceNum = parseDecimalInput(formAvgPrice);
+    const unitWeightNum = formUnitWeight.trim() ? parseDecimalInput(formUnitWeight) : undefined;
+    const densityNum = formDensity.trim() ? parseDecimalInput(formDensity) : undefined;
 
     const updatedProduct: Product = {
       id: editingProduct ? editingProduct.id : generateUUID(),
@@ -445,7 +491,9 @@ export const Products: React.FC<ProductsProps> = ({ initialTriggerAdd, initialSe
       avgPurchasePrice: avgPriceNum,
       mainStoreId: formMainStore,
       notes: formNotes.trim(),
-      isActive: formIsActive
+      isActive: formIsActive,
+      unitWeightG: (unitWeightNum !== undefined && Number.isFinite(unitWeightNum) && unitWeightNum > 0) ? unitWeightNum : undefined,
+      densityGPerMl: (densityNum !== undefined && Number.isFinite(densityNum) && densityNum > 0) ? densityNum : undefined,
     };
 
     try {
@@ -988,6 +1036,97 @@ export const Products: React.FC<ProductsProps> = ({ initialTriggerAdd, initialSe
                   <option key={s.id} value={s.id}>{s.name} ({s.type})</option>
                 ))}
               </select>
+            </div>
+          </div>
+
+          {/* SECTION ÉQUIVALENCES */}
+          <div
+            id="product-equivalences-section"
+            style={{
+              marginTop: '16px',
+              marginBottom: '20px',
+              padding: '14px',
+              border: '1px solid var(--color-border)',
+              borderRadius: 'var(--radius-md)',
+              backgroundColor: 'rgba(0, 0, 0, 0.02)'
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+              <Scale size={16} style={{ color: 'var(--color-primary)' }} />
+              <h4 style={{ margin: 0, fontSize: '13px', fontWeight: '700', color: 'var(--color-dark)' }}>
+                Équivalences
+              </h4>
+              <span style={{ fontSize: '11px', color: 'var(--color-dark-light)', fontWeight: 'normal' }}>
+                (facultatif)
+              </span>
+            </div>
+
+            <p style={{ margin: '0 0 12px 0', fontSize: '11px', color: 'var(--color-dark-light)' }}>
+              Permet les conversions précises masse ↔ volume et comptage ↔ masse/volume dans vos recettes.
+            </p>
+
+            {/* Phrase 1 : 1 [unité] pèse … g */}
+            <div style={{ marginBottom: '14px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: '13px', color: 'var(--color-dark)' }}>
+                  1 <strong>{formUnit || 'pièce'}</strong> pèse
+                </span>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  className="form-input"
+                  style={{ width: '100px', height: '36px', textAlign: 'center' }}
+                  placeholder="…"
+                  value={formUnitWeight}
+                  onChange={(e) => setFormUnitWeight(e.target.value)}
+                />
+                <span style={{ fontSize: '13px', color: 'var(--color-dark)' }}>g</span>
+              </div>
+              <span style={{ fontSize: '11px', color: 'var(--color-dark-light)', display: 'block', marginTop: '4px' }}>
+                Poids d'une pièce, d'un sachet, d'un pot… en grammes (ex: 1 œuf = 60 g, 1 sachet de levure = 11 g).
+              </span>
+            </div>
+
+            {/* Phrase 2 : 1 litre pèse … kg */}
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: '13px', color: 'var(--color-dark)' }}>
+                  1 litre pèse
+                </span>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  className="form-input"
+                  style={{ width: '100px', height: '36px', textAlign: 'center' }}
+                  placeholder="…"
+                  value={formDensity}
+                  onChange={(e) => setFormDensity(e.target.value)}
+                />
+                <span style={{ fontSize: '13px', color: 'var(--color-dark)' }}>kg</span>
+              </div>
+              <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: '11px', color: 'var(--color-dark-light)' }}>Valeurs proposées :</span>
+                {PROPOSED_DENSITIES.map(prop => (
+                  <button
+                    key={prop.label}
+                    type="button"
+                    className="btn btn-secondary"
+                    style={{
+                      height: '24px',
+                      padding: '0 8px',
+                      fontSize: '11px',
+                      borderRadius: '12px',
+                      cursor: 'pointer',
+                      border: formDensity === prop.value ? '1px solid var(--color-primary)' : undefined,
+                      backgroundColor: formDensity === prop.value ? 'var(--color-primary-light)' : undefined,
+                      color: formDensity === prop.value ? 'var(--color-primary)' : undefined
+                    }}
+                    onClick={() => setFormDensity(prop.value)}
+                  >
+                    {prop.label} {prop.value.replace('.', ',')}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 

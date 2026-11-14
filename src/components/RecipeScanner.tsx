@@ -459,7 +459,7 @@ export const RecipeScanner: React.FC<RecipeScannerProps> = ({ onClose, onSave, p
       if (ing.productId) {
         const prod = products.find(p => p.id === ing.productId);
         if (prod) {
-          const conv = convertUnitsWithInfo(ing.qtyUsed, ing.unit, prod.unit);
+          const conv = convertUnitsWithInfo(ing.qtyUsed, ing.unit, prod.unit, prod);
           if (conv.value === null) {
             hasIncompatibleUnits = true;
           } else {
@@ -681,7 +681,7 @@ export const RecipeScanner: React.FC<RecipeScannerProps> = ({ onClose, onSave, p
                     : [normIngUnit, ...settings.units];
 
                   const conv = isLinked && linkedProduct
-                    ? convertUnitsWithInfo(ing.qtyUsed, normIngUnit, linkedProduct.unit)
+                    ? convertUnitsWithInfo(ing.qtyUsed, normIngUnit, linkedProduct.unit, linkedProduct)
                     : { value: ing.qtyUsed, approximate: false };
                   const isIncompatible = isLinked && linkedProduct && conv.value === null;
                   const lineCost = isLinked && linkedProduct

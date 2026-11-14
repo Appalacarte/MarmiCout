@@ -205,6 +205,72 @@ const tests: TestCase[] = [
       assertEqual(incompatible, null);
     },
   },
+  {
+    name: 'Équivalences : masse <-> volume avec densité devient exacte (huile 0.92, farine 0.55)',
+    fn: () => {
+      // 1 litre d'huile (densité 0.92) -> 0.92 kg (exact)
+      const res = convertUnitsWithInfo(1, 'l', 'kg', { densityGPerMl: 0.92 });
+      assertEqual(res.value, 0.92);
+      assertEqual(res.approximate, false);
+      assertEqual(convertUnits(1, 'l', 'kg', { densityGPerMl: 0.92 }), 0.92);
+
+      // 550 g de farine (densité 0.55) -> 1000 ml = 1 l (exact)
+      const flourRes = convertUnitsWithInfo(550, 'g', 'ml', { densityGPerMl: 0.55 });
+      assertEqual(flourRes.value, 1000);
+      assertEqual(flourRes.approximate, false);
+
+      // Sans densité, masse <-> volume reste approximatif
+      const noDensity = convertUnitsWithInfo(1, 'l', 'kg');
+      assertEqual(noDensity.value, 1);
+      assertEqual(noDensity.approximate, true);
+    },
+  },
+  {
+    name: 'Équivalences : comptage <-> masse avec unitWeightG devient possible et exacte',
+    fn: () => {
+      // 3 œufs (60 g / pièce) -> 180 g
+      const eggsG = convertUnitsWithInfo(3, 'pièce', 'g', { unitWeightG: 60 });
+      assertEqual(eggsG.value, 180);
+      assertEqual(eggsG.approximate, false);
+      assertEqual(convertUnits(3, 'pièce', 'g', { unitWeightG: 60 }), 180);
+
+      // 0.6 kg de pommes (150 g / pièce) -> 4 pièces
+      const apples = convertUnitsWithInfo(0.6, 'kg', 'pièce', { unitWeightG: 150 });
+      assertEqual(apples.value, 4);
+      assertEqual(apples.approximate, false);
+
+      // 300 g de sucre en sachets de 50 g -> 6 sachets
+      const sachets = convertUnitsWithInfo(300, 'g', 'sachet', { unitWeightG: 50 });
+      assertEqual(sachets.value, 6);
+      assertEqual(sachets.approximate, false);
+
+      // Sans équivalence, comptage <-> masse reste impossible
+      const withoutEquiv = convertUnitsWithInfo(3, 'pièce', 'kg');
+      assertEqual(withoutEquiv.value, null);
+      assertEqual(withoutEquiv.approximate, false);
+      assertEqual(areUnitsCompatible('pièce', 'kg'), false);
+      assertEqual(areUnitsCompatible('pièce', 'kg', { unitWeightG: 60 }), true);
+    },
+  },
+  {
+    name: 'Équivalences : comptage <-> volume (exacte avec densité, approximative sans densité)',
+    fn: () => {
+      // Bouteille de 1030 g avec densité lait 1.03 : 1000 ml -> 1030 g -> 1 bouteille (exact)
+      const milkBottle = convertUnitsWithInfo(1000, 'ml', 'bouteille', { unitWeightG: 1030, densityGPerMl: 1.03 });
+      assertEqual(milkBottle.value, 1);
+      assertEqual(milkBottle.approximate, false);
+
+      // 2 pièces de 150 g vers ml sans densité -> 300 ml approximatif (1 g ≈ 1 ml)
+      const approxVol = convertUnitsWithInfo(2, 'pièce', 'ml', { unitWeightG: 150 });
+      assertEqual(approxVol.value, 300);
+      assertEqual(approxVol.approximate, true);
+
+      // Sans unitWeightG, comptage <-> volume reste impossible
+      const noWeight = convertUnitsWithInfo(2, 'pièce', 'l', { densityGPerMl: 1.03 });
+      assertEqual(noWeight.value, null);
+      assertEqual(noWeight.approximate, false);
+    },
+  },
 ];
 
 export function runUnitTests(): { passed: number; failed: number } {

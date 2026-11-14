@@ -4,6 +4,31 @@ Toutes les modifications notables apportées à ce projet sont documentées dans
 
 ---
 
+## [2.0.63] - 2026-11-14
+
+### Équivalences de conversion produit (unitWeightG, densityGPerMl), formulaire et liens recettes
+- **Migration Supabase (`supabase/migrations/20261114220000_add_product_equivalences.sql`)** :
+  - Ajout des colonnes facultatives `unit_weight_g` (NUMERIC NULL) et `density_g_per_ml` (NUMERIC NULL) dans `marmicout_products` et `demo_marmicout_products`.
+  - Aucune suppression ni renommage de colonne.
+- **Section « Équivalences » dans le formulaire produit (`src/components/Products.tsx`)** :
+  - Phrases claires : « 1 [unité] pèse … g » et « 1 litre pèse … kg ».
+  - Valeurs proposées avec sélection rapide en un clic : eau (1), huile (0,92), lait (1,03), farine (0,55), sucre (0,85), miel (1,4).
+  - Ancrage et focus automatique `#product-equivalences-section` lors de l'ouverture ciblée depuis une recette.
+- **Moteur de conversion avec équivalences (`src/utils/units.ts`)** :
+  - La conversion prend en compte les équivalences du produit quand elles existent.
+  - Masse ↔ Volume devient exacte avec `densityGPerMl` (`approximate = false`).
+  - Comptage ↔ Masse devient possible et exacte avec `unitWeightG` (`approximate = false`).
+  - Comptage ↔ Volume devient possible avec `unitWeightG` (exacte si `densityGPerMl` est aussi renseigné, sinon approximative).
+  - Sans équivalence, conservation stricte du comportement existant (approximation signalée avec `≈` ou `Unités incompatibles`).
+- **Lien « Préciser l'équivalence » sur les lignes de recettes (`src/components/Recipes.tsx`)** :
+  - Affichage d'un lien d'action direct dès qu'une ligne présente `Unités incompatibles` ou `≈`, permettant d'ouvrir la fiche produit ciblée sur sa section d'équivalences.
+- **Synchronisation Cloud & CSV (`cloudDbService.ts`, `db.ts`)** :
+  - Prise en charge des deux colonnes dans le mapper `marmicout_products` et l'import/export CSV.
+- **Tests unitaires exhaustifs (`src/utils/units.test.ts`)** :
+  - Couverture de masse ↔ volume avec densité, comptage ↔ masse, comptage ↔ volume, et absence d'équivalence.
+
+---
+
 ## [2.0.62] - 2026-11-14
 
 ### Affichage par fournisseur, suivi des achats et validation dans le stock

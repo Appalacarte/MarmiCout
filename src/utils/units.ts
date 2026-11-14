@@ -278,19 +278,35 @@ export interface UnitConversionResult {
   approximate: boolean;
 }
 
+export interface ProductEquivalence {
+  unitWeightG?: number | null;
+  densityGPerMl?: number | null;
+}
+
+function cleanFloat(n: number): number {
+  return Math.round(n * 1e9) / 1e9;
+}
+
 /**
  * Convertit une quantité d'une unité source vers une unité cible avec indication d'approximation.
  * - Masse <-> Masse : conversion exacte (via g)
  * - Volume <-> Volume : conversion exacte (via ml, avec 1 cc = 5 ml et 1 cs = 15 ml)
- * - Masse <-> Volume : conversion approximative (1 ml = 1 g), approximate = true
- * - Comptage : uniquement si l'unité normalisée est strictement identique (ex: pièce -> pièce),
- *   non convertible entre unités de comptage différentes ni avec masse/volume.
+ * - Masse <-> Volume :
+ *     * avec équivalence densityGPerMl : conversion exacte (approximate = false)
+ *     * sans équivalence : conversion approximative (1 ml = 1 g, approximate = true)
+ * - Comptage <-> Masse ou Volume :
+ *     * possible si unitWeightG est défini
+ *     * comptage <-> masse : exacte (approximate = false)
+ *     * comptage <-> volume : exacte si densityGPerMl est aussi défini, sinon approximative (1 ml = 1 g)
+ *     * sans unitWeightG : impossible (value = null, approximate = false)
+ * - Comptage <-> Comptage : uniquement si unité identique (ex: pièce -> pièce)
  * - Si impossible : renvoie { value: null, approximate: false } (jamais la quantité inchangée).
  */
 export function convertUnitsWithInfo(
   qty: number,
   fromUnit: string,
-  toUnit: string
+  toUnit: string,
+  equivalence?: ProductEquivalence | null
 ): UnitConversionResult {
   const fromNorm = normalizeUnit(fromUnit);
   const toNorm = normalizeUnit(toUnit);
@@ -299,57 +315,119 @@ export function convertUnitsWithInfo(
     return { value: null, approximate: false };
   }
 
-  const fromFamily = getUnitFamily(fromNorm);
-  const toFamily = getUnitFamily(toNorm);
-
   // Même unité normalisée (ex: pièce -> pièce, kg -> kg, ou unité personnalisée identique)
   if (fromNorm === toNorm) {
     return { value: qty, approximate: false };
   }
 
-  // Si l'une des unités est inconnue ou de comptage (et différente de l'autre) -> impossible
-  if (!fromFamily || !toFamily || fromFamily === 'count' || toFamily === 'count') {
+  const fromFamily = getUnitFamily(fromNorm);
+  const toFamily = getUnitFamily(toNorm);
+
+  const density =
+    equivalence?.densityGPerMl != null &&
+    Number.isFinite(Number(equivalence.densityGPerMl)) &&
+    Number(equivalence.densityGPerMl) > 0
+      ? Number(equivalence.densityGPerMl)
+      : null;
+
+  const unitWeight =
+    equivalence?.unitWeightG != null &&
+    Number.isFinite(Number(equivalence.unitWeightG)) &&
+    Number(equivalence.unitWeightG) > 0
+      ? Number(equivalence.unitWeightG)
+      : null;
+
+  // Si l'une des unités n'a pas de famille connue -> impossible
+  if (!fromFamily || !toFamily) {
     return { value: null, approximate: false };
   }
 
-  // Masse -> Masse
+  // 1. Masse -> Masse
   if (fromFamily === 'mass' && toFamily === 'mass') {
     const inGrams = qty * MASS_UNITS[fromNorm];
     return {
-      value: inGrams / MASS_UNITS[toNorm],
+      value: cleanFloat(inGrams / MASS_UNITS[toNorm]),
       approximate: false,
     };
   }
 
-  // Volume -> Volume
+  // 2. Volume -> Volume
   if (fromFamily === 'volume' && toFamily === 'volume') {
     const inMl = qty * VOLUME_UNITS[fromNorm];
     return {
-      value: inMl / VOLUME_UNITS[toNorm],
+      value: cleanFloat(inMl / VOLUME_UNITS[toNorm]),
       approximate: false,
     };
   }
 
-  // Masse -> Volume (approximation 1 g = 1 ml)
+  // 3. Masse <-> Volume
   if (fromFamily === 'mass' && toFamily === 'volume') {
     const inGrams = qty * MASS_UNITS[fromNorm];
-    const inMl = inGrams; // 1 g ≈ 1 ml
+    const inMl = density !== null ? inGrams / density : inGrams;
     return {
-      value: inMl / VOLUME_UNITS[toNorm],
-      approximate: true,
+      value: cleanFloat(inMl / VOLUME_UNITS[toNorm]),
+      approximate: density === null,
     };
   }
 
-  // Volume -> Masse (approximation 1 ml = 1 g)
   if (fromFamily === 'volume' && toFamily === 'mass') {
     const inMl = qty * VOLUME_UNITS[fromNorm];
-    const inGrams = inMl; // 1 ml ≈ 1 g
+    const inGrams = density !== null ? inMl * density : inMl;
     return {
-      value: inGrams / MASS_UNITS[toNorm],
-      approximate: true,
+      value: cleanFloat(inGrams / MASS_UNITS[toNorm]),
+      approximate: density === null,
     };
   }
 
+  // 4. Comptage <-> Masse
+  if (fromFamily === 'count' && toFamily === 'mass') {
+    if (unitWeight === null) {
+      return { value: null, approximate: false };
+    }
+    const inGrams = qty * unitWeight;
+    return {
+      value: cleanFloat(inGrams / MASS_UNITS[toNorm]),
+      approximate: false,
+    };
+  }
+
+  if (fromFamily === 'mass' && toFamily === 'count') {
+    if (unitWeight === null) {
+      return { value: null, approximate: false };
+    }
+    const inGrams = qty * MASS_UNITS[fromNorm];
+    return {
+      value: cleanFloat(inGrams / unitWeight),
+      approximate: false,
+    };
+  }
+
+  // 5. Comptage <-> Volume
+  if (fromFamily === 'count' && toFamily === 'volume') {
+    if (unitWeight === null) {
+      return { value: null, approximate: false };
+    }
+    const inGrams = qty * unitWeight;
+    const inMl = density !== null ? inGrams / density : inGrams;
+    return {
+      value: cleanFloat(inMl / VOLUME_UNITS[toNorm]),
+      approximate: density === null,
+    };
+  }
+
+  if (fromFamily === 'volume' && toFamily === 'count') {
+    if (unitWeight === null) {
+      return { value: null, approximate: false };
+    }
+    const inMl = qty * VOLUME_UNITS[fromNorm];
+    const inGrams = density !== null ? inMl * density : inMl;
+    return {
+      value: cleanFloat(inGrams / unitWeight),
+      approximate: density === null,
+    };
+  }
+
+  // Comptage <-> Comptage différent ou cas non convertible
   return { value: null, approximate: false };
 }
 
@@ -357,15 +435,24 @@ export function convertUnitsWithInfo(
  * Convertit une quantité entre deux unités.
  * Renvoie `null` lorsque la conversion est impossible (jamais la quantité inchangée).
  */
-export function convertUnits(qty: number, fromUnit: string, toUnit: string): number | null {
-  return convertUnitsWithInfo(qty, fromUnit, toUnit).value;
+export function convertUnits(
+  qty: number,
+  fromUnit: string,
+  toUnit: string,
+  equivalence?: ProductEquivalence | null
+): number | null {
+  return convertUnitsWithInfo(qty, fromUnit, toUnit, equivalence).value;
 }
 
 /**
  * Vérifie si deux unités sont compatibles (convertibles entre elles, exactement ou approximativement).
  */
-export function areUnitsCompatible(fromUnit: string, toUnit: string): boolean {
-  return convertUnitsWithInfo(1, fromUnit, toUnit).value !== null;
+export function areUnitsCompatible(
+  fromUnit: string,
+  toUnit: string,
+  equivalence?: ProductEquivalence | null
+): boolean {
+  return convertUnitsWithInfo(1, fromUnit, toUnit, equivalence).value !== null;
 }
 
 /**
@@ -494,19 +581,20 @@ export function convertProductUnitValues(
   newUnit: string,
   stock: number,
   minStockAlert: number,
-  avgPurchasePrice: number
+  avgPurchasePrice: number,
+  equivalence?: ProductEquivalence | null
 ): ConvertedProductValues | null {
-  if (!areUnitsCompatible(oldUnit, newUnit)) {
+  if (!areUnitsCompatible(oldUnit, newUnit, equivalence)) {
     return null;
   }
 
-  const newStock = convertUnits(stock, oldUnit, newUnit);
-  const newMinStock = convertUnits(minStockAlert, oldUnit, newUnit);
+  const newStock = convertUnits(stock, oldUnit, newUnit, equivalence);
+  const newMinStock = convertUnits(minStockAlert, oldUnit, newUnit, equivalence);
 
   // Facteur pour le prix : 1 [newUnit] = factor * [oldUnit]
   // Ex: 1 kg = 1000 g -> prix au kg = (prix au g) * 1000
   // Ex: 1 g = 0.001 kg -> prix au g = (prix au kg) * 0.001
-  const factor = convertUnits(1, newUnit, oldUnit);
+  const factor = convertUnits(1, newUnit, oldUnit, equivalence);
   const newPrice = factor !== null ? avgPurchasePrice * factor : null;
 
   return {
