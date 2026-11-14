@@ -4,6 +4,29 @@ Toutes les modifications notables apportées à ce projet sont documentées dans
 
 ---
 
+## [2.0.60] - 2026-11-14
+
+### Sélecteur de Période, KPIs Dynamiques avec Écarts, Total des Achats & Graphique de Chiffre d'Affaires
+- **Sélecteur de période temporel mémorisé ([`src/components/Dashboard.tsx`](file:///d:/Aplli/Marmicout/Appli%20Marmicout/src/components/Dashboard.tsx), [`src/utils/dashboardPeriod.ts`](file:///d:/Aplli/Marmicout/Appli%20Marmicout/src/utils/dashboardPeriod.ts))** :
+  - Ajout d'une barre de sélection élégante avec 6 options : *Aujourd'hui*, *7 jours*, *Ce mois* (sélectionné par défaut), *Mois dernier*, *Cette année*, *Tout*.
+  - Mémorisation automatique du choix utilisateur dans le `localStorage` (`marmicout_dashboard_period`).
+  - Indication claire des bornes de dates et de la période de comparaison dans l'en-tête du sélecteur.
+- **Indicateurs recalculés sur la période sélectionnée avec écarts comparatifs ([`src/components/Dashboard.tsx`](file:///d:/Aplli/Marmicout/Appli%20Marmicout/src/components/Dashboard.tsx))** :
+  - Chiffre d'affaires, bénéfice estimé et coût moyen de production recalculés dynamiquement selon les ventes et productions de la période.
+  - Recettes les plus rentables recalculées selon les ventes constatées sur la période (avec mention du nombre de portions vendues sur la période).
+  - Affichage sous chaque indicateur de l'écart avec la période précédente en pourcentage et avec flèche directionnelle (`↑`, `↓`, `→` ou `—`).
+- **Total des achats de la période ([`src/components/Dashboard.tsx`](file:///d:/Aplli/Marmicout/Appli%20Marmicout/src/components/Dashboard.tsx))** :
+  - Nouvelle carte de mesure KPI dédiée affichant la somme totale des dépenses d'achats réalisées sur la période sélectionnée et son évolution par rapport à la période précédente.
+- **Graphique de chiffre d'affaires léger et réactif sans dépendance lourde ([`src/components/Dashboard.tsx`](file:///d:/Aplli/Marmicout/Appli%20Marmicout/src/components/Dashboard.tsx))** :
+  - Visualisation vectorielle SVG pure (sans bibliothèque externe supplémentaire) du chiffre d'affaires par jour ou par mois.
+  - Bascule interactive « Par jour » / « Par mois », adaptée automatiquement selon l'étendue temporelle sélectionnée.
+  - Survol interactif avec infobulles détaillées affichant la date, le montant en devise et le nombre de ventes.
+- **Module utilitaire et tests unitaires automatisés ([`src/utils/dashboardPeriod.ts`](file:///d:/Aplli/Marmicout/Appli%20Marmicout/src/utils/dashboardPeriod.ts), [`src/utils/dashboardPeriod.test.ts`](file:///d:/Aplli/Marmicout/Appli%20Marmicout/src/utils/dashboardPeriod.test.ts))** :
+  - Calculs fiables des plages calendaires, filtrages temporels, agrégation des données de graphique et calculs d'écarts comparatifs.
+  - 33 assertions validées dans la suite de tests automatisée intégrée à `npm test`.
+
+---
+
 ## [2.0.59] - 2026-11-14
 
 ### Alertes DLC / Dates Limites des Achats, Bloc Tableau de Bord & Paramètre de Délai
