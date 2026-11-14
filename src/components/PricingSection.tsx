@@ -243,9 +243,9 @@ export const PricingSection: React.FC<PricingSectionProps> = ({
           const isComingSoon = plan.id === 'pro_cloud' && !PRICING_CONFIG.flags.cloudSyncEnabled;
 
           // Déterminer le prix affiché selon l'intervalle sélectionné
-          let displayPrice = '0\u00A0€';
-          let displayPeriod = '';
-          let subText = '';
+          let displayPrice: string;
+          let displayPeriod: string;
+          let subText: string;
 
           if (isTrial) {
             displayPrice = '0\u00A0€';

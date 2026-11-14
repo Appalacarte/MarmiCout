@@ -570,7 +570,7 @@ export const Products: React.FC<ProductsProps> = ({ initialTriggerAdd, onNavigat
                       {p.minStockAlert} {p.unit}
                     </td>
                     <td data-label="Prix d'Achat Moyen">
-                      {p.avgPurchasePrice.toFixed(2)} {settings.currency} / {p.unit}
+                      {p.avgPurchasePrice.toFixed(2)} {settings.currency}/{p.unit}
                     </td>
                     <td data-label="Fournisseur">
                       {store ? store.name : 'Non défini'}
@@ -945,7 +945,7 @@ export const Products: React.FC<ProductsProps> = ({ initialTriggerAdd, onNavigat
                 </div>
                 <div style={{ padding: '12px', backgroundColor: 'var(--color-light)', borderRadius: 'var(--radius-md)' }}>
                   <div style={{ fontSize: '11px', color: 'var(--color-dark-light)' }}>Coût unitaire moyen</div>
-                  <strong style={{ fontSize: '18px' }}>{selectedProductDetails.avgPurchasePrice.toFixed(2)} {settings.currency}</strong>
+                  <strong style={{ fontSize: '18px' }}>{selectedProductDetails.avgPurchasePrice.toFixed(2)} {settings.currency}/{selectedProductDetails.unit}</strong>
                 </div>
               </div>
 
@@ -1002,7 +1002,7 @@ export const Products: React.FC<ProductsProps> = ({ initialTriggerAdd, onNavigat
                         </div>
                         <div style={{ textAlign: 'right' }}>
                           <strong>{p.pricePaid.toFixed(2)} {settings.currency}</strong>
-                          <div style={{ fontSize: '10px', color: 'var(--color-dark-light)' }}>{(p.pricePaid / p.qty).toFixed(2)} / u</div>
+                          <div style={{ fontSize: '10px', color: 'var(--color-dark-light)' }}>{(p.pricePaid / p.qty).toFixed(2)} {settings.currency}/{p.unit}</div>
                         </div>
                       </div>
                     );

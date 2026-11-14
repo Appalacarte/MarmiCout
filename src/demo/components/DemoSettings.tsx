@@ -1,5 +1,5 @@
 import React from 'react';
-import { Settings as SettingsIcon, Lock, RotateCcw } from 'lucide-react';
+import { Lock, RotateCcw } from 'lucide-react';
 import { demoDbService, notifyReadOnlyBlocked } from '../services/demoDb';
 
 export const DemoSettings: React.FC = () => {

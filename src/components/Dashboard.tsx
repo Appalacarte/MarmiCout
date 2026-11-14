@@ -315,8 +315,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
                     <strong style={{ fontSize: '14px' }}>{recipe.name}</strong>
                     <span style={{ fontSize: '12px', color: 'var(--color-dark-light)' }}>
-                      Prix conseillé : {costInfo.suggestedSellingPrice.toFixed(2)} {settings.currency} (Coût : {costInfo.costPerPortion.toFixed(2)} {settings.currency})
+                      Prix conseillé : {costInfo.isApproximate ? '≈ ' : ''}{costInfo.suggestedSellingPrice.toFixed(2)} {settings.currency}/portion (Coût : {costInfo.isApproximate ? '≈ ' : ''}{costInfo.costPerPortion.toFixed(2)} {settings.currency}/portion)
                     </span>
+                    {costInfo.hasIncompatibleUnits && (
+                      <span style={{ fontSize: '11px', color: 'var(--color-danger)', fontWeight: '700' }}>
+                        ⚠️ Unités incompatibles
+                      </span>
+                    )}
                   </div>
 
                   <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', gap: '2px' }}>
@@ -324,10 +329,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
                       className={`badge ${marginPercent >= settings.defaultTargetMargin ? 'badge-success' : 'badge-warning'}`}
                       style={{ fontSize: '12px' }}
                     >
-                      Marge {marginPercent.toFixed(0)}%
+                      Marge {costInfo.isApproximate ? '≈ ' : ''}{marginPercent.toFixed(0)}%
                     </span>
                     <span style={{ fontSize: '11px', color: 'var(--color-secondary)', fontWeight: '600' }}>
-                      +{profitUnit.toFixed(2)} {settings.currency} / u
+                      {costInfo.isApproximate ? '≈ ' : ''}+{profitUnit.toFixed(2)} {settings.currency}/portion
                     </span>
                   </div>
                 </div>

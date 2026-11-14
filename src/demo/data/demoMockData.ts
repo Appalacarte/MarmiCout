@@ -30,7 +30,7 @@ export const DEMO_SETTINGS: Settings = {
     'Bocal & Conserve artisanale',
     'Sauce & Traiteur'
   ],
-  units: ['kg', 'g', 'l', 'cl', 'ml', 'pièce', 'portion', 'bouteille', 'carton'],
+  units: ['kg', 'g', 'l', 'cl', 'ml', 'cs', 'cc', 'pièce', 'portion', 'bouteille', 'carton'],
   salesLocations: [
     'Boutique traiteur',
     'Marché du samedi',

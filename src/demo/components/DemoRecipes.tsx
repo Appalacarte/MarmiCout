@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { ChefHat, Plus, Search, Lock, Clock, Sparkles } from 'lucide-react';
-import { demoDbService, notifyReadOnlyBlocked } from '../services/demoDb';
+import { ChefHat, Plus, Search, Lock, Clock } from 'lucide-react';
+import { demoDbService, notifyReadOnlyBlocked, convertUnitsWithInfo, normalizeUnit } from '../services/demoDb';
+import { formatQtyFr } from '../../utils/units';
 import { Recipe, RecipeIngredient, RecipePackaging } from '../../types';
 import { Drawer } from '../../components/Drawer';
 
@@ -124,11 +125,11 @@ export const DemoRecipes: React.FC = () => {
                 <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '10px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '12px', marginBottom: '14px' }}>
                   <div>
                     <span style={{ color: '#64748b' }}>Coût portion :</span><br />
-                    <strong style={{ fontSize: '14px', color: '#0f172a' }}>{costInfo.costPerPortion.toFixed(2)} {settings.currency}</strong>
+                    <strong style={{ fontSize: '14px', color: '#0f172a' }}>{costInfo.isApproximate ? '≈ ' : ''}{costInfo.costPerPortion.toFixed(2)} {settings.currency}/portion</strong>
                   </div>
                   <div>
                     <span style={{ color: '#64748b' }}>Prix conseillé :</span><br />
-                    <strong style={{ fontSize: '14px', color: 'var(--color-secondary)' }}>{costInfo.suggestedSellingPrice.toFixed(2)} {settings.currency}</strong>
+                    <strong style={{ fontSize: '14px', color: 'var(--color-secondary)' }}>{costInfo.isApproximate ? '≈ ' : ''}{costInfo.suggestedSellingPrice.toFixed(2)} {settings.currency}/portion</strong>
                   </div>
                   <div>
                     <span style={{ color: '#64748b' }}>Rendement :</span><br />
@@ -185,13 +186,29 @@ export const DemoRecipes: React.FC = () => {
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                 {recipeIngredients.map(ri => {
                   const prod = products.find(p => p.id === ri.productId);
+                  const normRiUnit = normalizeUnit(ri.unit) || ri.unit;
+                  const normProdUnit = prod ? (normalizeUnit(prod.unit) || prod.unit) : normRiUnit;
+                  const conv = prod ? convertUnitsWithInfo(ri.qtyUsed, normRiUnit, normProdUnit) : { value: ri.qtyUsed, approximate: false };
+                  const lineCost = prod
+                    ? (conv.value !== null ? conv.value * prod.avgPurchasePrice : null)
+                    : ri.qtyUsed * (ri.customCostPerUnit || 0);
+
                   return (
-                    <div key={ri.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '12px' }}>
-                      <div>
+                    <div key={ri.id} style={{ display: 'flex', flexDirection: 'column', gap: '4px', padding: '8px 12px', background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '12px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                         <strong>{prod?.name || ri.customName || 'Ingrédient'}</strong>
+                        <span style={{ fontWeight: '600', color: '#3730a3' }}>
+                          {formatQtyFr(ri.qtyUsed)} {normRiUnit}
+                        </span>
                       </div>
-                      <div style={{ fontWeight: '600', color: '#3730a3' }}>
-                        {ri.qtyUsed} {ri.unit}
+                      <div style={{ fontSize: '11px', color: conv.value === null ? 'var(--color-danger)' : '#64748b' }}>
+                        {conv.value === null && prod ? (
+                          <strong>⚠️ Unités incompatibles : recette en {normRiUnit}, stock en {normProdUnit}</strong>
+                        ) : prod && lineCost !== null ? (
+                          <span>
+                            {formatQtyFr(ri.qtyUsed)} {normRiUnit} × {prod.avgPurchasePrice.toFixed(2).replace('.', ',')} {settings.currency}/{normProdUnit} {conv.approximate ? '≈' : '='} <strong>{conv.approximate ? '≈ ' : ''}{lineCost.toFixed(2).replace('.', ',')} {settings.currency}</strong>
+                          </span>
+                        ) : null}
                       </div>
                     </div>
                   );

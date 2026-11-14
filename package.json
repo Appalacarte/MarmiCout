@@ -1,10 +1,11 @@
 {
   "name": "appli-marmicout",
   "private": true,
-  "version": "2.0.53",
+  "version": "2.0.54",
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "test": "node --experimental-strip-types src/utils/units.test.ts",
     "check:legal": "node scripts/sync-legal-from-central.mjs && node scripts/verify-legal.mjs",
     "build": "node scripts/sync-legal-from-central.mjs && node scripts/verify-legal.mjs && tsc -b && vite build",
     "lint": "eslint .",

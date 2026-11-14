@@ -10,6 +10,7 @@ import {
   FileText
 } from 'lucide-react';
 import { dbService } from '../services/db';
+import { convertUnitsWithInfo, normalizeUnit } from '../utils/units';
 import { Product, Purchase, Store } from '../types';
 import { Drawer } from './Drawer';
 import { BarcodeScanner } from './BarcodeScanner';
@@ -317,6 +318,8 @@ export const Purchases: React.FC<PurchasesProps> = ({ initialTriggerScan, initia
               {purchases.map(p => {
                 const prod = dbService.getProduct(p.productId);
                 const store = stores.find(s => s.id === p.storeId);
+                const normPUnit = normalizeUnit(p.unit) || p.unit;
+                const conv = prod ? convertUnitsWithInfo(p.qty, normPUnit, prod.unit) : { value: p.qty, approximate: false };
                 
                 return (
                   <tr key={p.id}>
@@ -333,15 +336,20 @@ export const Purchases: React.FC<PurchasesProps> = ({ initialTriggerScan, initia
                           Lot: {p.batchNo} {p.expiryDate ? `• DLUO: ${p.expiryDate}` : ''}
                         </div>
                       )}
+                      {prod && conv.value === null && (
+                        <div style={{ fontSize: '11px', color: 'var(--color-danger)', fontWeight: '700', marginTop: '2px' }}>
+                          ⚠️ Unités incompatibles : achat en {normPUnit}, stock en {normalizeUnit(prod.unit) || prod.unit}
+                        </div>
+                      )}
                     </td>
                     <td data-label="Quantité">
-                      {p.qty} {p.unit}
+                      {conv.approximate ? '≈ ' : ''}{p.qty} {normPUnit}
                     </td>
                     <td data-label="Prix Total" style={{ fontWeight: '600', color: 'var(--color-dark)' }}>
                       {p.pricePaid.toFixed(2)} {settings.currency}
                     </td>
                     <td data-label="Prix Unitaire">
-                      {p.unitPrice.toFixed(2)} {settings.currency} / {p.unit}
+                      {p.unitPrice.toFixed(2)} {settings.currency}/{normPUnit}
                     </td>
                     <td data-label="Magasin">
                       {store ? store.name : 'Inconnu'}
@@ -487,7 +495,7 @@ export const Purchases: React.FC<PurchasesProps> = ({ initialTriggerScan, initia
           {/* Prix unitaire calculé en temps réel */}
           <div style={{ padding: '10px 14px', backgroundColor: 'var(--color-light)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border)', display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: '16px' }}>
             <span style={{ color: 'var(--color-dark-light)' }}>Prix unitaire calculé :</span>
-            <strong>{calculatedUnitPrice} {settings.currency} / {formUnit}</strong>
+            <strong>{calculatedUnitPrice} {settings.currency}/{normalizeUnit(formUnit) || formUnit}</strong>
           </div>
 
           <div className="form-row">

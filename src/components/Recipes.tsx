@@ -18,7 +18,14 @@ import {
   ExternalLink,
   ShoppingCart
 } from 'lucide-react';
-import { dbService, convertUnits } from '../services/db';
+import { dbService } from '../services/db';
+import {
+  convertUnits,
+  convertUnitsWithInfo,
+  normalizeUnit,
+  areUnitsCompatible,
+  formatQtyFr,
+} from '../utils/units';
 import { generateUUID } from '../services/cloudDbService';
 import { Product, Recipe, RecipeIngredient, RecipePackaging, Production } from '../types';
 import { Drawer } from './Drawer';
@@ -167,9 +174,16 @@ export const Recipes: React.FC<RecipesProps> = ({ initialTriggerAdd, initialView
         const prodName = p.name.toLowerCase();
         return prodName.includes(normalName) || normalName.includes(prodName);
       });
+      const normIngUnit = normalizeUnit(ing.unit) || ing.unit || 'pièce';
+      const finalUnit = matched
+        ? (areUnitsCompatible(normIngUnit, matched.unit)
+            ? normIngUnit
+            : (normalizeUnit(matched.unit) || matched.unit))
+        : normIngUnit;
       
       return {
         ...ing,
+        unit: finalUnit,
         productId: matched ? matched.id : undefined,
         customName: matched ? undefined : ing.customName,
         customCostPerUnit: matched ? undefined : 0
@@ -410,7 +424,10 @@ export const Recipes: React.FC<RecipesProps> = ({ initialTriggerAdd, initialView
 
     // Charger les ingrédients et emballages associés
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const ings = dbService.getRecipeIngredients(recipe.id).map(({ id: _id, recipeId: _recipeId, ...rest }) => rest);
+    const ings = dbService.getRecipeIngredients(recipe.id).map(({ id: _id, recipeId: _recipeId, ...rest }) => ({
+      ...rest,
+      unit: normalizeUnit(rest.unit) || rest.unit,
+    }));
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const packs = dbService.getRecipePackagings(recipe.id).map(({ id: _id, recipeId: _recipeId, ...rest }) => rest);
     
@@ -446,16 +463,20 @@ export const Recipes: React.FC<RecipesProps> = ({ initialTriggerAdd, initialView
           customCostPerUnit: updated[index].customCostPerUnit || 0
         };
       } else {
-        // Devient lié au stock
+        // Devient lié au stock : garder l'unité de la recette si compatible, sinon proposer celle du produit
         const prod = products.find(p => p.id === value);
+        const currentUnit = normalizeUnit(updated[index].unit) || updated[index].unit;
+        const prodUnit = prod ? (normalizeUnit(prod.unit) || prod.unit) : currentUnit;
         updated[index] = {
           ...updated[index],
           productId: value as string,
           customName: undefined,
           customCostPerUnit: undefined,
-          unit: prod ? (prod.unit === 'kg' ? 'g' : prod.unit) : updated[index].unit
+          unit: prod ? (areUnitsCompatible(currentUnit, prodUnit) ? currentUnit : prodUnit) : currentUnit
         };
       }
+    } else if (field === 'unit') {
+      updated[index] = { ...updated[index], unit: normalizeUnit(String(value)) || String(value) };
     } else {
       updated[index] = { ...updated[index], [field]: value };
     }
@@ -536,7 +557,7 @@ export const Recipes: React.FC<RecipesProps> = ({ initialTriggerAdd, initialView
       productId: ing.productId || undefined,
       customName: ing.productId ? undefined : (ing.customName || 'Ingrédient'),
       qtyUsed: ing.qtyUsed,
-      unit: ing.unit,
+      unit: normalizeUnit(ing.unit) || ing.unit,
       originalQtyUsed: ing.qtyUsed,
       customCostPerUnit: ing.productId ? undefined : (ing.customCostPerUnit || 0)
     }));
@@ -765,18 +786,26 @@ export const Recipes: React.FC<RecipesProps> = ({ initialTriggerAdd, initialView
                   </div>
                 </div>
 
-                <div style={{ borderTop: '1px solid var(--color-border)', paddingTop: '12px', marginTop: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ borderTop: '1px solid var(--color-border)', paddingTop: '12px', marginTop: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
                   <div>
                     <div style={{ fontSize: '10px', color: 'var(--color-dark-light)' }}>Coût / Port.</div>
-                    <strong style={{ fontSize: '16px' }}>{costInfo.costPerPortion.toFixed(2)} {settings.currency}</strong>
+                    <strong style={{ fontSize: '16px' }}>
+                      {costInfo.isApproximate ? '≈ ' : ''}{costInfo.costPerPortion.toFixed(2)} {settings.currency}/portion
+                    </strong>
                   </div>
 
                   <div style={{ textAlign: 'right' }}>
                     <div style={{ fontSize: '10px', color: 'var(--color-dark-light)' }}>Prix Vente Conseillé</div>
                     <strong style={{ fontSize: '16px', color: 'var(--color-secondary)' }}>
-                      {costInfo.suggestedSellingPrice.toFixed(2)} {settings.currency}
+                      {costInfo.isApproximate ? '≈ ' : ''}{costInfo.suggestedSellingPrice.toFixed(2)} {settings.currency}/portion
                     </strong>
                   </div>
+
+                  {costInfo.hasIncompatibleUnits && (
+                    <div style={{ width: '100%', fontSize: '11px', fontWeight: '700', color: 'var(--color-danger)', backgroundColor: 'rgba(220, 38, 38, 0.08)', padding: '4px 8px', borderRadius: 'var(--radius-sm)' }}>
+                      ⚠️ Unités incompatibles dans les ingrédients
+                    </div>
+                  )}
                 </div>
               </div>
             );
@@ -977,12 +1006,19 @@ export const Recipes: React.FC<RecipesProps> = ({ initialTriggerAdd, initialView
               {formIngredients.map((ing, idx) => {
                 const isLinked = ing.productId !== undefined && ing.productId !== "";
                 const selectedProd = products.find(p => p.id === ing.productId);
+                const normIngUnit = normalizeUnit(ing.unit) || ing.unit || 'g';
+                const unitOptions = settings.units.includes(normIngUnit)
+                  ? settings.units
+                  : [normIngUnit, ...settings.units];
                 
                 // Calcul coût ligne à la volée dans le formulaire
-                let lineCost = 0;
+                const conv = isLinked && selectedProd
+                  ? convertUnitsWithInfo(ing.qtyUsed, normIngUnit, selectedProd.unit)
+                  : { value: ing.qtyUsed, approximate: false };
+                const isIncompatible = isLinked && selectedProd && conv.value === null;
+                let lineCost: number | null = 0;
                 if (isLinked && selectedProd) {
-                  const convertedQty = convertUnits(ing.qtyUsed, ing.unit, selectedProd.unit);
-                  lineCost = convertedQty * selectedProd.avgPurchasePrice;
+                  lineCost = conv.value !== null ? conv.value * selectedProd.avgPurchasePrice : null;
                 } else if (ing.customCostPerUnit) {
                   lineCost = ing.qtyUsed * ing.customCostPerUnit;
                 }
@@ -995,9 +1031,9 @@ export const Recipes: React.FC<RecipesProps> = ({ initialTriggerAdd, initialView
                       flexDirection: 'column', 
                       gap: '8px', 
                       padding: '12px', 
-                      backgroundColor: isLinked ? 'rgba(74, 155, 120, 0.04)' : 'rgba(242, 85, 34, 0.03)', 
+                      backgroundColor: isIncompatible ? 'rgba(220, 38, 38, 0.05)' : (isLinked ? 'rgba(74, 155, 120, 0.04)' : 'rgba(242, 85, 34, 0.03)'), 
                       borderRadius: 'var(--radius-md)', 
-                      border: `1px solid ${isLinked ? 'var(--color-secondary-light)' : 'rgba(242, 85, 34, 0.15)'}` 
+                      border: `1px solid ${isIncompatible ? 'var(--color-danger)' : (isLinked ? 'var(--color-secondary-light)' : 'rgba(242, 85, 34, 0.15)')}` 
                     }}
                   >
                     <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
@@ -1033,18 +1069,18 @@ export const Recipes: React.FC<RecipesProps> = ({ initialTriggerAdd, initialView
                       {/* Unité */}
                       <select
                         className="form-input"
-                        style={{ width: '60px', height: '38px', padding: '0 4px' }}
-                        value={ing.unit}
+                        style={{ width: '68px', height: '38px', padding: '0 4px' }}
+                        value={normIngUnit}
                         onChange={(e) => handleIngredientChange(idx, 'unit', e.target.value)}
                       >
-                        {settings.units.map(u => (
+                        {unitOptions.map(u => (
                           <option key={u} value={u}>{u}</option>
                         ))}
                       </select>
 
                       {/* Coût de ligne calculé */}
-                      <span style={{ fontSize: '12px', fontWeight: '600', width: '55px', textAlign: 'right' }}>
-                        {lineCost.toFixed(2)}€
+                      <span style={{ fontSize: '12px', fontWeight: '600', minWidth: '62px', textAlign: 'right', color: isIncompatible ? 'var(--color-danger)' : 'inherit' }}>
+                        {lineCost === null ? '—' : `${conv.approximate ? '≈ ' : ''}${lineCost.toFixed(2)} ${settings.currency}`}
                       </span>
 
                       {/* Supprimer ligne */}
@@ -1059,20 +1095,22 @@ export const Recipes: React.FC<RecipesProps> = ({ initialTriggerAdd, initialView
                     </div>
 
                     {/* Liaison de stock */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', borderTop: '1px dashed var(--color-border)', paddingTop: '8px', marginTop: '4px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', borderTop: '1px dashed var(--color-border)', paddingTop: '8px', marginTop: '4px', flexWrap: 'wrap' }}>
                       <span style={{ fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px', color: 'var(--color-dark-light)', fontWeight: '600' }}>
                         Liaison stock :
                       </span>
                       
                       <select
                         className="form-input"
-                        style={{ flex: 1, height: '30px', padding: '0 4px', fontSize: '12px' }}
+                        style={{ flex: 1, height: '30px', padding: '0 4px', fontSize: '12px', minWidth: '160px' }}
                         value={ing.productId || ""}
                         onChange={(e) => handleIngredientChange(idx, 'productId', e.target.value)}
                       >
                         <option value="">-- Libre (non lié au stock) --</option>
                         {products.map(p => (
-                          <option key={p.id} value={p.id}>{p.name} ({p.unit})</option>
+                          <option key={p.id} value={p.id}>
+                            {p.name} ({p.avgPurchasePrice.toFixed(2).replace('.', ',')} {settings.currency}/{normalizeUnit(p.unit) || p.unit})
+                          </option>
                         ))}
                       </select>
 
@@ -1085,11 +1123,11 @@ export const Recipes: React.FC<RecipesProps> = ({ initialTriggerAdd, initialView
                               type="number"
                               step="any"
                               className="form-input"
-                              style={{ width: '50px', height: '30px', padding: '0 4px', fontSize: '12px', textAlign: 'center' }}
+                              style={{ width: '55px', height: '30px', padding: '0 4px', fontSize: '12px', textAlign: 'center' }}
                               value={ing.customCostPerUnit || 0}
                               onChange={(e) => handleIngredientChange(idx, 'customCostPerUnit', parseDecimalInput(e.target.value))}
                             />
-                            <span style={{ fontSize: '11px' }}>€/{ing.unit}</span>
+                            <span style={{ fontSize: '11px' }}>{settings.currency}/{normIngUnit}</span>
                           </div>
                           <button
                             type="button"
@@ -1104,7 +1142,24 @@ export const Recipes: React.FC<RecipesProps> = ({ initialTriggerAdd, initialView
 
                       {isLinked && selectedProd && (
                         <span className="badge badge-success" style={{ fontSize: '10px', height: '24px', lineHeight: '20px' }}>
-                          PMP : {selectedProd.avgPurchasePrice.toFixed(2)}€/{selectedProd.unit}
+                          PMP : {selectedProd.avgPurchasePrice.toFixed(2).replace('.', ',')} {settings.currency}/{normalizeUnit(selectedProd.unit) || selectedProd.unit}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Détail du calcul ou avertissement d'unités incompatibles */}
+                    <div style={{ fontSize: '12px', marginTop: '2px' }}>
+                      {isIncompatible && selectedProd ? (
+                        <div style={{ color: 'var(--color-danger)', fontWeight: '700', backgroundColor: 'rgba(220, 38, 38, 0.08)', padding: '6px 8px', borderRadius: 'var(--radius-sm)' }}>
+                          ⚠️ Unités incompatibles : recette en {normIngUnit}, stock en {normalizeUnit(selectedProd.unit) || selectedProd.unit}
+                        </div>
+                      ) : isLinked && selectedProd && lineCost !== null ? (
+                        <span style={{ color: 'var(--color-dark-light)', fontWeight: '500' }}>
+                          {formatQtyFr(ing.qtyUsed)} {normIngUnit} × {selectedProd.avgPurchasePrice.toFixed(2).replace('.', ',')} {settings.currency}/{normalizeUnit(selectedProd.unit) || selectedProd.unit} {conv.approximate ? '≈' : '='} <strong style={{ color: 'var(--color-dark)' }}>{conv.approximate ? '≈ ' : ''}{lineCost.toFixed(2).replace('.', ',')} {settings.currency}</strong>
+                        </span>
+                      ) : (
+                        <span style={{ color: 'var(--color-dark-light)', fontWeight: '500' }}>
+                          {formatQtyFr(ing.qtyUsed)} {normIngUnit} × {(ing.customCostPerUnit || 0).toFixed(2).replace('.', ',')} {settings.currency}/{normIngUnit} = <strong style={{ color: 'var(--color-dark)' }}>{(lineCost || 0).toFixed(2).replace('.', ',')} {settings.currency}</strong>
                         </span>
                       )}
                     </div>
@@ -1252,6 +1307,29 @@ export const Recipes: React.FC<RecipesProps> = ({ initialTriggerAdd, initialView
               )}
 
               {/* Raccourci de production — crée vraiment une production */}
+              {detailsCost.hasIncompatibleUnits && (
+                <div style={{
+                  width: '100%',
+                  padding: '12px 16px',
+                  backgroundColor: 'var(--color-danger-light)',
+                  border: '1px solid rgba(255,75,75,0.3)',
+                  borderRadius: 'var(--radius-md)',
+                  marginBottom: '12px',
+                  fontSize: '12px',
+                  color: 'var(--color-danger)',
+                  fontWeight: '600'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+                    <AlertTriangle size={16} />
+                    <span>Impossible de cuisiner : unités incompatibles</span>
+                  </div>
+                  <div style={{ fontWeight: '500' }}>
+                    {detailsCost.incompatibleDetails.map((msg, i) => (
+                      <div key={i}>• {msg}</div>
+                    ))}
+                  </div>
+                </div>
+              )}
               {detailCookResult === 'success' ? (
                 <div style={{
                   width: '100%',
@@ -1284,7 +1362,8 @@ export const Recipes: React.FC<RecipesProps> = ({ initialTriggerAdd, initialView
                   borderRadius: 'var(--radius-md)',
                   marginBottom: '16px',
                   fontSize: '12px',
-                  color: 'var(--color-danger)'
+                  color: 'var(--color-danger)',
+                  whiteSpace: 'pre-line'
                 }}>
                   ❌ {detailCookError}
                   <button
@@ -1297,11 +1376,20 @@ export const Recipes: React.FC<RecipesProps> = ({ initialTriggerAdd, initialView
                 <button
                   type="button"
                   className="btn btn-success"
-                  style={{ width: '100%', marginBottom: '16px' }}
+                  disabled={detailsCost.hasIncompatibleUnits}
+                  style={{
+                    width: '100%',
+                    marginBottom: '16px',
+                    opacity: detailsCost.hasIncompatibleUnits ? 0.55 : 1,
+                    cursor: detailsCost.hasIncompatibleUnits ? 'not-allowed' : 'pointer'
+                  }}
                   onClick={handleCookFromDetail}
+                  title={detailsCost.hasIncompatibleUnits ? 'Unités incompatibles : corrigez les unités de la recette ou du stock' : undefined}
                 >
                   <ChefHat size={18} />
-                  Cuisiner {portionsCible} portion(s) — Déduire du stock
+                  {detailsCost.hasIncompatibleUnits
+                    ? 'Cuisiner bloqué (unités incompatibles)'
+                    : `Cuisiner ${portionsCible} portion(s) — Déduire du stock`}
                 </button>
               )}
 
@@ -1347,15 +1435,21 @@ export const Recipes: React.FC<RecipesProps> = ({ initialTriggerAdd, initialView
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', textAlign: 'center' }}>
                 <div style={{ padding: '8px', backgroundColor: 'var(--color-light)', borderRadius: 'var(--radius-md)' }}>
                   <div style={{ fontSize: '10px', color: 'var(--color-dark-light)' }}>Coût Lot Ajusté</div>
-                  <strong style={{ fontSize: '14px' }}>{(detailsCost.totalCost * (portionsCible / selectedRecipeDetails.portions)).toFixed(2)} {settings.currency}</strong>
+                  <strong style={{ fontSize: '14px' }}>
+                    {detailsCost.isApproximate ? '≈ ' : ''}{(detailsCost.totalCost * (portionsCible / selectedRecipeDetails.portions)).toFixed(2)} {settings.currency}
+                  </strong>
                 </div>
                 <div style={{ padding: '8px', backgroundColor: 'var(--color-light)', borderRadius: 'var(--radius-md)' }}>
                   <div style={{ fontSize: '10px', color: 'var(--color-dark-light)' }}>Coût Unitaire</div>
-                  <strong style={{ fontSize: '14px' }}>{detailsCost.costPerPortion.toFixed(2)} {settings.currency}</strong>
+                  <strong style={{ fontSize: '14px' }}>
+                    {detailsCost.isApproximate ? '≈ ' : ''}{detailsCost.costPerPortion.toFixed(2)} {settings.currency}/portion
+                  </strong>
                 </div>
                 <div style={{ padding: '8px', backgroundColor: 'var(--color-secondary-light)', borderRadius: 'var(--radius-md)' }}>
                   <div style={{ fontSize: '10px', color: 'var(--color-secondary)' }}>Prix Conseillé</div>
-                  <strong style={{ fontSize: '14px', color: 'var(--color-secondary)' }}>{detailsCost.suggestedSellingPrice.toFixed(2)} {settings.currency}</strong>
+                  <strong style={{ fontSize: '14px', color: 'var(--color-secondary)' }}>
+                    {detailsCost.isApproximate ? '≈ ' : ''}{detailsCost.suggestedSellingPrice.toFixed(2)} {settings.currency}/portion
+                  </strong>
                 </div>
               </div>
             </div>
@@ -1386,7 +1480,7 @@ export const Recipes: React.FC<RecipesProps> = ({ initialTriggerAdd, initialView
 
               {/* Saisie prix de vente */}
               <div className="form-group" style={{ marginBottom: '16px' }}>
-                <label className="form-label">Prix de vente unitaire simulé ({settings.currency})</label>
+                <label className="form-label">Prix de vente unitaire simulé ({settings.currency}/portion)</label>
                 <input
                   type="number"
                   step="any"
@@ -1402,13 +1496,13 @@ export const Recipes: React.FC<RecipesProps> = ({ initialTriggerAdd, initialView
                 <div style={{ padding: '10px', backgroundColor: 'var(--color-white)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border)' }}>
                   <div style={{ fontSize: '10px', color: 'var(--color-dark-light)' }}>Bénéfice par portion</div>
                   <strong style={{ color: 'var(--color-secondary)', fontSize: '14px' }}>
-                    +{(simSellPrice - detailsCost.costPerPortion).toFixed(2)} {settings.currency}
+                    {detailsCost.isApproximate ? '≈ ' : ''}+{(simSellPrice - detailsCost.costPerPortion).toFixed(2)} {settings.currency}/portion
                   </strong>
                 </div>
                 <div style={{ padding: '10px', backgroundColor: 'var(--color-white)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border)' }}>
                   <div style={{ fontSize: '10px', color: 'var(--color-dark-light)' }}>Bénéfice par Lot ({portionsCible} u)</div>
                   <strong style={{ color: 'var(--color-secondary)', fontSize: '14px' }}>
-                    +{((simSellPrice - detailsCost.costPerPortion) * portionsCible).toFixed(2)} {settings.currency}
+                    {detailsCost.isApproximate ? '≈ ' : ''}+{((simSellPrice - detailsCost.costPerPortion) * portionsCible).toFixed(2)} {settings.currency}
                   </strong>
                 </div>
               </div>
@@ -1433,12 +1527,12 @@ export const Recipes: React.FC<RecipesProps> = ({ initialTriggerAdd, initialView
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginTop: '4px' }}>
                   <span>Coût total de production :</span>
-                  <span style={{ color: 'var(--color-danger)', fontWeight: '600' }}>{(simSalesCount * detailsCost.costPerPortion).toFixed(2)} {settings.currency}</span>
+                  <span style={{ color: 'var(--color-danger)', fontWeight: '600' }}>{detailsCost.isApproximate ? '≈ ' : ''}{(simSalesCount * detailsCost.costPerPortion).toFixed(2)} {settings.currency}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', marginTop: '6px', borderTop: '1px dashed var(--color-border)', paddingTop: '6px' }}>
                   <span style={{ fontWeight: '700' }}>Bénéfice Net Estimé :</span>
                   <strong style={{ color: 'var(--color-secondary)', fontSize: '16px' }}>
-                    {((simSellPrice - detailsCost.costPerPortion) * simSalesCount).toFixed(2)} {settings.currency}
+                    {detailsCost.isApproximate ? '≈ ' : ''}{((simSellPrice - detailsCost.costPerPortion) * simSalesCount).toFixed(2)} {settings.currency}
                   </strong>
                 </div>
               </div>
@@ -1450,6 +1544,7 @@ export const Recipes: React.FC<RecipesProps> = ({ initialTriggerAdd, initialView
               const scaleFactor = portionsCible / selectedRecipeDetails.portions;
               let isFullyFeasible = detailsIngredients.length > 0;
               let isPartiallyFeasible = false;
+              let hasIncompatible = false;
               const hasIngredients = detailsIngredients.length > 0;
               let maxPortions = Infinity;
 
@@ -1459,14 +1554,21 @@ export const Recipes: React.FC<RecipesProps> = ({ initialTriggerAdd, initialView
                   const qtyOrig = ri.originalQtyUsed || ri.qtyUsed;
                   const qtyAjust = qtyOrig * scaleFactor;
                   const neededQty = convertUnits(qtyAjust, ri.unit, prod.unit);
-                  if (prod.stock < neededQty) {
+                  const origConv = convertUnits(qtyOrig, ri.unit, prod.unit);
+                  if (neededQty === null || origConv === null) {
+                    hasIncompatible = true;
                     isFullyFeasible = false;
-                    if (prod.stock > 0) isPartiallyFeasible = true;
-                  }
-                  const qtyPerPortion = convertUnits(qtyOrig, ri.unit, prod.unit) / selectedRecipeDetails.portions;
-                  if (qtyPerPortion > 0) {
-                    const maxForThis = Math.floor(prod.stock / qtyPerPortion);
-                    if (maxForThis < maxPortions) maxPortions = maxForThis;
+                    maxPortions = 0;
+                  } else {
+                    if (prod.stock < neededQty) {
+                      isFullyFeasible = false;
+                      if (prod.stock > 0) isPartiallyFeasible = true;
+                    }
+                    const qtyPerPortion = origConv / selectedRecipeDetails.portions;
+                    if (qtyPerPortion > 0) {
+                      const maxForThis = Math.floor(prod.stock / qtyPerPortion);
+                      if (maxForThis < maxPortions) maxPortions = maxForThis;
+                    }
                   }
                 } else {
                   // Ingrédient non lié ou produit introuvable : stock considéré à 0
@@ -1488,19 +1590,21 @@ export const Recipes: React.FC<RecipesProps> = ({ initialTriggerAdd, initialView
                         display: 'flex', 
                         flexDirection: 'column', 
                         gap: '6px',
-                        backgroundColor: isFullyFeasible ? 'var(--color-secondary-light)' : (isPartiallyFeasible || (maxPortions !== Infinity && maxPortions > 0) ? 'var(--color-warning-light)' : 'var(--color-danger-light)'),
-                        color: isFullyFeasible ? 'var(--color-secondary)' : (isPartiallyFeasible || (maxPortions !== Infinity && maxPortions > 0) ? 'var(--color-warning)' : 'var(--color-danger)'),
+                        backgroundColor: hasIncompatible ? 'var(--color-danger-light)' : (isFullyFeasible ? 'var(--color-secondary-light)' : (isPartiallyFeasible || (maxPortions !== Infinity && maxPortions > 0) ? 'var(--color-warning-light)' : 'var(--color-danger-light)')),
+                        color: hasIncompatible ? 'var(--color-danger)' : (isFullyFeasible ? 'var(--color-secondary)' : (isPartiallyFeasible || (maxPortions !== Infinity && maxPortions > 0) ? 'var(--color-warning)' : 'var(--color-danger)')),
                         border: '1px solid rgba(0,0,0,0.05)'
                       }}
                     >
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 'bold' }}>
-                        {isFullyFeasible ? <Check size={18} /> : <AlertTriangle size={18} />}
+                        {isFullyFeasible && !hasIncompatible ? <Check size={18} /> : <AlertTriangle size={18} />}
                         <span>
-                          {isFullyFeasible 
-                            ? `Recette réalisable (${portionsCible} parts en stock !)` 
-                            : ((maxPortions !== Infinity && maxPortions > 0) 
-                              ? `Partiellement faisable (${displayMaxPortions} parts max avec vos stocks)` 
-                              : `Stocks insuffisants (0 part faisable)`)}
+                          {hasIncompatible
+                            ? 'Unités incompatibles entre recette et stock (impossible de cuisiner)'
+                            : isFullyFeasible 
+                              ? `Recette réalisable (${portionsCible} parts en stock !)` 
+                              : ((maxPortions !== Infinity && maxPortions > 0) 
+                                ? `Partiellement faisable (${displayMaxPortions} parts max avec vos stocks)` 
+                                : `Stocks insuffisants (0 part faisable)`)}
                         </span>
                       </div>
                       <div style={{ fontSize: '11px', opacity: 0.9 }}>
@@ -1545,25 +1649,37 @@ export const Recipes: React.FC<RecipesProps> = ({ initialTriggerAdd, initialView
                   const prod = products.find(p => p.id === ri.productId);
                   const qtyOrig = ri.originalQtyUsed || ri.qtyUsed;
                   const qtyAjust = qtyOrig * (portionsCible / selectedRecipeDetails.portions);
+                  const normRiUnit = normalizeUnit(ri.unit) || ri.unit;
+                  const normProdUnit = prod ? (normalizeUnit(prod.unit) || prod.unit) : normRiUnit;
                   
-                  const costLine = prod 
-                    ? convertUnits(qtyAjust, ri.unit, prod.unit) * prod.avgPurchasePrice
+                  const conv = prod
+                    ? convertUnitsWithInfo(qtyAjust, normRiUnit, normProdUnit)
+                    : { value: qtyAjust, approximate: false };
+                  const isIncompatible = Boolean(ri.productId && prod && conv.value === null);
+                  const costLine = prod
+                    ? (conv.value !== null ? conv.value * prod.avgPurchasePrice : null)
                     : qtyAjust * (ri.customCostPerUnit || 0);
 
                   // Calcul stock et écart
                   let stockStatus = 'unlinked';
                   let stockDetail = '';
                   if (ri.productId && prod) {
-                    const needed = convertUnits(qtyAjust, ri.unit, prod.unit);
-                    if (prod.stock >= needed) {
-                      stockStatus = 'ok';
-                      stockDetail = `En stock (${prod.stock.toFixed(1)} ${prod.unit})`;
-                    } else if (prod.stock > 0) {
-                      stockStatus = 'partial';
-                      stockDetail = `Insuffisant (Stock: ${prod.stock.toFixed(1)}, Manque: ${(needed - prod.stock).toFixed(1)} ${prod.unit})`;
+                    if (conv.value === null) {
+                      stockStatus = 'incompatible';
+                      stockDetail = `Unités incompatibles : recette en ${normRiUnit}, stock en ${normProdUnit}`;
                     } else {
-                      stockStatus = 'empty';
-                      stockDetail = `Rupture (Requis: ${needed.toFixed(1)} ${prod.unit})`;
+                      const needed = conv.value;
+                      const approxPrefix = conv.approximate ? '≈ ' : '';
+                      if (prod.stock >= needed) {
+                        stockStatus = 'ok';
+                        stockDetail = `En stock (${prod.stock.toFixed(1)} ${normProdUnit})`;
+                      } else if (prod.stock > 0) {
+                        stockStatus = 'partial';
+                        stockDetail = `Insuffisant (Stock: ${prod.stock.toFixed(1)}, Manque: ${approxPrefix}${(needed - prod.stock).toFixed(1)} ${normProdUnit})`;
+                      } else {
+                        stockStatus = 'empty';
+                        stockDetail = `Rupture (Requis: ${approxPrefix}${needed.toFixed(1)} ${normProdUnit})`;
+                      }
                     }
                   }
 
@@ -1575,9 +1691,9 @@ export const Recipes: React.FC<RecipesProps> = ({ initialTriggerAdd, initialView
                         flexDirection: 'column', 
                         gap: '4px',
                         padding: '10px', 
-                        backgroundColor: 'var(--color-light)', 
+                        backgroundColor: isIncompatible ? 'rgba(220, 38, 38, 0.06)' : 'var(--color-light)', 
                         borderRadius: 'var(--radius-md)',
-                        border: '1px solid var(--color-border)'
+                        border: `1px solid ${isIncompatible ? 'var(--color-danger)' : 'var(--color-border)'}`
                       }}
                     >
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', fontSize: '13px', fontWeight: '600' }}>
@@ -1602,19 +1718,37 @@ export const Recipes: React.FC<RecipesProps> = ({ initialTriggerAdd, initialView
                             </button>
                           )}
                         </div>
-                        <strong>{costLine.toFixed(2)}€</strong>
+                        <strong style={{ color: isIncompatible ? 'var(--color-danger)' : 'inherit' }}>
+                          {costLine === null ? '—' : `${conv.approximate ? '≈ ' : ''}${costLine.toFixed(2)} ${settings.currency}`}
+                        </strong>
                       </div>
                       
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px', flexWrap: 'wrap', gap: '6px' }}>
                         <span style={{ color: 'var(--color-dark-light)' }}>
-                          {qtyOrig} {ri.unit} ➔ <strong style={{ color: 'var(--color-primary)' }}>{qtyAjust.toFixed(1)} {ri.unit}</strong>
+                          {formatQtyFr(qtyOrig)} {normRiUnit} ➔ <strong style={{ color: 'var(--color-primary)' }}>{formatQtyFr(qtyAjust)} {normRiUnit}</strong>
                         </span>
 
                         {/* Badge de stock */}
                         {stockStatus === 'ok' && <span className="badge badge-success" style={{ fontSize: '10px', padding: '2px 6px' }}>{stockDetail}</span>}
                         {stockStatus === 'partial' && <span className="badge badge-warning" style={{ fontSize: '10px', padding: '2px 6px', color: 'var(--color-warning)', backgroundColor: 'var(--color-warning-light)' }}>{stockDetail}</span>}
                         {stockStatus === 'empty' && <span className="badge badge-danger" style={{ fontSize: '10px', padding: '2px 6px' }}>{stockDetail}</span>}
+                        {stockStatus === 'incompatible' && <span className="badge badge-danger" style={{ fontSize: '10px', padding: '2px 6px' }}>⚠️ {stockDetail}</span>}
                         {stockStatus === 'unlinked' && <span className="badge" style={{ fontSize: '10px', padding: '2px 6px', backgroundColor: 'rgba(0,0,0,0.06)', color: 'var(--color-dark-light)' }}>Non suivi en stock</span>}
+                      </div>
+
+                      {/* Détail du calcul unitaire */}
+                      <div style={{ fontSize: '11px', color: isIncompatible ? 'var(--color-danger)' : 'var(--color-dark-light)', marginTop: '2px', fontWeight: isIncompatible ? '700' : '500' }}>
+                        {isIncompatible && prod ? (
+                          <span>⚠️ Unités incompatibles : recette en {normRiUnit}, stock en {normProdUnit}</span>
+                        ) : prod && costLine !== null ? (
+                          <span>
+                            {formatQtyFr(qtyAjust)} {normRiUnit} × {prod.avgPurchasePrice.toFixed(2).replace('.', ',')} {settings.currency}/{normProdUnit} {conv.approximate ? '≈' : '='} <strong>{conv.approximate ? '≈ ' : ''}{costLine.toFixed(2).replace('.', ',')} {settings.currency}</strong>
+                          </span>
+                        ) : (
+                          <span>
+                            {formatQtyFr(qtyAjust)} {normRiUnit} × {(ri.customCostPerUnit || 0).toFixed(2).replace('.', ',')} {settings.currency}/{normRiUnit} = <strong>{(costLine || 0).toFixed(2).replace('.', ',')} {settings.currency}</strong>
+                          </span>
+                        )}
                       </div>
                     </div>
                   );
@@ -1632,7 +1766,7 @@ export const Recipes: React.FC<RecipesProps> = ({ initialTriggerAdd, initialView
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                   {detailsPackagings.map(rp => (
                     <div key={rp.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', padding: '6px 8px', backgroundColor: 'var(--color-light)', borderRadius: 'var(--radius-sm)' }}>
-                      <span>{rp.name}</span>
+                      <span>{rp.name} <span style={{ fontSize: '11px', color: 'var(--color-dark-light)' }}>({rp.costPerUnit.toFixed(2)} {settings.currency}/pièce)</span></span>
                       <div style={{ display: 'flex', gap: '16px' }}>
                         <span style={{ color: 'var(--color-dark-light)' }}>{(rp.qtyUsed * (portionsCible / selectedRecipeDetails.portions)).toFixed(1)} u</span>
                         <strong style={{ width: '50px', textAlign: 'right' }}>{(rp.qtyUsed * (portionsCible / selectedRecipeDetails.portions) * rp.costPerUnit).toFixed(2)}€</strong>
@@ -1646,28 +1780,38 @@ export const Recipes: React.FC<RecipesProps> = ({ initialTriggerAdd, initialView
             {/* LISTE DES INGRÉDIENTS MANQUANTS / LISTE DE COURSES */}
             {(() => {
               const scaleFactor = portionsCible / selectedRecipeDetails.portions;
-              const missingList: { name: string; qty: number; unit: string; unlinkedIngredient?: RecipeIngredient }[] = [];
+              const missingList: { name: string; qty: number | null; unit: string; approximate?: boolean; incompatibleMsg?: string; unlinkedIngredient?: RecipeIngredient }[] = [];
               
               detailsIngredients.forEach(ri => {
                 const qtyOrig = ri.originalQtyUsed || ri.qtyUsed;
                 const qtyAjust = qtyOrig * scaleFactor;
+                const normRiUnit = normalizeUnit(ri.unit) || ri.unit;
                 const prod = ri.productId ? products.find(p => p.id === ri.productId) : undefined;
                 if (prod) {
-                  const needed = convertUnits(qtyAjust, ri.unit, prod.unit);
-                  if (prod.stock < needed) {
-                    const deficit = needed - prod.stock;
-                    const deficitRecipeUnit = convertUnits(deficit, prod.unit, ri.unit);
+                  const normProdUnit = normalizeUnit(prod.unit) || prod.unit;
+                  const conv = convertUnitsWithInfo(qtyAjust, normRiUnit, normProdUnit);
+                  if (conv.value === null) {
                     missingList.push({
                       name: prod.name,
-                      qty: deficitRecipeUnit,
-                      unit: ri.unit
+                      qty: null,
+                      unit: normRiUnit,
+                      incompatibleMsg: `Unités incompatibles : recette en ${normRiUnit}, stock en ${normProdUnit}`
+                    });
+                  } else if (prod.stock < conv.value) {
+                    const deficit = conv.value - prod.stock;
+                    const deficitBack = convertUnitsWithInfo(deficit, normProdUnit, normRiUnit);
+                    missingList.push({
+                      name: prod.name,
+                      qty: deficitBack.value !== null ? deficitBack.value : deficit,
+                      unit: deficitBack.value !== null ? normRiUnit : normProdUnit,
+                      approximate: conv.approximate || deficitBack.approximate
                     });
                   }
                 } else {
                   missingList.push({
                     name: ri.customName || 'Ingrédient',
                     qty: qtyAjust,
-                    unit: ri.unit,
+                    unit: normRiUnit,
                     unlinkedIngredient: ri
                   });
                 }
@@ -1705,7 +1849,13 @@ export const Recipes: React.FC<RecipesProps> = ({ initialTriggerAdd, initialView
                             </button>
                           )}
                         </div>
-                        <strong style={{ color: 'var(--color-danger)', whiteSpace: 'nowrap' }}>Acheter : {m.qty.toFixed(1)} {m.unit}</strong>
+                        {m.incompatibleMsg ? (
+                          <strong style={{ color: 'var(--color-danger)' }}>⚠️ {m.incompatibleMsg}</strong>
+                        ) : (
+                          <strong style={{ color: 'var(--color-danger)', whiteSpace: 'nowrap' }}>
+                            Acheter : {m.approximate ? '≈ ' : ''}{(m.qty || 0).toFixed(1)} {m.unit}
+                          </strong>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -1715,7 +1865,11 @@ export const Recipes: React.FC<RecipesProps> = ({ initialTriggerAdd, initialView
                     className="btn btn-secondary" 
                     style={{ width: '100%', height: '32px', fontSize: '12px', padding: 0 }}
                     onClick={() => {
-                      const text = missingList.map(m => `- ${m.name} : ${m.qty.toFixed(1)} ${m.unit}`).join('\n');
+                      const text = missingList.map(m =>
+                        m.incompatibleMsg
+                          ? `- ${m.name} : ${m.incompatibleMsg}`
+                          : `- ${m.name} : ${m.approximate ? '≈ ' : ''}${(m.qty || 0).toFixed(1)} ${m.unit}`
+                      ).join('\n');
                       navigator.clipboard.writeText(`Liste de courses pour ${selectedRecipeDetails.name} (${portionsCible} portions) :\n${text}`);
                       setCopiedCourses(true);
                       setTimeout(() => setCopiedCourses(false), 2000);

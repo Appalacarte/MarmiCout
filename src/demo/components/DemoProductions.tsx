@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Sparkles, Plus, Lock } from 'lucide-react';
+import { Plus, Lock } from 'lucide-react';
 import { demoDbService, notifyReadOnlyBlocked } from '../services/demoDb';
 import { Production } from '../../types';
 

@@ -18,6 +18,15 @@ import {
 } from './cloudDbService';
 import { indexedDbService } from './indexedDbService';
 import { accessVerificationService } from './accessVerificationService';
+import {
+  convertUnits,
+  convertUnitsWithInfo,
+  normalizeUnit,
+  ensureRequiredUnits,
+  DEFAULT_UNITS,
+} from '../utils/units';
+
+export { convertUnits, convertUnitsWithInfo, normalizeUnit, ensureRequiredUnits };
 
 export function isCloudMode(): boolean {
   const last = accessVerificationService.getLastResult();
@@ -85,28 +94,6 @@ const KEYS = {
 };
 
 export const getActiveTesterCode = (): string | null => getTesterCode();
-
-
-// --- LOGIQUE DE CONVERSION DES UNITES ---
-export function convertUnits(qty: number, fromUnit: string, toUnit: string): number {
-  const f = fromUnit.trim().toLowerCase();
-  const t = toUnit.trim().toLowerCase();
-  if (f === t) return qty;
-
-  // Conversions de masse (base: kg)
-  if (f === 'g' && t === 'kg') return qty / 1000;
-  if (f === 'kg' && t === 'g') return qty * 1000;
-
-  // Conversions de volume (base: l)
-  if (f === 'ml' && t === 'l') return qty / 1000;
-  if (f === 'l' && t === 'ml') return qty * 1000;
-  if (f === 'cl' && t === 'l') return qty / 100;
-  if (f === 'l' && t === 'cl') return qty * 100;
-  if (f === 'cl' && t === 'ml') return qty * 10;
-  if (f === 'ml' && t === 'cl') return qty / 10;
-
-  return qty; // Non convertible ou identique
-}
 
 // --- DONNÉES DE DÉMONSTRATION INITIALES ---
 const INITIAL_STORES: Store[] = [
@@ -215,7 +202,7 @@ const INITIAL_SETTINGS: Settings = {
   defaultTargetMargin: 60, // 60%
   categories: ['Épicerie', 'Frais', 'Sec', 'Liquide', 'Emballage', 'Autre'],
   recipeCategories: ['Tarte', 'Confiture', 'Gâteau', 'Plat Cuisiné', 'Autre'],
-  units: ['kg', 'g', 'l', 'ml', 'cl', 'pièce', 'sachet', 'pot', 'bouteille', 'boite'],
+  units: [...DEFAULT_UNITS],
   salesLocations: ['Marché', 'Commande', 'En Ligne', 'Domicile', 'Autre'],
   defaultMinStockAlert: 2,
   googleSheetId: '1SU8ypH5aufwKVoZLlCfhcw6nwdS6nBwNDvj8hKr0F2k',
@@ -237,19 +224,28 @@ const initDB = () => {
     localStorage.setItem(KEYS.SALES, JSON.stringify(INITIAL_SALES));
     localStorage.setItem(KEYS.STOCK_MOVEMENTS, JSON.stringify(INITIAL_STOCK_MOVEMENTS));
   } else {
-    // S'assurer que le Google Sheet de l'utilisateur est bien configuré dans les paramètres existants
+    // S'assurer que le Google Sheet et les unités cs/cc sont bien présents dans les paramètres existants
     try {
       const settingsStr = localStorage.getItem(KEYS.SETTINGS);
       if (settingsStr) {
         const currentSettings = JSON.parse(settingsStr);
+        let changed = false;
         if (currentSettings.googleSheetId !== '1SU8ypH5aufwKVoZLlCfhcw6nwdS6nBwNDvj8hKr0F2k') {
           currentSettings.googleSheetId = '1SU8ypH5aufwKVoZLlCfhcw6nwdS6nBwNDvj8hKr0F2k';
           currentSettings.googleSheetLink = 'https://docs.google.com/spreadsheets/d/1SU8ypH5aufwKVoZLlCfhcw6nwdS6nBwNDvj8hKr0F2k/edit?usp=sharing';
+          changed = true;
+        }
+        const ensuredUnits = ensureRequiredUnits(currentSettings.units);
+        if (JSON.stringify(ensuredUnits) !== JSON.stringify(currentSettings.units)) {
+          currentSettings.units = ensuredUnits;
+          changed = true;
+        }
+        if (changed) {
           localStorage.setItem(KEYS.SETTINGS, JSON.stringify(currentSettings));
         }
       }
     } catch (e) {
-      console.error('Erreur lors de la mise à jour automatique du Google Sheet dans les paramètres', e);
+      console.error('Erreur lors de la mise à jour automatique des paramètres', e);
     }
   }
 };
@@ -257,7 +253,7 @@ const initDB = () => {
 initDB();
 
 // --- CACHE MÉMOIRE LIÉ À INDEXEDDB (MODE CLOUD & HORS LIGNE) ---
-export const inMemoryCache: Record<string, any[]> = {
+export const inMemoryCache: Record<string, unknown[]> = {
   products: [],
   stores: [],
   purchases: [],
@@ -293,7 +289,7 @@ export async function loadCacheFromIndexedDb(): Promise<void> {
       indexedDbService.getAll<Production>('productions'),
       indexedDbService.getAll<Sale>('sales'),
       indexedDbService.getAll<StockMovement>('stock_movements'),
-      indexedDbService.getAll<any>('settings'),
+      indexedDbService.getAll<{ key: string; value: Settings }>('settings'),
     ]);
 
     inMemoryCache.products = products || [];
@@ -448,20 +444,27 @@ export const dbService = {
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('marmicout-data-synced'));
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('[dbService] Erreur lors de la synchronisation cloud:', err);
-      notifyCloudError('Erreur de synchronisation cloud', err.message || String(err));
+      notifyCloudError('Erreur de synchronisation cloud', err instanceof Error ? err.message : String(err));
     }
   },
 
   // --- PARAMÈTRES (SETTINGS) ---
   getSettings(): Settings {
     if (isCloudMode() && inMemorySettings) {
-      return inMemorySettings;
+      return {
+        ...inMemorySettings,
+        units: ensureRequiredUnits(inMemorySettings.units),
+      };
     }
     initDB();
     const data = localStorage.getItem(KEYS.SETTINGS);
-    return data ? JSON.parse(data) : INITIAL_SETTINGS;
+    const parsed: Settings = data ? JSON.parse(data) : INITIAL_SETTINGS;
+    return {
+      ...parsed,
+      units: ensureRequiredUnits(parsed.units),
+    };
   },
 
   async saveSettings(settings: Settings): Promise<void> {
@@ -469,8 +472,8 @@ export const dbService = {
     if (isCloudMode()) {
       try {
         await cloudDbService.saveSettings(settings);
-      } catch (err: any) {
-        notifyCloudError('Enregistrement paramètres cloud refusé', err.message || String(err));
+      } catch (err: unknown) {
+        notifyCloudError('Enregistrement paramètres cloud refusé', err instanceof Error ? err.message : String(err));
         throw err;
       }
       inMemorySettings = settings;
@@ -500,11 +503,11 @@ export const dbService = {
     if (isCloudMode()) {
       try {
         await cloudDbService.saveStore(store);
-      } catch (err: any) {
-        notifyCloudError('Enregistrement magasin cloud refusé', err.message || String(err));
+      } catch (err: unknown) {
+        notifyCloudError('Enregistrement magasin cloud refusé', err instanceof Error ? err.message : String(err));
         throw err;
       }
-      const stores = inMemoryCache.stores.filter(s => s.id !== store.id);
+      const stores = (inMemoryCache.stores as Store[]).filter(s => s.id !== store.id);
       stores.push(store);
       inMemoryCache.stores = stores;
       await indexedDbService.put('stores', store);
@@ -527,11 +530,11 @@ export const dbService = {
     if (isCloudMode()) {
       try {
         await cloudDbService.deleteStore(id);
-      } catch (err: any) {
-        notifyCloudError('Suppression magasin cloud refusée', err.message || String(err));
+      } catch (err: unknown) {
+        notifyCloudError('Suppression magasin cloud refusée', err instanceof Error ? err.message : String(err));
         throw err;
       }
-      inMemoryCache.stores = inMemoryCache.stores.filter(s => s.id !== id);
+      inMemoryCache.stores = (inMemoryCache.stores as Store[]).filter(s => s.id !== id);
       await indexedDbService.delete('stores', id);
       return;
     }
@@ -575,11 +578,11 @@ export const dbService = {
     if (isCloudMode()) {
       try {
         await cloudDbService.saveProduct(product);
-      } catch (err: any) {
-        notifyCloudError('Enregistrement produit cloud refusé', err.message || String(err));
+      } catch (err: unknown) {
+        notifyCloudError('Enregistrement produit cloud refusé', err instanceof Error ? err.message : String(err));
         throw err;
       }
-      const products = inMemoryCache.products.filter(p => p.id !== product.id);
+      const products = (inMemoryCache.products as Product[]).filter(p => p.id !== product.id);
       products.push(product);
       inMemoryCache.products = products;
       await indexedDbService.put('products', product);
@@ -602,11 +605,11 @@ export const dbService = {
     if (isCloudMode()) {
       try {
         await cloudDbService.deleteProduct(id);
-      } catch (err: any) {
-        notifyCloudError('Suppression produit cloud refusée', err.message || String(err));
+      } catch (err: unknown) {
+        notifyCloudError('Suppression produit cloud refusée', err instanceof Error ? err.message : String(err));
         throw err;
       }
-      inMemoryCache.products = inMemoryCache.products.filter(p => p.id !== id);
+      inMemoryCache.products = (inMemoryCache.products as Product[]).filter(p => p.id !== id);
       await indexedDbService.delete('products', id);
       return;
     }
@@ -632,14 +635,25 @@ export const dbService = {
     if (!isUUID(purchase.id)) {
       purchase.id = generateUUID();
     }
+
+    const products = this.getProducts();
+    const product = products.find(p => p.id === purchase.productId);
+    const qtyInProductUnit = product ? convertUnits(purchase.qty, purchase.unit, product.unit) : purchase.qty;
+
+    if (product && qtyInProductUnit === null) {
+      throw new Error(
+        `Unités incompatibles : achat en ${normalizeUnit(purchase.unit) || purchase.unit}, stock en ${normalizeUnit(product.unit) || product.unit}`
+      );
+    }
+
     if (isCloudMode()) {
       try {
         await cloudDbService.savePurchase(purchase);
-      } catch (err: any) {
-        notifyCloudError('Enregistrement achat cloud refusé', err.message || String(err));
+      } catch (err: unknown) {
+        notifyCloudError('Enregistrement achat cloud refusé', err instanceof Error ? err.message : String(err));
         throw err;
       }
-      const purchases = inMemoryCache.purchases.filter(p => p.id !== purchase.id);
+      const purchases = (inMemoryCache.purchases as Purchase[]).filter(p => p.id !== purchase.id);
       purchases.push(purchase);
       inMemoryCache.purchases = purchases;
       await indexedDbService.put('purchases', purchase);
@@ -652,17 +666,14 @@ export const dbService = {
     }
 
     // Mettre à jour le stock et le prix moyen du produit
-    const products = this.getProducts();
-    const product = products.find(p => p.id === purchase.productId);
-    if (product) {
+    if (product && qtyInProductUnit !== null) {
       const oldStock = product.stock;
       const oldAvgPrice = product.avgPurchasePrice;
-      const qtyInProductUnit = convertUnits(purchase.qty, purchase.unit, product.unit);
 
       // Calcul du nouveau PMP (Prix Moyen Pondéré)
       let newAvgPrice: number;
       if (oldStock <= 0) {
-        newAvgPrice = purchase.pricePaid / qtyInProductUnit;
+        newAvgPrice = qtyInProductUnit > 0 ? purchase.pricePaid / qtyInProductUnit : 0;
       } else {
         const totalCostBefore = oldStock * oldAvgPrice;
         const totalCostNew = purchase.pricePaid;
@@ -692,11 +703,11 @@ export const dbService = {
     if (isCloudMode()) {
       try {
         await cloudDbService.deletePurchase(id);
-      } catch (err: any) {
-        notifyCloudError('Suppression achat cloud refusée', err.message || String(err));
+      } catch (err: unknown) {
+        notifyCloudError('Suppression achat cloud refusée', err instanceof Error ? err.message : String(err));
         throw err;
       }
-      inMemoryCache.purchases = inMemoryCache.purchases.filter(p => p.id !== id);
+      inMemoryCache.purchases = (inMemoryCache.purchases as Purchase[]).filter(p => p.id !== id);
       await indexedDbService.delete('purchases', id);
     }
     const purchases = this.getPurchases();
@@ -708,8 +719,10 @@ export const dbService = {
     const product = products.find(p => p.id === purchase.productId);
     if (product) {
       const qtyInProductUnit = convertUnits(purchase.qty, purchase.unit, product.unit);
-      product.stock = Math.max(0, product.stock - qtyInProductUnit);
-      await this.saveProduct(product);
+      if (qtyInProductUnit !== null) {
+        product.stock = Math.max(0, product.stock - qtyInProductUnit);
+        await this.saveProduct(product);
+      }
     }
 
     const updatedPurchases = purchases.filter(p => p.id !== id);
@@ -742,11 +755,11 @@ export const dbService = {
     if (isCloudMode()) {
       try {
         await cloudDbService.saveStockMovement(movement);
-      } catch (err: any) {
-        notifyCloudError('Enregistrement mouvement stock cloud refusé', err.message || String(err));
+      } catch (err: unknown) {
+        notifyCloudError('Enregistrement mouvement stock cloud refusé', err instanceof Error ? err.message : String(err));
         throw err;
       }
-      const movements = inMemoryCache.stock_movements.filter(m => m.id !== movement.id);
+      const movements = (inMemoryCache.stock_movements as StockMovement[]).filter(m => m.id !== movement.id);
       movements.push(movement);
       inMemoryCache.stock_movements = movements;
       await indexedDbService.put('stock_movements', movement);
@@ -828,22 +841,22 @@ export const dbService = {
     if (isCloudMode()) {
       try {
         await cloudDbService.saveRecipe(recipe, ingredients, packagings);
-      } catch (err: any) {
-        notifyCloudError('Enregistrement recette cloud refusé', err.message || String(err));
+      } catch (err: unknown) {
+        notifyCloudError('Enregistrement recette cloud refusé', err instanceof Error ? err.message : String(err));
         // NE PAS MODIFIER LE STOCKAGE LOCAL EN CAS DE REJET
         throw err;
       }
-      const recipes = inMemoryCache.recipes.filter(r => r.id !== recipe.id);
+      const recipes = (inMemoryCache.recipes as Recipe[]).filter(r => r.id !== recipe.id);
       recipes.push(recipe);
       inMemoryCache.recipes = recipes;
       await indexedDbService.put('recipes', recipe);
 
-      const allIngs = inMemoryCache.recipe_ingredients.filter(ri => ri.recipeId !== recipe.id);
+      const allIngs = (inMemoryCache.recipe_ingredients as RecipeIngredient[]).filter(ri => ri.recipeId !== recipe.id);
       const newIngs = ingredients.map(ing => ({ ...ing, id: generateUUID(), recipeId: recipe.id }));
       inMemoryCache.recipe_ingredients = [...allIngs, ...newIngs];
       await indexedDbService.setAll('recipe_ingredients', [...allIngs, ...newIngs]);
 
-      const allPacks = inMemoryCache.recipe_packaging.filter(rp => rp.recipeId !== recipe.id);
+      const allPacks = (inMemoryCache.recipe_packaging as RecipePackaging[]).filter(rp => rp.recipeId !== recipe.id);
       const newPacks = packagings.map(p => ({ ...p, id: generateUUID(), recipeId: recipe.id }));
       inMemoryCache.recipe_packaging = [...allPacks, ...newPacks];
       await indexedDbService.setAll('recipe_packaging', [...allPacks, ...newPacks]);
@@ -888,18 +901,18 @@ export const dbService = {
     if (isCloudMode()) {
       try {
         await cloudDbService.deleteRecipe(id);
-      } catch (err: any) {
-        notifyCloudError('Suppression recette cloud refusée', err.message || String(err));
+      } catch (err: unknown) {
+        notifyCloudError('Suppression recette cloud refusée', err instanceof Error ? err.message : String(err));
         throw err;
       }
-      inMemoryCache.recipes = inMemoryCache.recipes.filter(r => r.id !== id);
+      inMemoryCache.recipes = (inMemoryCache.recipes as Recipe[]).filter(r => r.id !== id);
       await indexedDbService.delete('recipes', id);
 
-      inMemoryCache.recipe_ingredients = inMemoryCache.recipe_ingredients.filter(ri => ri.recipeId !== id);
-      await indexedDbService.setAll('recipe_ingredients', inMemoryCache.recipe_ingredients);
+      inMemoryCache.recipe_ingredients = (inMemoryCache.recipe_ingredients as RecipeIngredient[]).filter(ri => ri.recipeId !== id);
+      await indexedDbService.setAll('recipe_ingredients', inMemoryCache.recipe_ingredients as RecipeIngredient[]);
 
-      inMemoryCache.recipe_packaging = inMemoryCache.recipe_packaging.filter(rp => rp.recipeId !== id);
-      await indexedDbService.setAll('recipe_packaging', inMemoryCache.recipe_packaging);
+      inMemoryCache.recipe_packaging = (inMemoryCache.recipe_packaging as RecipePackaging[]).filter(rp => rp.recipeId !== id);
+      await indexedDbService.setAll('recipe_packaging', inMemoryCache.recipe_packaging as RecipePackaging[]);
       return;
     }
     const recipes = this.getRecipes().filter(r => r.id !== id);
@@ -926,10 +939,23 @@ export const dbService = {
     costPerPortion: number;
     marginPercent: number;
     suggestedSellingPrice: number;
+    hasIncompatibleUnits: boolean;
+    incompatibleDetails: string[];
+    isApproximate: boolean;
   } {
     const recipe = this.getRecipe(recipeId);
     if (!recipe) {
-      return { ingredientsCost: 0, packagingCost: 0, totalCost: 0, costPerPortion: 0, marginPercent: 0, suggestedSellingPrice: 0 };
+      return {
+        ingredientsCost: 0,
+        packagingCost: 0,
+        totalCost: 0,
+        costPerPortion: 0,
+        marginPercent: 0,
+        suggestedSellingPrice: 0,
+        hasIncompatibleUnits: false,
+        incompatibleDetails: [],
+        isApproximate: false,
+      };
     }
 
     const ingredients = this.getRecipeIngredients(recipeId);
@@ -938,13 +964,27 @@ export const dbService = {
 
     // 1. Coût des ingrédients
     let ingredientsCost = 0;
+    let hasIncompatibleUnits = false;
+    let isApproximate = false;
+    const incompatibleDetails: string[] = [];
+
     ingredients.forEach(ing => {
       if (ing.productId) {
         const prod = products.find(p => p.id === ing.productId);
         if (prod) {
           // Convertir la quantité de la recette vers l'unité de stock du produit
-          const convertedQty = convertUnits(ing.qtyUsed, ing.unit, prod.unit);
-          ingredientsCost += convertedQty * prod.avgPurchasePrice;
+          const conv = convertUnitsWithInfo(ing.qtyUsed, ing.unit, prod.unit);
+          if (conv.value === null) {
+            hasIncompatibleUnits = true;
+            incompatibleDetails.push(
+              `${prod.name} : Unités incompatibles : recette en ${normalizeUnit(ing.unit) || ing.unit}, stock en ${normalizeUnit(prod.unit) || prod.unit}`
+            );
+          } else {
+            if (conv.approximate) {
+              isApproximate = true;
+            }
+            ingredientsCost += conv.value * prod.avgPurchasePrice;
+          }
         }
       } else if (ing.customCostPerUnit) {
         // Ingrédient non lié avec coût estimé
@@ -979,7 +1019,10 @@ export const dbService = {
       totalCost: Number(totalCost.toFixed(2)),
       costPerPortion: Number(costPerPortion.toFixed(2)),
       marginPercent: defaultMargin,
-      suggestedSellingPrice: Number(suggestedSellingPrice.toFixed(2))
+      suggestedSellingPrice: Number(suggestedSellingPrice.toFixed(2)),
+      hasIncompatibleUnits,
+      incompatibleDetails,
+      isApproximate,
     };
   },
 
@@ -1000,17 +1043,29 @@ export const dbService = {
     // Facteur d'échelle de la production (portions produites / portions de base de la recette)
     const factor = production.portionsProduced / recipe.portions;
 
-    // 1. Vérifier si les stocks sont suffisants
+    // 1. Vérifier les unités compatibles et si les stocks sont suffisants
+    const incompatibleItems: string[] = [];
     const missingItems: string[] = [];
     ingredients.forEach(ing => {
       const prod = products.find(p => p.id === ing.productId);
       if (prod) {
         const qtyNeeded = convertUnits(ing.qtyUsed * factor, ing.unit, prod.unit);
-        if (prod.stock < qtyNeeded) {
+        if (qtyNeeded === null) {
+          incompatibleItems.push(
+            `${prod.name} (Unités incompatibles : recette en ${normalizeUnit(ing.unit) || ing.unit}, stock en ${normalizeUnit(prod.unit) || prod.unit})`
+          );
+        } else if (prod.stock < qtyNeeded) {
           missingItems.push(`${prod.name} (Requis: ${qtyNeeded.toFixed(2)} ${prod.unit}, En Stock: ${prod.stock.toFixed(2)} ${prod.unit})`);
         }
       }
     });
+
+    if (incompatibleItems.length > 0) {
+      return {
+        success: false,
+        error: `Impossible de cuisiner — unités incompatibles :\n- ${incompatibleItems.join('\n- ')}`,
+      };
+    }
 
     // Vérifier aussi les emballages s'ils sont gérés en stock
     packagings.forEach(pack => {
@@ -1038,8 +1093,8 @@ export const dbService = {
     if (isCloudMode()) {
       try {
         await cloudDbService.saveProduction(production);
-      } catch (err: any) {
-        notifyCloudError('Enregistrement fabrication cloud refusé', err.message || String(err));
+      } catch (err: unknown) {
+        notifyCloudError('Enregistrement fabrication cloud refusé', err instanceof Error ? err.message : String(err));
         throw err;
       }
     }
@@ -1049,6 +1104,7 @@ export const dbService = {
       const prod = products.find(p => p.id === ing.productId);
       if (prod) {
         const qtyNeeded = convertUnits(ing.qtyUsed * factor, ing.unit, prod.unit);
+        if (qtyNeeded === null) continue;
         prod.stock = Math.max(0, prod.stock - qtyNeeded);
         await this.saveProduct(prod);
 
@@ -1098,7 +1154,7 @@ export const dbService = {
 
     // 5. Enregistrer la production
     if (isCloudMode()) {
-      const prods = inMemoryCache.productions.filter(p => p.id !== production.id);
+      const prods = (inMemoryCache.productions as Production[]).filter(p => p.id !== production.id);
       prods.push(production);
       inMemoryCache.productions = prods;
       await indexedDbService.put('productions', production);
@@ -1140,11 +1196,11 @@ export const dbService = {
     if (isCloudMode()) {
       try {
         await cloudDbService.saveSale(sale);
-      } catch (err: any) {
-        notifyCloudError('Enregistrement vente cloud refusé', err.message || String(err));
+      } catch (err: unknown) {
+        notifyCloudError('Enregistrement vente cloud refusé', err instanceof Error ? err.message : String(err));
         throw err;
       }
-      const sales = inMemoryCache.sales.filter(s => s.id !== sale.id);
+      const sales = (inMemoryCache.sales as Sale[]).filter(s => s.id !== sale.id);
       sales.push(sale);
       inMemoryCache.sales = sales;
       await indexedDbService.put('sales', sale);
@@ -1192,11 +1248,11 @@ export const dbService = {
     if (isCloudMode()) {
       try {
         await cloudDbService.deleteSale(id);
-      } catch (err: any) {
-        notifyCloudError('Suppression vente cloud refusée', err.message || String(err));
+      } catch (err: unknown) {
+        notifyCloudError('Suppression vente cloud refusée', err instanceof Error ? err.message : String(err));
         throw err;
       }
-      inMemoryCache.sales = inMemoryCache.sales.filter(s => s.id !== id);
+      inMemoryCache.sales = (inMemoryCache.sales as Sale[]).filter(s => s.id !== id);
       await indexedDbService.delete('sales', id);
     } else {
       const updatedSales = this.getSales().filter(s => s.id !== id);

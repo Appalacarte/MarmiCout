@@ -1,14 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  CreditCard, 
   Clock, 
   ScanLine, 
   Sparkles, 
   AlertCircle, 
   CheckCircle2, 
-  ArrowRight,
-  ShieldCheck,
-  RefreshCw,
   XCircle
 } from 'lucide-react';
 import { PRICING_CONFIG, PlanId, BillingInterval } from '../config/pricing';

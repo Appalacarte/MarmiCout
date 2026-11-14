@@ -1,5 +1,5 @@
 import React from 'react';
-import { Lock, Sparkles, X, ArrowRight, ExternalLink } from 'lucide-react';
+import { Lock, X, ExternalLink } from 'lucide-react';
 
 interface DemoReadOnlyModalProps {
   isOpen: boolean;

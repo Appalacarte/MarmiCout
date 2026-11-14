@@ -11,7 +11,8 @@ import {
   TrendingDown,
   PackageCheck
 } from 'lucide-react';
-import { dbService, convertUnits } from '../services/db';
+import { dbService } from '../services/db';
+import { convertUnitsWithInfo, normalizeUnit } from '../utils/units';
 import { Product, Recipe, Production } from '../types';
 import { Drawer } from './Drawer';
 
@@ -40,7 +41,14 @@ export const Productions: React.FC<ProductionsProps> = ({ initialTriggerAdd }) =
   const [feasibility, setFeasibility] = useState<{
     isFeasible: boolean;
     missingIngredients: string[];
-    ingredientsUsed: { name: string; required: number; available: number; unit: string }[];
+    ingredientsUsed: {
+      name: string;
+      required: number | null;
+      available: number;
+      unit: string;
+      recipeUnit?: string;
+      approximate?: boolean;
+    }[];
   }>({ isFeasible: true, missingIngredients: [], ingredientsUsed: [] });
 
   // Bandeau de succès après production
@@ -109,20 +117,39 @@ export const Productions: React.FC<ProductionsProps> = ({ initialTriggerAdd }) =
     ingredients.forEach(ing => {
       const prod = products.find(p => p.id === ing.productId);
       if (prod) {
-        const qtyNeeded = convertUnits(ing.qtyUsed * factor, ing.unit, prod.unit);
-        const hasEnough = prod.stock >= qtyNeeded;
-        
-        if (!hasEnough) {
-          isFeasible = false;
-          missingIngredients.push(`${prod.name} (Manque: ${(qtyNeeded - prod.stock).toFixed(2)} ${prod.unit})`);
-        }
+        const normIngUnit = normalizeUnit(ing.unit) || ing.unit;
+        const normProdUnit = normalizeUnit(prod.unit) || prod.unit;
+        const conv = convertUnitsWithInfo(ing.qtyUsed * factor, normIngUnit, normProdUnit);
 
-        ingredientsUsed.push({
-          name: prod.name,
-          required: qtyNeeded,
-          available: prod.stock,
-          unit: prod.unit
-        });
+        if (conv.value === null) {
+          isFeasible = false;
+          missingIngredients.push(
+            `${prod.name} (Unités incompatibles : recette en ${normIngUnit}, stock en ${normProdUnit})`
+          );
+          ingredientsUsed.push({
+            name: prod.name,
+            required: null,
+            available: prod.stock,
+            unit: normProdUnit,
+            recipeUnit: normIngUnit,
+          });
+        } else {
+          const qtyNeeded = conv.value;
+          const hasEnough = prod.stock >= qtyNeeded;
+          
+          if (!hasEnough) {
+            isFeasible = false;
+            missingIngredients.push(`${prod.name} (Manque: ${conv.approximate ? '≈ ' : ''}${(qtyNeeded - prod.stock).toFixed(2)} ${normProdUnit})`);
+          }
+
+          ingredientsUsed.push({
+            name: prod.name,
+            required: qtyNeeded,
+            available: prod.stock,
+            unit: normProdUnit,
+            approximate: conv.approximate,
+          });
+        }
       }
     });
 
@@ -185,11 +212,13 @@ export const Productions: React.FC<ProductionsProps> = ({ initialTriggerAdd }) =
         setSuccessBanner({
           recipeName: recipe.name,
           portions: formPortions,
-          consumed: feasibility.ingredientsUsed.map(i => ({
-            name: i.name,
-            required: i.required,
-            unit: i.unit
-          }))
+          consumed: feasibility.ingredientsUsed
+            .filter((i): i is typeof i & { required: number } => i.required !== null)
+            .map(i => ({
+              name: i.name,
+              required: i.required,
+              unit: i.unit
+            }))
         });
 
         setIsFormOpen(false);
@@ -323,7 +352,7 @@ export const Productions: React.FC<ProductionsProps> = ({ initialTriggerAdd }) =
                       {p.calculatedCost.toFixed(2)} {settings.currency}
                     </td>
                     <td data-label="Coût Unit.">
-                      {costPerUnit.toFixed(2)} {settings.currency} / u
+                      {costPerUnit.toFixed(2)} {settings.currency}/portion
                     </td>
                     <td data-label="Notes" style={{ fontStyle: 'italic', fontSize: '13px', color: 'var(--color-dark-light)' }}>
                       {p.notes || '-'}
@@ -428,12 +457,12 @@ export const Productions: React.FC<ProductionsProps> = ({ initialTriggerAdd }) =
               En confirmant, les quantités ci-dessous seront <strong>immédiatement déduites</strong> de vos stocks.
             </p>
 
-            {/* Alerte si stocks insuffisants */}
+            {/* Alerte si stocks insuffisants ou unités incompatibles */}
             {!feasibility.isFeasible && (
               <div className="card" style={{ backgroundColor: 'var(--color-danger-light)', borderColor: 'rgba(255, 75, 75, 0.2)', color: 'var(--color-danger)', fontSize: '13px', display: 'flex', gap: '8px', alignItems: 'flex-start', marginBottom: '16px' }}>
                 <AlertTriangle size={20} style={{ flexShrink: 0, marginTop: '2px' }} />
                 <div>
-                  <strong>Stock insuffisant !</strong> Impossible de lancer la fabrication. Ingrédients manquants :
+                  <strong>Fabrication bloquée !</strong> Impossible de lancer la fabrication :
                   <ul style={{ paddingLeft: '20px', marginTop: '6px' }}>
                     {feasibility.missingIngredients.map((item, idx) => (
                       <li key={idx}>{item}</li>
@@ -464,29 +493,38 @@ export const Productions: React.FC<ProductionsProps> = ({ initialTriggerAdd }) =
                   </thead>
                   <tbody>
                     {feasibility.ingredientsUsed.map((ing, idx) => {
-                      const hasEnough = ing.available >= ing.required;
-                      const remaining = ing.available - ing.required;
+                      const isIncompatible = ing.required === null;
+                      const hasEnough = !isIncompatible && ing.available >= (ing.required ?? 0);
+                      const remaining = isIncompatible ? null : ing.available - (ing.required ?? 0);
                       return (
                         <tr
                           key={idx}
                           style={{
-                            backgroundColor: idx % 2 === 0 ? 'var(--color-light)' : 'transparent',
+                            backgroundColor: isIncompatible ? 'rgba(220, 38, 38, 0.08)' : (idx % 2 === 0 ? 'var(--color-light)' : 'transparent'),
                             borderBottom: '1px solid var(--color-border)'
                           }}
                         >
                           <td style={{ padding: '6px 8px', fontWeight: '600', color: hasEnough ? 'inherit' : 'var(--color-danger)' }}>
                             {ing.name}
                           </td>
-                          <td style={{ padding: '6px 8px', textAlign: 'right', color: 'var(--color-danger)', fontWeight: '600' }}>
-                            -{ing.required.toFixed(2)} {ing.unit}
-                          </td>
-                          <td style={{ padding: '6px 8px', textAlign: 'right' }}>
-                            {ing.available.toFixed(2)} {ing.unit}
-                          </td>
-                          <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: '700', color: hasEnough ? 'var(--color-secondary)' : 'var(--color-danger)' }}>
-                            {remaining.toFixed(2)} {ing.unit}
-                            {hasEnough ? ' ✅' : ' ❌'}
-                          </td>
+                          {isIncompatible ? (
+                            <td colSpan={3} style={{ padding: '6px 8px', textAlign: 'right', color: 'var(--color-danger)', fontWeight: '700' }}>
+                              ⚠️ Unités incompatibles : recette en {ing.recipeUnit}, stock en {ing.unit} ❌
+                            </td>
+                          ) : (
+                            <>
+                              <td style={{ padding: '6px 8px', textAlign: 'right', color: 'var(--color-danger)', fontWeight: '600' }}>
+                                {ing.approximate ? '≈ ' : ''}-{(ing.required ?? 0).toFixed(2)} {ing.unit}
+                              </td>
+                              <td style={{ padding: '6px 8px', textAlign: 'right' }}>
+                                {ing.available.toFixed(2)} {ing.unit}
+                              </td>
+                              <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: '700', color: hasEnough ? 'var(--color-secondary)' : 'var(--color-danger)' }}>
+                                {ing.approximate ? '≈ ' : ''}{(remaining ?? 0).toFixed(2)} {ing.unit}
+                                {hasEnough ? ' ✅' : ' ❌'}
+                              </td>
+                            </>
+                          )}
                         </tr>
                       );
                     })}

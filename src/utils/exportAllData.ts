@@ -1,21 +1,33 @@
 import { dbService } from '../services/db';
 import { APP_VERSION } from '../version';
+import {
+  Product,
+  Store,
+  Purchase,
+  Recipe,
+  RecipeIngredient,
+  RecipePackaging,
+  Production,
+  Sale,
+  StockMovement,
+  Settings,
+} from '../types';
 
 export interface MarmicoutFullExport {
   exportDate: string;
   application: string;
   version: string;
   format: 'marmicout_backup_v1';
-  products: any[];
-  stores: any[];
-  purchases: any[];
-  recipes: any[];
-  recipe_ingredients: any[];
-  recipe_packaging: any[];
-  productions: any[];
-  sales: any[];
-  stock_movements: any[];
-  settings: any;
+  products: Product[];
+  stores: Store[];
+  purchases: Purchase[];
+  recipes: Recipe[];
+  recipe_ingredients: RecipeIngredient[];
+  recipe_packaging: RecipePackaging[];
+  productions: Production[];
+  sales: Sale[];
+  stock_movements: StockMovement[];
+  settings: Settings;
 }
 
 /**
@@ -141,11 +153,11 @@ export function importAllDataFromJSON(
         settings: payload.settings ? 1 : 0,
       },
     };
-  } catch (err: any) {
+  } catch (err: unknown) {
     return {
       success: false,
       counts: {},
-      error: err.message || 'Erreur lors de l\'importation.',
+      error: err instanceof Error ? err.message : 'Erreur lors de l\'importation.',
     };
   }
 }

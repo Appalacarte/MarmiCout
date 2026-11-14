@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { DollarSign, Plus, Lock } from 'lucide-react';
+import { Plus, Lock } from 'lucide-react';
 import { demoDbService, notifyReadOnlyBlocked } from '../services/demoDb';
 import { Sale } from '../../types';
 
@@ -63,7 +63,7 @@ export const DemoSales: React.FC = () => {
                     {s.qtySold}
                   </td>
                   <td style={{ padding: '12px 16px', color: '#64748b' }}>
-                    {s.unitPrice.toFixed(2)} {settings.currency}
+                    {s.unitPrice.toFixed(2)} {settings.currency}/portion
                   </td>
                   <td style={{ padding: '12px 16px', fontWeight: '700', color: 'var(--color-secondary)' }}>
                     {(s.qtySold * s.unitPrice).toFixed(2)} {settings.currency}

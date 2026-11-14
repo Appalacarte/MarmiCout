@@ -2,7 +2,13 @@
 import { parseDecimalInput } from '../utils';
 import { Camera, Upload, RefreshCw, Check, ArrowLeft, Trash2, Link as LinkIcon, Info } from 'lucide-react';
 import { Product, Recipe, RecipeIngredient, RecipePackaging, Settings } from '../types';
-import { convertUnits } from '../services/db';
+import {
+  convertUnitsWithInfo,
+  normalizeUnit,
+  areUnitsCompatible,
+  formatQtyFr,
+  getUnitFamily,
+} from '../utils/units';
 import mammoth from 'mammoth';
 
 interface RecipeScannerProps {
@@ -152,7 +158,7 @@ export const RecipeScanner: React.FC<RecipeScannerProps> = ({ onClose, onSave, p
     let currentSection: 'meta' | 'ingredients' | 'instructions' | 'notes' = 'meta';
 
     // Regex pour extraire : [quantité] [unité] [nom]
-    const ingLineRegex = /^[-*•\s]*([\d,./]+)?\s*(g|kg|ml|cl|l|pièce[s]?|œuf[s]?|pot[s]?|cuillère[s]?|sachet[s]?)?\s*(?:de|d')?\s+(.+)$/i;
+    const ingLineRegex = /^[-*•\s]*([\d,./]+)?\s*(c\.?\s*[àa]\s*soupe|c\.?\s*[àa]\.?\s*s\.?|cuill[èe]res?\s+[àa]\s+soupe|cas|cs|tbsp|c\.?\s*[àa]\s*caf[ée]|c\.?\s*[àa]\.?\s*c\.?|cuill[èe]res?\s+[àa]\s+caf[ée]|cac|cc|tsp|cuill[èe]res?|mg|gr?|grammes?|kg|kilos?|ml|cl|dl|l|litres?|pi[èe]ces?|unit[ée]s?|œufs?|oeufs?|pots?|sachets?|bouteilles?|bo[îi]tes?)?\s*(?:de|d')?\s+(.+)$/i;
 
     lines.forEach((line, index) => {
       if (index === 0 && line === name) return;
@@ -190,18 +196,9 @@ export const RecipeScanner: React.FC<RecipeScannerProps> = ({ onClose, onSave, p
           }
           if (isNaN(qty)) qty = 1;
 
-          let unit = match[2] || "pièce";
-          unit = unit.trim().toLowerCase();
-          if (unit.startsWith('g')) unit = 'g';
-          else if (unit.startsWith('kg')) unit = 'kg';
-          else if (unit.startsWith('ml')) unit = 'ml';
-          else if (unit.startsWith('cl')) unit = 'cl';
-          else if (unit.startsWith('l')) unit = 'l';
-          else if (unit.startsWith('œuf') || unit.startsWith('oeuf')) unit = 'pièce';
-          else if (unit.startsWith('pot')) unit = 'pièce';
-          else if (unit.startsWith('cuillère')) unit = 'pièce';
-          else if (unit.startsWith('sachet')) unit = 'pièce';
-          else unit = 'pièce';
+          const rawUnit = (match[2] || "pièce").trim();
+          const norm = normalizeUnit(rawUnit);
+          const unit = norm && getUnitFamily(norm) !== null ? norm : 'pièce';
 
           const customName = match[3].trim();
           extractedIngredients.push({
@@ -235,7 +232,9 @@ export const RecipeScanner: React.FC<RecipeScannerProps> = ({ onClose, onSave, p
             const qtyStr = match[1] || "1";
             let qty = parseFloat(qtyStr.replace(',', '.'));
             if (isNaN(qty)) qty = 1;
-            const unit = match[2] || "pièce";
+            const rawUnit = (match[2] || "pièce").trim();
+            const norm = normalizeUnit(rawUnit);
+            const unit = norm && getUnitFamily(norm) !== null ? norm : 'pièce';
             const customName = match[3].trim();
             extractedIngredients.push({ customName, qtyUsed: qty, unit });
           } else {
@@ -292,10 +291,15 @@ export const RecipeScanner: React.FC<RecipeScannerProps> = ({ onClose, onSave, p
       // Traiter les ingrédients et faire les correspondances automatiques
       const mappedIngredients = mockData.ingredients.map(ing => {
         const matchedId = autoMapIngredient(ing.customName);
+        const matchedProd = matchedId ? products.find(p => p.id === matchedId) : undefined;
+        const normIngUnit = normalizeUnit(ing.unit) || 'pièce';
+        const finalUnit = matchedProd
+          ? (areUnitsCompatible(normIngUnit, matchedProd.unit) ? normIngUnit : (normalizeUnit(matchedProd.unit) || matchedProd.unit))
+          : normIngUnit;
         return {
           customName: ing.customName,
           qtyUsed: ing.qtyUsed,
-          unit: ing.unit,
+          unit: finalUnit,
           productId: matchedId,
           customCostPerUnit: 0 // Par défaut à 0, modifiable s'il n'est pas lié
         };
@@ -337,10 +341,15 @@ export const RecipeScanner: React.FC<RecipeScannerProps> = ({ onClose, onSave, p
 
       const mappedIngredients = parsed.ingredients.map(ing => {
         const matchedId = autoMapIngredient(ing.customName);
+        const matchedProd = matchedId ? products.find(p => p.id === matchedId) : undefined;
+        const normIngUnit = normalizeUnit(ing.unit) || 'pièce';
+        const finalUnit = matchedProd
+          ? (areUnitsCompatible(normIngUnit, matchedProd.unit) ? normIngUnit : (normalizeUnit(matchedProd.unit) || matchedProd.unit))
+          : normIngUnit;
         return {
           customName: ing.customName,
           qtyUsed: ing.qtyUsed,
-          unit: ing.unit,
+          unit: finalUnit,
           productId: matchedId,
           customCostPerUnit: 0
         };
@@ -411,13 +420,16 @@ export const RecipeScanner: React.FC<RecipeScannerProps> = ({ onClose, onSave, p
   // Gestion des lignes d'ingrédients
   const handleIngredientChange = (index: number, field: string, value: string | number) => {
     const updated = [...ingredients];
-    updated[index] = { ...updated[index], [field]: value };
+    const nextVal = field === 'unit' ? (normalizeUnit(String(value)) || String(value)) : value;
+    updated[index] = { ...updated[index], [field]: nextVal };
     
-    // Si on change de produit de liaison, adapter l'unité
+    // Si on change de produit de liaison, garder l'unité de la recette si compatible, sinon proposer celle du produit
     if (field === 'productId' && value !== "") {
       const prod = products.find(p => p.id === value);
       if (prod) {
-        updated[index].unit = prod.unit === 'kg' ? 'g' : prod.unit;
+        const currentUnit = normalizeUnit(updated[index].unit) || updated[index].unit;
+        const prodUnit = normalizeUnit(prod.unit) || prod.unit;
+        updated[index].unit = areUnitsCompatible(currentUnit, prodUnit) ? currentUnit : prodUnit;
       }
     }
     setIngredients(updated);
@@ -438,20 +450,27 @@ export const RecipeScanner: React.FC<RecipeScannerProps> = ({ onClose, onSave, p
   };
 
   // Calcul du coût total estimé de la recette en cours de validation
-  const calculateTotalCost = () => {
+  const calculateTotalCostInfo = () => {
     let total = 0;
+    let isApproximate = false;
+    let hasIncompatibleUnits = false;
     ingredients.forEach(ing => {
       if (ing.productId) {
         const prod = products.find(p => p.id === ing.productId);
         if (prod) {
-          const converted = convertUnits(ing.qtyUsed, ing.unit, prod.unit);
-          total += converted * prod.avgPurchasePrice;
+          const conv = convertUnitsWithInfo(ing.qtyUsed, ing.unit, prod.unit);
+          if (conv.value === null) {
+            hasIncompatibleUnits = true;
+          } else {
+            if (conv.approximate) isApproximate = true;
+            total += conv.value * prod.avgPurchasePrice;
+          }
         }
       } else {
         total += ing.qtyUsed * ing.customCostPerUnit;
       }
     });
-    return total;
+    return { total, isApproximate, hasIncompatibleUnits };
   };
 
   const handleSaveSubmit = () => {
@@ -477,7 +496,7 @@ export const RecipeScanner: React.FC<RecipeScannerProps> = ({ onClose, onSave, p
       isActive: true,
       originalPortions: recipePortions,
       sourceImage: sourceImage || undefined,
-      rawExtractedText: `Texte extrait par OCR de la recette : ${recipeName}.\nIngrédients : ${ingredients.map(i => `${i.customName} (${i.qtyUsed} ${i.unit})`).join(', ')}`
+      rawExtractedText: `Texte extrait par OCR de la recette : ${recipeName}.\nIngrédients : ${ingredients.map(i => `${i.customName} (${i.qtyUsed} ${normalizeUnit(i.unit) || i.unit})`).join(', ')}`
     };
 
     // Maper les ingrédients au format de base de données
@@ -485,7 +504,7 @@ export const RecipeScanner: React.FC<RecipeScannerProps> = ({ onClose, onSave, p
       productId: ing.productId || undefined,
       customName: ing.productId ? undefined : ing.customName,
       qtyUsed: ing.qtyUsed,
-      unit: ing.unit,
+      unit: normalizeUnit(ing.unit) || ing.unit,
       originalQtyUsed: ing.qtyUsed,
       customCostPerUnit: ing.productId ? undefined : ing.customCostPerUnit
     }));
@@ -493,7 +512,7 @@ export const RecipeScanner: React.FC<RecipeScannerProps> = ({ onClose, onSave, p
     onSave(finalRecipe, dbIngredients, []);
   };
 
-  const totalCost = calculateTotalCost();
+  const { total: totalCost, isApproximate: totalApprox, hasIncompatibleUnits: totalIncomp } = calculateTotalCostInfo();
   const costPerPortion = recipePortions > 0 ? totalCost / recipePortions : totalCost;
 
   return (
@@ -655,6 +674,18 @@ export const RecipeScanner: React.FC<RecipeScannerProps> = ({ onClose, onSave, p
                 {ingredients.map((ing, idx) => {
                   const isLinked = ing.productId !== "";
                   const linkedProduct = products.find(p => p.id === ing.productId);
+                  const normIngUnit = normalizeUnit(ing.unit) || ing.unit || 'g';
+                  const unitOptions = settings.units.includes(normIngUnit)
+                    ? settings.units
+                    : [normIngUnit, ...settings.units];
+
+                  const conv = isLinked && linkedProduct
+                    ? convertUnitsWithInfo(ing.qtyUsed, normIngUnit, linkedProduct.unit)
+                    : { value: ing.qtyUsed, approximate: false };
+                  const isIncompatible = isLinked && linkedProduct && conv.value === null;
+                  const lineCost = isLinked && linkedProduct
+                    ? (conv.value !== null ? conv.value * linkedProduct.avgPurchasePrice : null)
+                    : ing.qtyUsed * (ing.customCostPerUnit || 0);
 
                   return (
                     <div 
@@ -664,9 +695,9 @@ export const RecipeScanner: React.FC<RecipeScannerProps> = ({ onClose, onSave, p
                         flexDirection: 'column', 
                         gap: '8px', 
                         padding: '12px', 
-                        backgroundColor: isLinked ? 'rgba(74, 155, 120, 0.04)' : 'rgba(242, 85, 34, 0.03)', 
+                        backgroundColor: isIncompatible ? 'rgba(220, 38, 38, 0.05)' : (isLinked ? 'rgba(74, 155, 120, 0.04)' : 'rgba(242, 85, 34, 0.03)'), 
                         borderRadius: 'var(--radius-md)', 
-                        border: `1px solid ${isLinked ? 'var(--color-secondary-light)' : 'rgba(242, 85, 34, 0.15)'}` 
+                        border: `1px solid ${isIncompatible ? 'var(--color-danger)' : (isLinked ? 'var(--color-secondary-light)' : 'rgba(242, 85, 34, 0.15)')}` 
                       }}
                     >
                       <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
@@ -693,11 +724,11 @@ export const RecipeScanner: React.FC<RecipeScannerProps> = ({ onClose, onSave, p
                         {/* Unité */}
                         <select
                           className="form-input"
-                          style={{ width: '60px', height: '36px', padding: '0 4px' }}
-                          value={ing.unit}
+                          style={{ width: '65px', height: '36px', padding: '0 4px' }}
+                          value={normIngUnit}
                           onChange={(e) => handleIngredientChange(idx, 'unit', e.target.value)}
                         >
-                          {settings.units.map(u => (
+                          {unitOptions.map(u => (
                             <option key={u} value={u}>{u}</option>
                           ))}
                         </select>
@@ -714,7 +745,7 @@ export const RecipeScanner: React.FC<RecipeScannerProps> = ({ onClose, onSave, p
                       </div>
 
                       {/* Liaison de stock */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', borderTop: '1px dashed var(--color-border)', paddingTop: '8px', marginTop: '4px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', borderTop: '1px dashed var(--color-border)', paddingTop: '8px', marginTop: '4px', flexWrap: 'wrap' }}>
                         <span style={{ fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px', color: 'var(--color-dark-light)', fontWeight: '600' }}>
                           <LinkIcon size={12} />
                           Liaison stock :
@@ -722,13 +753,13 @@ export const RecipeScanner: React.FC<RecipeScannerProps> = ({ onClose, onSave, p
                         
                         <select
                           className="form-input"
-                          style={{ flex: 1, height: '30px', padding: '0 4px', fontSize: '12px' }}
+                          style={{ flex: 1, height: '30px', padding: '0 4px', fontSize: '12px', minWidth: '160px' }}
                           value={ing.productId}
                           onChange={(e) => handleIngredientChange(idx, 'productId', e.target.value)}
                         >
                           <option value="">-- Laisser non lié (Achat à part) --</option>
                           {products.map(p => (
-                            <option key={p.id} value={p.id}>{p.name} ({p.unit})</option>
+                            <option key={p.id} value={p.id}>{p.name} ({p.avgPurchasePrice.toFixed(2).replace('.', ',')} {settings.currency}/{normalizeUnit(p.unit) || p.unit})</option>
                           ))}
                         </select>
 
@@ -740,18 +771,35 @@ export const RecipeScanner: React.FC<RecipeScannerProps> = ({ onClose, onSave, p
                               type="number"
                               step="any"
                               className="form-input"
-                              style={{ width: '50px', height: '30px', padding: '0 4px', fontSize: '12px', textAlign: 'center' }}
+                              style={{ width: '55px', height: '30px', padding: '0 4px', fontSize: '12px', textAlign: 'center' }}
                               value={ing.customCostPerUnit}
                               onChange={(e) => handleIngredientChange(idx, 'customCostPerUnit', parseDecimalInput(e.target.value))}
                               title="Coût estimé par unité de cet ingrédient"
                             />
-                            <span style={{ fontSize: '11px' }}>€/{ing.unit}</span>
+                            <span style={{ fontSize: '11px' }}>{settings.currency}/{normIngUnit}</span>
                           </div>
                         )}
 
                         {isLinked && linkedProduct && (
                           <span className="badge badge-success" style={{ fontSize: '10px', height: '24px' }}>
-                            PMP : {linkedProduct.avgPurchasePrice.toFixed(2)}€/{linkedProduct.unit}
+                            PMP : {linkedProduct.avgPurchasePrice.toFixed(2).replace('.', ',')} {settings.currency}/{normalizeUnit(linkedProduct.unit) || linkedProduct.unit}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Détail du calcul ou avertissement d'incompatibilité */}
+                      <div style={{ fontSize: '12px', marginTop: '2px' }}>
+                        {isIncompatible && linkedProduct ? (
+                          <div style={{ color: 'var(--color-danger)', fontWeight: '700', backgroundColor: 'rgba(220, 38, 38, 0.08)', padding: '6px 8px', borderRadius: 'var(--radius-sm)' }}>
+                            ⚠️ Unités incompatibles : recette en {normIngUnit}, stock en {normalizeUnit(linkedProduct.unit) || linkedProduct.unit}
+                          </div>
+                        ) : isLinked && linkedProduct && lineCost !== null ? (
+                          <span style={{ color: 'var(--color-dark-light)', fontWeight: '500' }}>
+                            {formatQtyFr(ing.qtyUsed)} {normIngUnit} × {linkedProduct.avgPurchasePrice.toFixed(2).replace('.', ',')} {settings.currency}/{normalizeUnit(linkedProduct.unit) || linkedProduct.unit} {conv.approximate ? '≈' : '='} <strong style={{ color: 'var(--color-dark)' }}>{conv.approximate ? '≈ ' : ''}{lineCost.toFixed(2).replace('.', ',')} {settings.currency}</strong>
+                          </span>
+                        ) : (
+                          <span style={{ color: 'var(--color-dark-light)', fontWeight: '500' }}>
+                            {formatQtyFr(ing.qtyUsed)} {normIngUnit} × {(ing.customCostPerUnit || 0).toFixed(2).replace('.', ',')} {settings.currency}/{normIngUnit} = <strong style={{ color: 'var(--color-dark)' }}>{(lineCost || 0).toFixed(2).replace('.', ',')} {settings.currency}</strong>
                           </span>
                         )}
                       </div>
@@ -789,18 +837,23 @@ export const RecipeScanner: React.FC<RecipeScannerProps> = ({ onClose, onSave, p
                 <h3 className="card-title">Coût Estimé</h3>
                 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', margin: '16px 0' }}>
+                  {totalIncomp && (
+                    <div style={{ padding: '8px 10px', backgroundColor: 'rgba(220, 38, 38, 0.08)', color: 'var(--color-danger)', borderRadius: 'var(--radius-sm)', fontSize: '12px', fontWeight: '700' }}>
+                      ⚠️ Un ou plusieurs ingrédients ont des unités incompatibles avec le stock (exclus du coût).
+                    </div>
+                  )}
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px' }}>
                     <span>Coût total des ingrédients :</span>
-                    <strong>{totalCost.toFixed(2)} €</strong>
+                    <strong>{totalApprox ? '≈ ' : ''}{totalCost.toFixed(2)} €</strong>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px' }}>
                     <span>Coût par portion ({recipePortions} parts) :</span>
-                    <strong style={{ color: 'var(--color-primary)' }}>{costPerPortion.toFixed(2)} €</strong>
+                    <strong style={{ color: 'var(--color-primary)' }}>{totalApprox ? '≈ ' : ''}{costPerPortion.toFixed(2)} €/portion</strong>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', borderTop: '1px solid var(--color-border)', paddingTop: '12px' }}>
                     <span>Marge cible ({settings.defaultTargetMargin}%) :</span>
                     <strong style={{ color: 'var(--color-secondary)' }}>
-                      {(costPerPortion / (1 - (settings.defaultTargetMargin / 100))).toFixed(2)} € (PV)
+                      {totalApprox ? '≈ ' : ''}{(costPerPortion / (1 - (settings.defaultTargetMargin / 100))).toFixed(2)} €/portion (PV)
                     </strong>
                   </div>
                 </div>

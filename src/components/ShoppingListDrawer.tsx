@@ -15,7 +15,8 @@ import {
   Plus
 } from 'lucide-react';
 import { Recipe, Production, Product } from '../types';
-import { dbService, convertUnits } from '../services/db';
+import { dbService } from '../services/db';
+import { convertUnitsWithInfo, normalizeUnit } from '../utils/units';
 import { generateUUID } from '../services/cloudDbService';
 
 interface RecipeSelection {
@@ -47,7 +48,16 @@ interface ShoppingItem {
   avgPurchasePrice: number;
   fromRecipes: string[];
   isUnlinked?: boolean;
+  isApproximate?: boolean;
   unlinkedRefs?: { recipeId: string; ingredientId: string }[];
+}
+
+interface IncompatibleShoppingItem {
+  key: string;
+  recipeName: string;
+  productName: string;
+  recipeUnit: string;
+  stockUnit: string;
 }
 
 export const ShoppingListDrawer: React.FC<ShoppingListDrawerProps> = ({
@@ -70,13 +80,14 @@ export const ShoppingListDrawer: React.FC<ShoppingListDrawerProps> = ({
 
   const settings = dbService.getSettings();
 
-  const { toOrderItems, availableItems, totalEstimatedCost } = useMemo(() => {
+  const { toOrderItems, availableItems, incompatibleItems, totalEstimatedCost, hasApproximateCost } = useMemo(() => {
     void refreshTick;
     if (!selections.length) {
-      return { toOrderItems: [], availableItems: [], totalEstimatedCost: 0 };
+      return { toOrderItems: [], availableItems: [], incompatibleItems: [] as IncompatibleShoppingItem[], totalEstimatedCost: 0, hasApproximateCost: false };
     }
 
-    const productNeeds = new Map<string, { needed: number; fromRecipes: string[] }>();
+    const productNeeds = new Map<string, { needed: number; fromRecipes: string[]; isApproximate: boolean }>();
+    const incompatibleItems: IncompatibleShoppingItem[] = [];
     const customNeeds = new Map<string, {
       name: string;
       totalQty: number;
@@ -93,22 +104,36 @@ export const ShoppingListDrawer: React.FC<ShoppingListDrawerProps> = ({
       for (const ing of ingredients) {
         const product = ing.productId ? dbService.getProduct(ing.productId) : undefined;
         if (product) {
-          const qtyNeeded = convertUnits(ing.qtyUsed * factor, ing.unit, product.unit);
-          const existing = productNeeds.get(product.id);
-          if (existing) {
-            existing.needed += qtyNeeded;
-            if (!existing.fromRecipes.includes(recipe.name)) {
-              existing.fromRecipes.push(recipe.name);
-            }
-          } else {
-            productNeeds.set(product.id, {
-              needed: qtyNeeded,
-              fromRecipes: [recipe.name]
+          const conv = convertUnitsWithInfo(ing.qtyUsed * factor, ing.unit, product.unit);
+          if (conv.value === null) {
+            incompatibleItems.push({
+              key: `${recipe.id}_${ing.id}`,
+              recipeName: recipe.name,
+              productName: product.name,
+              recipeUnit: normalizeUnit(ing.unit) || ing.unit,
+              stockUnit: normalizeUnit(product.unit) || product.unit,
             });
+          } else {
+            const qtyNeeded = conv.value;
+            const existing = productNeeds.get(product.id);
+            if (existing) {
+              existing.needed += qtyNeeded;
+              if (conv.approximate) existing.isApproximate = true;
+              if (!existing.fromRecipes.includes(recipe.name)) {
+                existing.fromRecipes.push(recipe.name);
+              }
+            } else {
+              productNeeds.set(product.id, {
+                needed: qtyNeeded,
+                fromRecipes: [recipe.name],
+                isApproximate: conv.approximate,
+              });
+            }
           }
         } else {
           const rawName = (ing.customName || 'Ingrédient').trim();
-          const key = `custom_${rawName.toLowerCase()}_${ing.unit}`;
+          const normIngUnit = normalizeUnit(ing.unit) || ing.unit;
+          const key = `custom_${rawName.toLowerCase()}_${normIngUnit}`;
           const qtyNeeded = ing.qtyUsed * factor;
           const lineCost = qtyNeeded * (ing.customCostPerUnit || 0);
           const existing = customNeeds.get(key);
@@ -123,7 +148,7 @@ export const ShoppingListDrawer: React.FC<ShoppingListDrawerProps> = ({
             customNeeds.set(key, {
               name: rawName.charAt(0).toUpperCase() + rawName.slice(1),
               totalQty: qtyNeeded,
-              unit: ing.unit,
+              unit: normIngUnit,
               customCostSum: lineCost,
               fromRecipes: [recipe.name],
               unlinkedRefs: [{ recipeId: recipe.id, ingredientId: ing.id }]
@@ -136,7 +161,7 @@ export const ShoppingListDrawer: React.FC<ShoppingListDrawerProps> = ({
     const toOrderItems: ShoppingItem[] = [];
     const availableItems: ShoppingItem[] = [];
 
-    for (const [productId, { needed, fromRecipes }] of productNeeds.entries()) {
+    for (const [productId, { needed, fromRecipes, isApproximate }] of productNeeds.entries()) {
       const product = dbService.getProduct(productId);
       if (!product) continue;
 
@@ -145,13 +170,14 @@ export const ShoppingListDrawer: React.FC<ShoppingListDrawerProps> = ({
         key: productId,
         productId,
         productName: product.name,
-        productUnit: product.unit,
+        productUnit: normalizeUnit(product.unit) || product.unit,
         needed: Math.round(needed * 1000) / 1000,
         inStock: product.stock,
         toOrder: Math.round(toOrder * 1000) / 1000,
         estimatedCost: toOrder * product.avgPurchasePrice,
         avgPurchasePrice: product.avgPurchasePrice,
-        fromRecipes
+        fromRecipes,
+        isApproximate,
       };
 
       if (toOrder > 0) {
@@ -183,8 +209,9 @@ export const ShoppingListDrawer: React.FC<ShoppingListDrawerProps> = ({
     toOrderItems.sort((a, b) => b.estimatedCost - a.estimatedCost);
 
     const totalEstimatedCost = toOrderItems.reduce((sum, item) => sum + item.estimatedCost, 0);
+    const hasApproximateCost = toOrderItems.some(i => i.isApproximate);
 
-    return { toOrderItems, availableItems, totalEstimatedCost };
+    return { toOrderItems, availableItems, incompatibleItems, totalEstimatedCost, hasApproximateCost };
   }, [selections, refreshTick]);
 
   // --- Créer le produit et relier l'ingrédient ---
@@ -492,6 +519,30 @@ export const ShoppingListDrawer: React.FC<ShoppingListDrawerProps> = ({
               </div>
             )}
 
+            {/* Avertissement unités incompatibles */}
+            {incompatibleItems.length > 0 && (
+              <div style={{
+                marginBottom: '16px',
+                padding: '12px 14px',
+                backgroundColor: 'var(--color-danger-light)',
+                border: '1px solid rgba(255, 75, 75, 0.3)',
+                borderRadius: 'var(--radius-md)',
+                fontSize: '12px',
+                color: 'var(--color-danger)',
+                fontWeight: '600'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
+                  <AlertTriangle size={16} />
+                  <span>Unités incompatibles détectées (production bloquée) :</span>
+                </div>
+                {incompatibleItems.map(inc => (
+                  <div key={inc.key} style={{ fontWeight: '500', marginTop: '2px' }}>
+                    • <strong>{inc.productName}</strong> ({inc.recipeName}) : Unités incompatibles : recette en {inc.recipeUnit}, stock en {inc.stockUnit}
+                  </div>
+                ))}
+              </div>
+            )}
+
             {/* Total estimé */}
             {toOrderItems.length > 0 && (
               <div style={{
@@ -508,7 +559,7 @@ export const ShoppingListDrawer: React.FC<ShoppingListDrawerProps> = ({
                   💰 Coût estimé des achats
                 </span>
                 <strong style={{ fontSize: '18px', color: 'var(--color-primary)' }}>
-                  ~{totalEstimatedCost.toFixed(2)}{settings.currency}
+                  {hasApproximateCost ? '≈ ' : '~'}{totalEstimatedCost.toFixed(2)} {settings.currency}
                 </strong>
               </div>
             )}
@@ -578,7 +629,7 @@ export const ShoppingListDrawer: React.FC<ShoppingListDrawerProps> = ({
                           )}
                         </div>
                         <div style={{ fontSize: '11px', color: 'var(--color-dark-light)' }}>
-                          Besoin : {item.needed} {item.productUnit} • {item.isUnlinked ? 'Non suivi en stock' : `Stock : ${item.inStock} ${item.productUnit}`}
+                          Besoin : {item.isApproximate ? '≈ ' : ''}{item.needed} {item.productUnit} • {item.isUnlinked ? 'Non suivi en stock' : `Stock : ${item.inStock} ${item.productUnit}`} • {item.avgPurchasePrice.toFixed(2)} {settings.currency}/{item.productUnit}
                         </div>
                         {item.fromRecipes.length > 0 && (
                           <div style={{ fontSize: '10px', color: 'var(--color-dark-light)', marginTop: '2px' }}>
@@ -588,11 +639,11 @@ export const ShoppingListDrawer: React.FC<ShoppingListDrawerProps> = ({
                       </div>
                       <div style={{ textAlign: 'right', flexShrink: 0 }}>
                         <div style={{ fontWeight: '700', fontSize: '15px', color: 'var(--color-danger)' }}>
-                          {item.toOrder} {item.productUnit}
+                          {item.isApproximate ? '≈ ' : ''}{item.toOrder} {item.productUnit}
                         </div>
                         {item.estimatedCost > 0 && (
                           <div style={{ fontSize: '11px', color: 'var(--color-dark-light)' }}>
-                            ~{item.estimatedCost.toFixed(2)}{settings.currency}
+                            {item.isApproximate ? '≈ ' : '~'}{item.estimatedCost.toFixed(2)} {settings.currency}
                           </div>
                         )}
                       </div>
@@ -793,11 +844,19 @@ export const ShoppingListDrawer: React.FC<ShoppingListDrawerProps> = ({
               <button
                 type="button"
                 className="btn btn-primary"
-                style={{ flex: 1, height: '46px', minWidth: '160px' }}
+                disabled={incompatibleItems.length > 0}
+                style={{
+                  flex: 1,
+                  height: '46px',
+                  minWidth: '160px',
+                  opacity: incompatibleItems.length > 0 ? 0.55 : 1,
+                  cursor: incompatibleItems.length > 0 ? 'not-allowed' : 'pointer',
+                }}
                 onClick={() => setCookingState('confirming')}
+                title={incompatibleItems.length > 0 ? 'Unités incompatibles détectées' : undefined}
               >
                 <ChefHat size={18} />
-                Cuisiner &amp; déduire du stock
+                {incompatibleItems.length > 0 ? 'Cuisiner bloqué (unités incompatibles)' : 'Cuisiner & déduire du stock'}
               </button>
 
               {/* Export Excel (CSV) */}

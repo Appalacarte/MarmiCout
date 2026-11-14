@@ -747,7 +747,7 @@ export class CloudDbService {
       defaultTargetMargin: Number(data.default_target_margin || 60),
       categories: data.categories || [],
       recipeCategories: data.recipe_categories || ['Entrée', 'Plat', 'Dessert', 'Boisson'],
-      units: data.units || ['kg', 'g', 'l', 'cl', 'ml', 'pièce'],
+      units: data.units || ['kg', 'g', 'l', 'cl', 'ml', 'cs', 'cc', 'pièce'],
       salesLocations: data.sales_locations || ['Marché', 'Commande', 'En Ligne', 'Domicile', 'Autre'],
       defaultMinStockAlert: Number(data.default_min_stock_alert || 2),
       googleSheetId: data.google_sheet_id || undefined,

@@ -1,4 +1,5 @@
 import { Recipe, RecipeIngredient } from '../types';
+import { normalizeUnit, getUnitFamily } from '../utils/units';
 
 const BASE_URL = 'https://www.themealdb.com/api/json/v1/1/';
 
@@ -10,7 +11,7 @@ export interface MappedRecipeResult {
 }
 
 /**
- * Analyse la chaîne de mesure (ex: "1 1/2 cups", "250g", "3 pieces") 
+ * Analyse la chaîne de mesure (ex: "1 1/2 cups", "250g", "3 pieces", "2 tbsp") 
  * pour en extraire une quantité numérique et une unité reconnue par MarmiCout.
  */
 export function parseMeasure(measureStr: string): { qty: number; unit: string; displaySuffix?: string } {
@@ -39,31 +40,58 @@ export function parseMeasure(measureStr: string): { qty: number; unit: string; d
   let unit = 'pièce';
   let displaySuffix = '';
 
-  if (cleaned.includes('kg') || cleaned.includes('kilo')) {
+  const nonDigits = cleaned.replace(/^[\d,./\s]+/, '').trim();
+  const normCandidate = normalizeUnit(nonDigits);
+
+  if (normCandidate && getUnitFamily(normCandidate) !== null) {
+    unit = normCandidate;
+  } else if (
+    /\b(tbsp\.?|tbs\.?|tablespoons?|c\.?\s*[àa]\s*soupe|c\.?\s*[àa]\.?\s*s\.?|cas|cs|cuill[èe]res?\s+[àa]\s+soupe)\b/i.test(
+      cleaned
+    )
+  ) {
+    unit = 'cs';
+  } else if (
+    /\b(tsp\.?|teaspoons?|c\.?\s*[àa]\s*caf[ée]|c\.?\s*[àa]\.?\s*c\.?|cac|cc|cuill[èe]res?\s+[àa]\s+caf[ée]|cuill[èe]res?)\b/i.test(
+      cleaned
+    )
+  ) {
+    unit = 'cc';
+  } else if (cleaned.includes('kg') || cleaned.includes('kilo')) {
     unit = 'kg';
-  } else if (cleaned.includes('ml')) {
+  } else if (cleaned.includes('mg') || cleaned.includes('milligram')) {
+    unit = 'mg';
+  } else if (cleaned.includes('ml') || cleaned.includes('millilit')) {
     unit = 'ml';
-  } else if (cleaned.includes('cl')) {
+  } else if (cleaned.includes('cl') || cleaned.includes('centilit')) {
     unit = 'cl';
-  } else if (cleaned.match(/\b(g|gramme[s]?)\b/)) {
+  } else if (cleaned.includes('dl') || cleaned.includes('decilit') || cleaned.includes('décilit')) {
+    unit = 'dl';
+  } else if (cleaned.match(/\b(g|gr|gramme[s]?|gram[s]?)\b/)) {
     unit = 'g';
   } else if (cleaned.match(/\b(l|litre[s]?|liter[s]?)\b/)) {
     unit = 'l';
   } else if (cleaned.includes('sachet') || cleaned.includes('pack') || cleaned.includes('packet')) {
     unit = 'sachet';
+  } else if (cleaned.match(/\b(boite[s]?|boîte[s]?|can[s]?)\b/)) {
+    unit = 'boite';
+  } else if (cleaned.match(/\b(pot[s]?|jar[s]?|bocal|bocaux)\b/)) {
+    unit = 'pot';
+  } else if (cleaned.match(/\b(bouteille[s]?|bottle[s]?)\b/)) {
+    unit = 'bouteille';
   } else {
-    // Extraction de l'unité textuelle non standard (ex. tasse, cuillère)
-    const nonDigits = cleaned.replace(/[\d,./\s]+/g, '').trim();
+    // Extraction de l'unité textuelle non standard (ex. tasse, pincée)
+    const cleanNonDigits = cleaned.replace(/[\d,./\s]+/g, '').trim();
     if (
-      nonDigits && 
-      nonDigits !== 'whole' && 
-      nonDigits !== 'pieces' && 
-      nonDigits !== 'piece' && 
-      nonDigits !== 'u' && 
-      nonDigits !== 'unit' &&
-      nonDigits !== 'units'
+      cleanNonDigits && 
+      cleanNonDigits !== 'whole' && 
+      cleanNonDigits !== 'pieces' && 
+      cleanNonDigits !== 'piece' && 
+      cleanNonDigits !== 'u' && 
+      cleanNonDigits !== 'unit' &&
+      cleanNonDigits !== 'units'
     ) {
-      displaySuffix = nonDigits;
+      displaySuffix = cleanNonDigits;
     }
   }
 

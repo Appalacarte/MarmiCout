@@ -11,6 +11,7 @@ import {
   List
 } from 'lucide-react';
 import { dbService } from '../services/db';
+import { normalizeUnit } from '../utils/units';
 import { Product, Recipe, Sale } from '../types';
 import { Drawer } from './Drawer';
 
@@ -321,8 +322,9 @@ export const Sales: React.FC<SalesProps> = ({ initialTriggerAdd }) => {
                   const rec = isRecipe ? recipes.find(r => r.id === s.itemId) : null;
                   const prod = !isRecipe ? products.find(p => p.id === s.itemId) : null;
                   const name = isRecipe ? (rec ? rec.name : 'Recette supprimée') : (prod ? prod.name : 'Ingrédient supprimé');
-                  const unitLabel = prod ? prod.unit : 'u';
-                  const cost = isRecipe ? dbService.calculateRecipeCost(s.itemId).costPerPortion : (prod ? prod.avgPurchasePrice : 0);
+                  const unitLabel = isRecipe ? 'portion' : (prod ? (normalizeUnit(prod.unit) || prod.unit) : 'pièce');
+                  const recipeCostInfo = isRecipe ? dbService.calculateRecipeCost(s.itemId) : null;
+                  const cost = isRecipe ? (recipeCostInfo?.costPerPortion || 0) : (prod ? prod.avgPurchasePrice : 0);
 
                   const saleCost = s.qtySold * cost;
                   const saleRev = s.qtySold * s.unitPrice;
@@ -349,15 +351,21 @@ export const Sales: React.FC<SalesProps> = ({ initialTriggerAdd }) => {
                         {s.qtySold} {unitLabel}
                       </td>
                       <td data-label="Prix Unitaire">
-                        {s.unitPrice.toFixed(2)} {settings.currency}
+                        {s.unitPrice.toFixed(2)} {settings.currency}/{unitLabel}
                       </td>
                       <td data-label="Total" style={{ fontWeight: '700' }}>
                         {saleRev.toFixed(2)} {settings.currency}
                       </td>
                       <td data-label="Marge Est.">
-                        <span className={`badge ${marginPercent >= settings.defaultTargetMargin ? 'badge-success' : 'badge-warning'}`}>
-                          {marginPercent.toFixed(0)}% (+{profit.toFixed(1)}€)
-                        </span>
+                        {recipeCostInfo?.hasIncompatibleUnits ? (
+                          <span className="badge badge-danger" title={recipeCostInfo.incompatibleDetails.join(', ')}>
+                            ⚠️ Unités incompatibles
+                          </span>
+                        ) : (
+                          <span className={`badge ${marginPercent >= settings.defaultTargetMargin ? 'badge-success' : 'badge-warning'}`}>
+                            {recipeCostInfo?.isApproximate ? '≈ ' : ''}{marginPercent.toFixed(0)}% (+{profit.toFixed(1)}€)
+                          </span>
+                        )}
                       </td>
                       <td data-label="Lieu">
                         <span className="badge badge-info" style={{ backgroundColor: 'var(--color-light)', color: 'var(--color-dark)', display: 'inline-flex', alignItems: 'center', gap: '2px' }}>
@@ -600,7 +608,9 @@ export const Sales: React.FC<SalesProps> = ({ initialTriggerAdd }) => {
             </div>
 
             <div className="form-group">
-              <label className="form-label">Prix de vente unitaire ({settings.currency})</label>
+              <label className="form-label">
+                Prix de vente unitaire ({settings.currency}/{formItemType === 'RECIPE' ? 'portion' : (products.find(p => p.id === formItemId)?.unit || 'pièce')})
+              </label>
               <input
                 type="number"
                 step="any"

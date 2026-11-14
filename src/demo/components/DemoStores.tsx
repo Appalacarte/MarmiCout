@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Store as StoreIcon, Plus, Lock, MapPin, Phone } from 'lucide-react';
+import { Plus, Lock, MapPin, Phone } from 'lucide-react';
 import { demoDbService, notifyReadOnlyBlocked } from '../services/demoDb';
 import { Store } from '../../types';
 

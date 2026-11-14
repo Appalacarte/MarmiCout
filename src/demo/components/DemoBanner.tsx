@@ -1,5 +1,5 @@
 import React from 'react';
-import { Sparkles, ArrowLeft, RotateCcw, ShieldCheck } from 'lucide-react';
+import { Sparkles, ArrowLeft, RotateCcw } from 'lucide-react';
 import { demoDbService } from '../services/demoDb';
 
 interface DemoBannerProps {

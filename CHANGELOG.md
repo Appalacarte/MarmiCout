@@ -4,6 +4,28 @@ Toutes les modifications notables apportées à ce projet sont documentées dans
 
 ---
 
+## [2.0.54] - 2026-11-14
+
+### Refonte Complète de la Conversion d'Unités (`src/utils/units.ts`), Cuillères (`cs` / `cc`), Contrôle d'Incompatibilité & Détail des Prix
+- **Module de conversion d'unités ([`src/utils/units.ts`](file:///d:/Aplli/Marmicout/Appli%20Marmicout/src/utils/units.ts))** :
+  - Trois familles d'unités strictes : **Masse** (`mg`, `g`, `kg`), **Volume** (`ml`, `cl`, `dl`, `l`, `cc` = 5 ml, `cs` = 15 ml) et **Comptage** (`pièce`, `sachet`, `pot`, `bouteille`, `boite`, non convertibles entre eux).
+  - Ajout de `normalizeUnit` reconnaissant les variantes courantes (`gr`, `grammes`, `kilo`, `litre`, `L`, `c. à soupe`, `c.à.s`, `cas`, `tbsp`, `c. à café`, `cac`, `tsp`, `pièces`, `unité`, etc.).
+  - `convertUnits` renvoie `null` lorsque la conversion est impossible (et jamais la quantité inchangée). `convertUnitsWithInfo` signale l'approximation `1 ml = 1 g` (`approximate: true`) entre masse et volume, et refuse toute conversion entre comptage et masse/volume.
+- **Ajout de `cs` et `cc` & Sélection d'unité dans les recettes** :
+  - Ajout de `cs` et `cc` aux unités par défaut et injection automatique dans les réglages existants (`ensureRequiredUnits`).
+  - Dans le formulaire de recette et le scanner, normalisation de l'unité réelle de l'ingrédient et ajout dynamique en `<option>` si elle ne figure pas dans la liste au lieu de basculer sur `kg`.
+  - Lors de la liaison d'un ingrédient à un produit du stock, conservation de l'unité de la recette si elle est compatible avec celle du produit, ou bascule sur l'unité du produit dans le cas contraire.
+  - Import de recettes ([`src/services/recipeImportService.ts`](file:///d:/Aplli/Marmicout/Appli%20Marmicout/src/services/recipeImportService.ts) et [`src/components/RecipeScanner.tsx`](file:///d:/Aplli/Marmicout/Appli%20Marmicout/src/components/RecipeScanner.tsx)) : reconnaissance des cuillères à soupe en `cs` et cuillères à café en `cc` au lieu de `pièce`.
+- **Gestion des unités incompatibles, blocage de « Cuisiner » & Affichage détaillé des prix** :
+  - Mise à jour de tous les appelants (`calculateRecipeCost`, `addProduction`, `Recipes.tsx`, `ShoppingListDrawer.tsx`, `Productions.tsx`, `Sales.tsx`, `Dashboard.tsx`, `Purchases.tsx`, `Products.tsx`, `RecipeScanner.tsx`).
+  - En cas d'unités incompatibles : aucun faux coût n'est additionné, affichage d'un avertissement visible `« Unités incompatibles : recette en X, stock en Y »` sur la ligne et blocage de l'action « Cuisiner » avec un message explicite avant toute déduction de stock.
+  - En cas de conversion approximative (masse ↔ volume), affichage de l'indicateur `≈`.
+  - Précision systématique de l'unité sur tous les prix unitaires (`€/kg`, `€/l`, `€/pièce`, `€/portion`) et affichage du détail complet du calcul sur chaque ligne d'ingrédient (ex. `300 g × 12,00 €/kg = 3,60 €`).
+- **Tests automatisés ([`src/utils/units.test.ts`](file:///d:/Aplli/Marmicout/Appli%20Marmicout/src/utils/units.test.ts))** :
+  - Suite de 9 tests unitaires couvrant toutes les conversions, approximations, cas impossibles et variantes de `normalizeUnit`.
+
+---
+
 ## [2.0.53] - 2026-11-14
 
 ### Édition Produit, « Corriger le stock », Prix de départ sans achat & Suppression / Désactivation Sécurisée

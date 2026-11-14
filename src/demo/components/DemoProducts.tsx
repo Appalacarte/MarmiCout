@@ -2,10 +2,7 @@ import React, { useState } from 'react';
 import { 
   Plus,
   Search,
-  Barcode,
   History,
-  Archive,
-  ArrowRightLeft,
   FileText,
   Lock
 } from 'lucide-react';
@@ -17,7 +14,7 @@ interface DemoProductsProps {
   onNavigate?: (tab: string, extraData?: Record<string, unknown>) => void;
 }
 
-export const DemoProducts: React.FC<DemoProductsProps> = ({ onNavigate }) => {
+export const DemoProducts: React.FC<DemoProductsProps> = () => {
   const [products] = useState<Product[]>(() => demoDbService.getProducts());
   const [stores] = useState(() => demoDbService.getStores());
   const settings = demoDbService.getSettings();
@@ -235,7 +232,7 @@ export const DemoProducts: React.FC<DemoProductsProps> = ({ onNavigate }) => {
                         <span>{pur.date}</span> • <strong>{pur.qty} {pur.unit}</strong>
                       </div>
                       <div style={{ fontWeight: '600' }}>
-                        {pur.pricePaid.toFixed(2)} {settings.currency} ({pur.unitPrice.toFixed(2)}/u)
+                        {pur.pricePaid.toFixed(2)} {settings.currency} ({pur.unitPrice.toFixed(2)} {settings.currency}/{pur.unit})
                       </div>
                     </div>
                   ))}

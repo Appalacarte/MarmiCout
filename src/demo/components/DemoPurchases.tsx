@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ShoppingCart, Plus, Search, Lock, FileText } from 'lucide-react';
+import { Plus, Search, Lock, FileText } from 'lucide-react';
 import { demoDbService, notifyReadOnlyBlocked } from '../services/demoDb';
 import { Purchase } from '../../types';
 

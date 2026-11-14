@@ -3,7 +3,7 @@ import { createWorker } from 'tesseract.js';
 import * as pdfjsLib from 'pdfjs-dist';
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.mjs?url';
 import { parseDecimalInput } from '../utils';
-import { Camera, Upload, RefreshCw, Check, ArrowLeft, Trash2, Link as LinkIcon, Info, FileText, Plus } from 'lucide-react';
+import { Upload, RefreshCw, Check, ArrowLeft, Trash2, Link as LinkIcon, Info, Plus } from 'lucide-react';
 import { Product, Purchase, Store, Settings } from '../types';
 import { dbService } from '../services/db';
 import { subscriptionService } from '../services/subscriptionService';
@@ -222,11 +222,11 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({ onClose, onSave,
       if (!matched) {
         // Format C (très permissif, idéal pour OCR capricieux comme Auchan)
         // Gère les tirets, étoiles au début, espaces dans les prix (0, 75)
-        const veryPermissive = /^[*X]?\s*([a-zA-ZÀ-ÿ][a-zA-ZÀ-ÿ0-9\s'\.\-]{2,40}?)(?:\s+([\d.,*X\s]+))?\s+[\.]*\s*(\d+)\s*[.,]\s*(\d{2})\s*(?:€|\$|EUR)?$/i;
+        const veryPermissive = /^[*X]?\s*([a-zA-ZÀ-ÿ][a-zA-ZÀ-ÿ0-9\s'.-]{2,40}?)(?:\s+([\d.,*X\s]+))?\s+[.]*\s*(\d+)\s*[.,]\s*(\d{2})\s*(?:€|\$|EUR)?$/i;
         const matchPermissive = line.match(veryPermissive);
         if (matchPermissive) {
           let name = matchPermissive[1].trim();
-          let middlePart = matchPermissive[2] ? matchPermissive[2].trim() : '';
+          const middlePart = matchPermissive[2] ? matchPermissive[2].trim() : '';
           let qty = 1;
           const total = parseFloat(`${matchPermissive[3]}.${matchPermissive[4]}`);
 
@@ -267,7 +267,6 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({ onClose, onSave,
           const numbers = numbersMatch.map(n => parseFloat(n.replace(',', '.')));
           let finalQty = 1;
           let finalUnitPrice = 0;
-          let finalTotal = 0;
           let mathFound = false;
           let usedNumberStrings: string[] = [];
 
@@ -282,7 +281,6 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({ onClose, onSave,
                   if (A > 0 && B > 0 && Math.abs((A * B) - C) < 0.05) {
                     finalQty = A;
                     finalUnitPrice = B;
-                    finalTotal = C;
                     mathFound = true;
                     usedNumberStrings = [numbersMatch[i], numbersMatch[j], numbersMatch[k]];
                   }
@@ -292,7 +290,7 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({ onClose, onSave,
           }
 
           if (!mathFound) {
-            finalTotal = numbers[numbers.length - 1];
+            const finalTotal = numbers[numbers.length - 1];
             usedNumberStrings = [numbersMatch[numbers.length - 1]];
             
             const matchX = line.match(/(?:^|\s)(\d+(?:[.,]\d+)?)\s*[xX*]\s/);
@@ -470,7 +468,7 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({ onClose, onSave,
       reader.readAsDataURL(file);
 
       const token = await getAccessToken();
-      const apiBase = (window as any).__MARMICOUT_APPALACARTE_URL__ || import.meta.env.VITE_APPALACARTE_URL || 'http://localhost:3001';
+      const apiBase = (window as unknown as { __MARMICOUT_APPALACARTE_URL__?: string }).__MARMICOUT_APPALACARTE_URL__ || import.meta.env.VITE_APPALACARTE_URL || 'http://localhost:3001';
       const formData = new FormData();
       formData.append("document", file);
 
@@ -490,8 +488,8 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({ onClose, onSave,
 
       const extractedStore = json.store || '';
       const extractedDate = json.date || new Date().toISOString().split('T')[0];
-      const lineItems = json.items || [];
-      const mappedItems = lineItems.map((item: any) => ({
+      const lineItems: Array<{ name: string; qty?: number; unitPrice?: number; unit?: string }> = json.items || [];
+      const mappedItems = lineItems.map((item) => ({
         name: item.name,
         qty: item.qty || 1,
         unitPrice: Number(item.unitPrice || 0),
@@ -510,9 +508,9 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({ onClose, onSave,
       setStep('validating');
       setConfidence(100);
 
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Erreur OCR IA', err);
-      alert(`La lecture avec l'IA a échoué : ${err.message || err}`);
+      alert(`La lecture avec l'IA a échoué : ${err instanceof Error ? err.message : String(err)}`);
       setStep('idle');
     }
   };

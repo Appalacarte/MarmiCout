@@ -23,6 +23,14 @@ import {
   DEMO_SALES,
   DEMO_STOCK_MOVEMENTS
 } from '../data/demoMockData';
+import {
+  convertUnits,
+  convertUnitsWithInfo,
+  normalizeUnit,
+  ensureRequiredUnits
+} from '../../utils/units';
+
+export { convertUnits, convertUnitsWithInfo, normalizeUnit, ensureRequiredUnits };
 
 // Clés spécifiques et isolées pour la démo
 const DEMO_KEYS = {
@@ -51,27 +59,6 @@ export const notifyReadOnlyBlocked = (action: string = 'Cette action') => {
     readOnlyNotifier(action);
   }
 };
-
-// Conversions d'unités (identique à la prod)
-export function convertUnits(qty: number, fromUnit: string, toUnit: string): number {
-  const f = fromUnit.trim().toLowerCase();
-  const t = toUnit.trim().toLowerCase();
-  if (f === t) return qty;
-
-  // Conversions masse (base kg)
-  if (f === 'g' && t === 'kg') return qty / 1000;
-  if (f === 'kg' && t === 'g') return qty * 1000;
-
-  // Conversions volume (base l)
-  if (f === 'ml' && t === 'l') return qty / 1000;
-  if (f === 'l' && t === 'ml') return qty * 1000;
-  if (f === 'cl' && t === 'l') return qty / 100;
-  if (f === 'l' && t === 'cl') return qty * 100;
-  if (f === 'cl' && t === 'ml') return qty * 10;
-  if (f === 'ml' && t === 'cl') return qty / 10;
-
-  return qty;
-}
 
 // Initialisation de la base démo dans le LocalStorage dédié
 const initDemoDB = () => {
@@ -124,13 +111,21 @@ export const demoDbService = {
     initDemoDB();
     try {
       const data = localStorage.getItem(DEMO_KEYS.SETTINGS);
-      return data ? JSON.parse(data) : DEMO_SETTINGS;
+      const parsed: Settings = data ? JSON.parse(data) : DEMO_SETTINGS;
+      return {
+        ...parsed,
+        units: ensureRequiredUnits(parsed.units),
+      };
     } catch {
-      return DEMO_SETTINGS;
+      return {
+        ...DEMO_SETTINGS,
+        units: ensureRequiredUnits(DEMO_SETTINGS.units),
+      };
     }
   },
 
-  saveSettings(_settings: Settings): void {
+  saveSettings(settings: Settings): void {
+    void settings;
     // Verrouillé en lecture seule
     notifyReadOnlyBlocked('La modification des paramètres');
   },
@@ -144,11 +139,13 @@ export const demoDbService = {
     return this.getStores().find(s => s.id === id);
   },
 
-  saveStore(_store: Store): void {
+  saveStore(store: Store): void {
+    void store;
     notifyReadOnlyBlocked("L'enregistrement de fournisseur");
   },
 
-  deleteStore(_id: string): void {
+  deleteStore(id: string): void {
+    void id;
     notifyReadOnlyBlocked('La suppression de fournisseur');
   },
 
@@ -166,15 +163,19 @@ export const demoDbService = {
     return this.getProducts().find(p => p.barcode === barcode.trim());
   },
 
-  saveProduct(_product: Product): void {
+  saveProduct(product: Product): void {
+    void product;
     notifyReadOnlyBlocked("L'enregistrement de produit");
   },
 
-  deleteProduct(_id: string): void {
+  deleteProduct(id: string): void {
+    void id;
     notifyReadOnlyBlocked('La suppression de produit');
   },
 
-  updateProductStock(_id: string, _qtyChange: number): void {
+  updateProductStock(id: string, qtyChange: number): void {
+    void id;
+    void qtyChange;
     notifyReadOnlyBlocked('La modification de stock');
   },
 
@@ -183,11 +184,13 @@ export const demoDbService = {
     return getDemoTable<Purchase>(DEMO_KEYS.PURCHASES, DEMO_PURCHASES);
   },
 
-  savePurchase(_purchase: Purchase): void {
+  savePurchase(purchase: Purchase): void {
+    void purchase;
     notifyReadOnlyBlocked("L'ajout d'achat");
   },
 
-  deletePurchase(_id: string): void {
+  deletePurchase(id: string): void {
+    void id;
     notifyReadOnlyBlocked("La suppression d'achat");
   },
 
@@ -210,11 +213,15 @@ export const demoDbService = {
       .filter(rp => rp.recipeId === recipeId);
   },
 
-  saveRecipe(_recipe: Recipe, _ingredients: RecipeIngredient[], _packaging: RecipePackaging[]): void {
+  saveRecipe(recipe: Recipe, ingredients: RecipeIngredient[], packaging: RecipePackaging[]): void {
+    void recipe;
+    void ingredients;
+    void packaging;
     notifyReadOnlyBlocked("L'enregistrement de fiche technique / recette");
   },
 
-  deleteRecipe(_id: string): void {
+  deleteRecipe(id: string): void {
+    void id;
     notifyReadOnlyBlocked('La suppression de recette');
   },
 
@@ -226,10 +233,23 @@ export const demoDbService = {
     costPerPortion: number;
     marginPercent: number;
     suggestedSellingPrice: number;
+    hasIncompatibleUnits: boolean;
+    incompatibleDetails: string[];
+    isApproximate: boolean;
   } {
     const recipe = this.getRecipe(recipeId);
     if (!recipe) {
-      return { ingredientsCost: 0, packagingCost: 0, totalCost: 0, costPerPortion: 0, marginPercent: 0, suggestedSellingPrice: 0 };
+      return {
+        ingredientsCost: 0,
+        packagingCost: 0,
+        totalCost: 0,
+        costPerPortion: 0,
+        marginPercent: 0,
+        suggestedSellingPrice: 0,
+        hasIncompatibleUnits: false,
+        incompatibleDetails: [],
+        isApproximate: false
+      };
     }
 
     const ingredients = this.getRecipeIngredients(recipeId);
@@ -238,12 +258,26 @@ export const demoDbService = {
 
     // 1. Coût des ingrédients
     let ingredientsCost = 0;
+    let hasIncompatibleUnits = false;
+    let isApproximate = false;
+    const incompatibleDetails: string[] = [];
+
     ingredients.forEach(ing => {
       if (ing.productId) {
         const prod = products.find(p => p.id === ing.productId);
         if (prod) {
-          const convertedQty = convertUnits(ing.qtyUsed, ing.unit, prod.unit);
-          ingredientsCost += convertedQty * prod.avgPurchasePrice;
+          const conv = convertUnitsWithInfo(ing.qtyUsed, ing.unit, prod.unit);
+          if (conv.value === null) {
+            hasIncompatibleUnits = true;
+            incompatibleDetails.push(
+              `${prod.name} : Unités incompatibles : recette en ${normalizeUnit(ing.unit) || ing.unit}, stock en ${normalizeUnit(prod.unit) || prod.unit}`
+            );
+          } else {
+            if (conv.approximate) {
+              isApproximate = true;
+            }
+            ingredientsCost += conv.value * prod.avgPurchasePrice;
+          }
         }
       } else if (ing.customCostPerUnit) {
         ingredientsCost += ing.qtyUsed * ing.customCostPerUnit;
@@ -273,7 +307,10 @@ export const demoDbService = {
       totalCost: Number(totalCost.toFixed(2)),
       costPerPortion: Number(costPerPortion.toFixed(2)),
       marginPercent: defaultMargin,
-      suggestedSellingPrice: Number(suggestedSellingPrice.toFixed(2))
+      suggestedSellingPrice: Number(suggestedSellingPrice.toFixed(2)),
+      hasIncompatibleUnits,
+      incompatibleDetails,
+      isApproximate
     };
   },
 
@@ -282,12 +319,14 @@ export const demoDbService = {
     return getDemoTable<Production>(DEMO_KEYS.PRODUCTIONS, DEMO_PRODUCTIONS);
   },
 
-  addProduction(_production: Production): { success: boolean; error?: string } {
+  addProduction(production: Production): { success: boolean; error?: string } {
+    void production;
     notifyReadOnlyBlocked('Le lancement de production');
     return { success: false, error: 'Cette action est disponible dans la version complète.' };
   },
 
-  deleteProduction(_id: string): void {
+  deleteProduction(id: string): void {
+    void id;
     notifyReadOnlyBlocked('La suppression de production');
   },
 
@@ -296,11 +335,13 @@ export const demoDbService = {
     return getDemoTable<Sale>(DEMO_KEYS.SALES, DEMO_SALES);
   },
 
-  saveSale(_sale: Sale): void {
+  saveSale(sale: Sale): void {
+    void sale;
     notifyReadOnlyBlocked("L'enregistrement de vente");
   },
 
-  deleteSale(_id: string): void {
+  deleteSale(id: string): void {
+    void id;
     notifyReadOnlyBlocked('La suppression de vente');
   },
 
