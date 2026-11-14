@@ -4,6 +4,27 @@ Toutes les modifications notables apportées à ce projet sont documentées dans
 
 ---
 
+## [2.0.64] - 2026-11-14
+
+### Gestion des 14 allergènes déclarables UE, calcul automatique et alertes recettes
+- **Migration Supabase (`supabase/migrations/20261114221500_add_product_allergens.sql`)** :
+  - Ajout de la colonne facultative `allergens` (tableau de texte `TEXT[] DEFAULT '{}'`) dans `marmicout_products` et `demo_marmicout_products`.
+- **Formulaire Produit (`src/components/Products.tsx`, `src/utils/allergens.ts`)** :
+  - Section dédiée avec cases à cocher pour les 14 allergènes à déclaration obligatoire en Europe (gluten, crustacés, œufs, poissons, arachides, soja, lait, fruits à coque, céleri, moutarde, sésame, sulfites, lupin, mollusques).
+  - Détection et proposition automatique d'allergènes d'après le nom du produit (ex: farine → gluten, beurre → lait, saumon → poissons...), avec possibilité de corriger ou ajuster librement les cases cochées.
+  - Bouton « Suggérer d'après le nom » et « Tout décocher ».
+  - Affichage des badges d'allergènes dans le tiroir de détail d'un produit.
+- **Calcul automatique et affichage dans les Recettes (`src/components/Recipes.tsx`)** :
+  - Détection automatique et agrégation des allergènes à partir de l'ensemble des produits liés de la recette.
+  - Affichage sous forme de badges dans la liste des recettes et dans le détail de chaque recette.
+  - Alerte visuelle « ⚠️ Allergènes à vérifier » dès qu'un ingrédient n'est pas lié à un produit du stock.
+  - Bouton « Copier les allergènes » dans le détail de la recette pour copier rapidement la liste formatée dans le presse-papier.
+  - Mention légale d'aide et de responsabilité du professionnel conforme au Règlement UE n° 1169/2011 (INCO).
+- **Tests unitaires (`src/utils/allergens.test.ts`)** :
+  - Validation de la liste officielle des 14 allergènes, de la suggestion automatique par mots-clés, du calcul sur recette et du formatage.
+
+---
+
 ## [2.0.63] - 2026-11-14
 
 ### Équivalences de conversion produit (unitWeightG, densityGPerMl), formulaire et liens recettes

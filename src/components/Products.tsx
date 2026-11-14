@@ -12,7 +12,9 @@ import {
   SlidersHorizontal,
   Calendar,
   TrendingUp,
-  Scale
+  Scale,
+  ShieldAlert,
+  Sparkles
 } from 'lucide-react';
 import { dbService } from '../services/db';
 import { generateUUID } from '../services/cloudDbService';
@@ -31,6 +33,7 @@ import {
 import { getProductNextExpiry, formatExpiryDate, getDaysUntilExpiry } from '../utils/expiry';
 import { ProductDuplicateSuggestions } from './ProductDuplicateSuggestions';
 import { findExactDuplicateProduct } from '../utils/productDuplicate';
+import { OFFICIAL_ALLERGENS, suggestAllergensFromName, ALLERGEN_DISCLAIMER } from '../utils/allergens';
 
 interface ProductsProps {
   initialTriggerAdd?: boolean;
@@ -95,6 +98,7 @@ export const Products: React.FC<ProductsProps> = ({
   const [formIsActive, setFormIsActive] = useState(true);
   const [formUnitWeight, setFormUnitWeight] = useState('');
   const [formDensity, setFormDensity] = useState('');
+  const [formAllergens, setFormAllergens] = useState<string[]>([]);
 
   // État du scanneur dans le formulaire
   const [isScannerOpen, setIsScannerOpen] = useState(false);
@@ -160,6 +164,7 @@ export const Products: React.FC<ProductsProps> = ({
     setFormIsActive(true);
     setFormUnitWeight('');
     setFormDensity('');
+    setFormAllergens([]);
     setIsFormOpen(true);
   };
 
@@ -201,6 +206,7 @@ export const Products: React.FC<ProductsProps> = ({
     setFormIsActive(prod.isActive);
     setFormUnitWeight(prod.unitWeightG != null ? prod.unitWeightG.toString() : '');
     setFormDensity(prod.densityGPerMl != null ? prod.densityGPerMl.toString() : '');
+    setFormAllergens(Array.isArray(prod.allergens) ? [...prod.allergens] : []);
     setIsFormOpen(true);
   };
 
@@ -428,7 +434,8 @@ export const Products: React.FC<ProductsProps> = ({
           avgPurchasePrice: editingProductHasPurchases ? editingProduct.avgPurchasePrice : parseDecimalInput(formAvgPrice),
           mainStoreId: formMainStore,
           notes: formNotes.trim(),
-          isActive: false
+          isActive: false,
+          allergens: formAllergens,
         };
         await dbService.saveProduct(deactivatedProduct);
       }
@@ -494,6 +501,7 @@ export const Products: React.FC<ProductsProps> = ({
       isActive: formIsActive,
       unitWeightG: (unitWeightNum !== undefined && Number.isFinite(unitWeightNum) && unitWeightNum > 0) ? unitWeightNum : undefined,
       densityGPerMl: (densityNum !== undefined && Number.isFinite(densityNum) && densityNum > 0) ? densityNum : undefined,
+      allergens: formAllergens,
     };
 
     try {
@@ -894,7 +902,14 @@ export const Products: React.FC<ProductsProps> = ({
               required
               placeholder="Ex: Farine de Blé T55 Bio"
               value={formName}
-              onChange={(e) => setFormName(e.target.value)}
+              onChange={(e) => {
+                const newName = e.target.value;
+                setFormName(newName);
+                if (!editingProduct) {
+                  const auto = suggestAllergensFromName(newName);
+                  setFormAllergens(auto);
+                }
+              }}
             />
             <ProductDuplicateSuggestions
               inputName={formName}
@@ -1130,6 +1145,111 @@ export const Products: React.FC<ProductsProps> = ({
             </div>
           </div>
 
+          {/* SECTION ALLERGÈNES (14 ALLERGÈNES OBLIGATOIRES UE) */}
+          <div
+            id="product-allergens-section"
+            style={{
+              marginTop: '16px',
+              marginBottom: '20px',
+              padding: '14px',
+              border: '1px solid var(--color-border)',
+              borderRadius: 'var(--radius-md)',
+              backgroundColor: 'rgba(0, 0, 0, 0.02)'
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '8px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <ShieldAlert size={16} style={{ color: '#b45309' }} />
+                <h4 style={{ margin: 0, fontSize: '13px', fontWeight: '700', color: 'var(--color-dark)' }}>
+                  Allergènes à déclaration obligatoire (UE)
+                </h4>
+                {formAllergens.length > 0 && (
+                  <span className="badge badge-warning" style={{ fontSize: '11px', padding: '1px 6px', fontWeight: '700' }}>
+                    {formAllergens.length} sélectionné{formAllergens.length > 1 ? 's' : ''}
+                  </span>
+                )}
+              </div>
+
+              <div style={{ display: 'flex', gap: '6px' }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  style={{ height: '26px', padding: '0 8px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                  onClick={() => {
+                    const auto = suggestAllergensFromName(formName);
+                    setFormAllergens(auto);
+                  }}
+                  title="Analyser le nom pour détecter les allergènes probables"
+                >
+                  <Sparkles size={12} />
+                  Suggérer d'après le nom
+                </button>
+                {formAllergens.length > 0 && (
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    style={{ height: '26px', padding: '0 8px', fontSize: '11px' }}
+                    onClick={() => setFormAllergens([])}
+                  >
+                    Tout décocher
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <p style={{ margin: '0 0 10px 0', fontSize: '11px', color: 'var(--color-dark-light)' }}>
+              Cochez les allergènes présents dans ce produit. Une proposition automatique est faite à partir du nom et reste modifiable.
+            </p>
+
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))',
+              gap: '8px',
+              padding: '10px',
+              backgroundColor: '#fff',
+              borderRadius: 'var(--radius-sm)',
+              border: '1px solid var(--color-border)'
+            }}>
+              {OFFICIAL_ALLERGENS.map(allergen => {
+                const isChecked = formAllergens.includes(allergen);
+                return (
+                  <label
+                    key={allergen}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      fontSize: '12px',
+                      cursor: 'pointer',
+                      padding: '4px 6px',
+                      borderRadius: '4px',
+                      backgroundColor: isChecked ? '#fef3c7' : 'transparent',
+                      color: isChecked ? '#92400e' : 'var(--color-dark)',
+                      fontWeight: isChecked ? '700' : '500',
+                      userSelect: 'none',
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isChecked}
+                      onChange={() => {
+                        setFormAllergens(prev =>
+                          prev.includes(allergen) ? prev.filter(a => a !== allergen) : [...prev, allergen]
+                        );
+                      }}
+                      style={{ width: '15px', height: '15px', cursor: 'pointer', accentColor: 'var(--color-primary)' }}
+                    />
+                    <span>{allergen.charAt(0).toUpperCase() + allergen.slice(1)}</span>
+                  </label>
+                );
+              })}
+            </div>
+
+            <span style={{ fontSize: '10px', color: 'var(--color-dark-light)', fontStyle: 'italic', display: 'block', marginTop: '6px' }}>
+              {ALLERGEN_DISCLAIMER}
+            </span>
+          </div>
+
           <div className="form-group">
             <label className="form-label">Notes facultatives</label>
             <textarea
@@ -1273,6 +1393,27 @@ export const Products: React.FC<ProductsProps> = ({
                   </div>
                 );
               })()}
+
+              {/* Allergènes du produit */}
+              <div style={{ marginTop: '14px', padding: '10px 12px', backgroundColor: 'rgba(0,0,0,0.02)', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)' }}>
+                <div style={{ fontSize: '11px', color: 'var(--color-dark-light)', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 600, marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <ShieldAlert size={14} style={{ color: '#b45309' }} />
+                  Allergènes déclarables (UE)
+                </div>
+                {Array.isArray(selectedProductDetails.allergens) && selectedProductDetails.allergens.length > 0 ? (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                    {selectedProductDetails.allergens.map(a => (
+                      <span key={a} className="badge" style={{ fontSize: '11px', padding: '2px 8px', backgroundColor: '#fef3c7', color: '#92400e', border: '1px solid #fde68a', fontWeight: '700' }}>
+                        {a}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <span style={{ fontSize: '12px', color: '#065f46', fontWeight: '500' }}>
+                    Aucun allergène majeur déclaré sur ce produit
+                  </span>
+                )}
+              </div>
 
               {selectedProductDetails.notes && (
                 <div style={{ marginTop: '16px', fontSize: '13px', fontStyle: 'italic', color: 'var(--color-dark-light)' }}>

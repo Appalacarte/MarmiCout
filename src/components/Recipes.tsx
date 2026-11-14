@@ -16,7 +16,9 @@ import {
   ClipboardList,
   Download,
   ExternalLink,
-  ShoppingCart
+  ShoppingCart,
+  Copy,
+  ShieldAlert
 } from 'lucide-react';
 import { dbService } from '../services/db';
 import {
@@ -37,6 +39,11 @@ import { RecipeImporter } from './RecipeImporter';
 import { ShoppingListDrawer } from './ShoppingListDrawer';
 import { ProductDuplicateSuggestions } from './ProductDuplicateSuggestions';
 import { findExactDuplicateProduct } from '../utils/productDuplicate';
+import {
+  calculateRecipeAllergens,
+  formatAllergensList,
+  ALLERGEN_DISCLAIMER,
+} from '../utils/allergens';
 
 interface RecipesProps {
   initialTriggerAdd?: boolean;
@@ -59,6 +66,16 @@ export const Recipes: React.FC<RecipesProps> = ({ initialTriggerAdd, initialView
   // Recherche & Filtres
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('');
+  const [copiedAllergens, setCopiedAllergens] = useState(false);
+
+  const handleCopyAllergens = (allergens: string[]) => {
+    const text = formatAllergensList(allergens);
+    if (typeof navigator !== 'undefined' && navigator.clipboard) {
+      navigator.clipboard.writeText(text);
+    }
+    setCopiedAllergens(true);
+    setTimeout(() => setCopiedAllergens(false), 2000);
+  };
 
   // États du Drawer de Formulaire de Recette
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -801,6 +818,8 @@ export const Recipes: React.FC<RecipesProps> = ({ initialTriggerAdd, initialView
         <div className="grid-cols-1-2-3">
           {filteredRecipes.map(r => {
             const costInfo = dbService.calculateRecipeCost(r.id);
+            const rIngredients = dbService.getRecipeIngredients(r.id);
+            const allergenInfo = calculateRecipeAllergens(rIngredients, new Map(products.map(p => [p.id, p])));
             const isSelected = planningSelections.has(r.id);
             const selectedPortions = planningSelections.get(r.id) ?? r.portions;
             
@@ -903,6 +922,49 @@ export const Recipes: React.FC<RecipesProps> = ({ initialTriggerAdd, initialView
                     <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                       <Scale size={12} /> {r.portions} portion(s)
                     </span>
+                  </div>
+
+                  {/* Badges allergènes dans la carte */}
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', alignItems: 'center', marginBottom: '8px' }}>
+                    {allergenInfo.hasUnlinkedIngredients && (
+                      <span
+                        className="badge badge-warning"
+                        style={{ fontSize: '10px', padding: '1px 6px', fontWeight: '700' }}
+                        title="Certains ingrédients ne sont pas liés au stock"
+                      >
+                        ⚠️ Allergènes à vérifier
+                      </span>
+                    )}
+                    {allergenInfo.allergens.map(a => (
+                      <span
+                        key={a}
+                        className="badge"
+                        style={{
+                          fontSize: '10px',
+                          padding: '1px 6px',
+                          backgroundColor: '#fef3c7',
+                          color: '#92400e',
+                          border: '1px solid #fde68a',
+                          fontWeight: '600'
+                        }}
+                      >
+                        {a}
+                      </span>
+                    ))}
+                    {!allergenInfo.hasUnlinkedIngredients && allergenInfo.allergens.length === 0 && (
+                      <span
+                        className="badge"
+                        style={{
+                          fontSize: '10px',
+                          padding: '1px 6px',
+                          backgroundColor: '#ecfdf5',
+                          color: '#065f46',
+                          border: '1px solid #a7f3d0'
+                        }}
+                      >
+                        Sans allergène
+                      </span>
+                    )}
                   </div>
                 </div>
 
@@ -1674,8 +1736,91 @@ export const Recipes: React.FC<RecipesProps> = ({ initialTriggerAdd, initialView
                   </strong>
                 </div>
               </div>
-
             </div>
+
+            {/* SECTION ALLERGÈNES DÉCLARABLES (RÈGLEMENT UE) */}
+            {(() => {
+              const productMap = new Map(products.map(p => [p.id, p]));
+              const allergenInfo = calculateRecipeAllergens(detailsIngredients, productMap);
+
+              return (
+                <div style={{
+                  padding: '14px',
+                  backgroundColor: '#fffbeb',
+                  borderRadius: 'var(--radius-md)',
+                  marginBottom: '20px',
+                  border: '1px solid #fde68a'
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '8px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <ShieldAlert size={16} style={{ color: '#b45309' }} />
+                      <strong style={{ fontSize: '13px', color: '#92400e' }}>
+                        Allergènes à déclaration obligatoire (UE)
+                      </strong>
+                    </div>
+
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      style={{ height: '28px', padding: '0 10px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                      onClick={() => handleCopyAllergens(allergenInfo.allergens)}
+                      title="Copier la liste des allergènes"
+                    >
+                      {copiedAllergens ? <Check size={12} style={{ color: 'var(--color-secondary)' }} /> : <Copy size={12} />}
+                      {copiedAllergens ? 'Copié !' : 'Copier les allergènes'}
+                    </button>
+                  </div>
+
+                  {allergenInfo.hasUnlinkedIngredients && (
+                    <div style={{
+                      backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                      border: '1px solid #fca5a5',
+                      color: '#b91c1c',
+                      padding: '8px 10px',
+                      borderRadius: '6px',
+                      fontSize: '12px',
+                      fontWeight: '700',
+                      marginBottom: '10px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px'
+                    }}>
+                      <AlertTriangle size={14} />
+                      <span>⚠️ Allergènes à vérifier : {allergenInfo.unlinkedCount} ingrédient(s) non lié(s) au stock.</span>
+                    </div>
+                  )}
+
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '10px' }}>
+                    {allergenInfo.allergens.length > 0 ? (
+                      allergenInfo.allergens.map(a => (
+                        <span
+                          key={a}
+                          className="badge"
+                          style={{
+                            fontSize: '12px',
+                            padding: '4px 10px',
+                            backgroundColor: '#fef3c7',
+                            color: '#92400e',
+                            border: '1px solid #fde68a',
+                            fontWeight: '700'
+                          }}
+                        >
+                          {a}
+                        </span>
+                      ))
+                    ) : (
+                      <span style={{ fontSize: '12px', color: '#065f46', fontWeight: '600' }}>
+                        Aucun allergène majeur détecté parmi les ingrédients liés.
+                      </span>
+                    )}
+                  </div>
+
+                  <p style={{ margin: 0, fontSize: '11px', color: '#78350f', fontStyle: 'italic', lineHeight: '1.4' }}>
+                    {ALLERGEN_DISCLAIMER}
+                  </p>
+                </div>
+              );
+            })()}
 
             {/* ALERTE DE DISPONIBILITÉ DES STOCKS */}
             {(() => {
