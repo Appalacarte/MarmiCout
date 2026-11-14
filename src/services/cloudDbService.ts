@@ -134,6 +134,7 @@ export class CloudDbService {
       console.warn('[CloudDbService] getStores fallback to cache:', error);
       return indexedDbService.getAll<Store>('stores');
     }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const stores: Store[] = (data || []).map((row: any) => ({
       id: row.id,
       name: row.name,
@@ -155,14 +156,14 @@ export class CloudDbService {
     const storeUUID = isUUID(store.id) ? store.id : generateUUID();
     store.id = storeUUID;
 
-    const payload: any = {
+    const payload: Record<string, unknown> = {
       id: storeUUID,
       establishment_id: estId,
-      name: store.name,
-      type: store.type,
-      address: store.address || null,
-      phone: store.phone || null,
-      notes: store.notes || null,
+      name: (store.name || '').trim(),
+      type: store.type || 'Grossiste',
+      address: store.address ?? '',
+      phone: store.phone ?? '',
+      notes: store.notes ?? '',
     };
 
     const { error } = await supabase.from('marmicout_stores').upsert(payload, { onConflict: 'id' });
@@ -199,6 +200,7 @@ export class CloudDbService {
       console.warn('[CloudDbService] getProducts fallback to cache:', error);
       return indexedDbService.getAll<Product>('products');
     }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const products: Product[] = (data || []).map((row: any) => ({
       id: row.id,
       barcode: row.barcode || '',
@@ -228,20 +230,20 @@ export class CloudDbService {
     const productUUID = isUUID(product.id) ? product.id : generateUUID();
     product.id = productUUID;
 
-    const payload: any = {
+    const payload: Record<string, unknown> = {
       id: productUUID,
       establishment_id: estId,
-      barcode: product.barcode || null,
-      name: product.name,
-      category: product.category,
-      unit: product.unit,
-      brand: product.brand || null,
-      format: product.format || null,
-      stock: product.stock,
-      min_stock_alert: product.minStockAlert,
-      avg_purchase_price: product.avgPurchasePrice,
+      barcode: product.barcode ?? '',
+      name: (product.name || '').trim(),
+      category: product.category || 'Épicerie',
+      unit: product.unit || 'kg',
+      brand: product.brand ?? '',
+      format: product.format ?? '',
+      stock: Number(product.stock ?? 0),
+      min_stock_alert: Number(product.minStockAlert ?? 0),
+      avg_purchase_price: Number(product.avgPurchasePrice ?? 0),
       main_store_id: isUUID(product.mainStoreId) ? product.mainStoreId : null,
-      notes: product.notes || null,
+      notes: product.notes ?? '',
       is_active: product.isActive !== false,
       photo: product.photo || null,
     };
@@ -280,6 +282,7 @@ export class CloudDbService {
       console.warn('[CloudDbService] getRecipes fallback to cache:', error);
       return indexedDbService.getAll<Recipe>('recipes');
     }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const recipes: Recipe[] = (data || []).map((row: any) => ({
       id: row.id,
       name: row.name,
@@ -318,6 +321,7 @@ export class CloudDbService {
       console.warn('[CloudDbService] getAllRecipeIngredients fallback:', error);
       return indexedDbService.getAll<RecipeIngredient>('recipe_ingredients');
     }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const list: RecipeIngredient[] = (data || []).map((row: any) => ({
       id: row.id,
       recipeId: row.recipe_id,
@@ -343,6 +347,7 @@ export class CloudDbService {
       console.warn('[CloudDbService] getAllRecipePackaging fallback:', error);
       return indexedDbService.getAll<RecipePackaging>('recipe_packaging');
     }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const list: RecipePackaging[] = (data || []).map((row: any) => ({
       id: row.id,
       recipeId: row.recipe_id,
@@ -366,22 +371,22 @@ export class CloudDbService {
     const recipeUUID = isUUID(recipe.id) ? recipe.id : generateUUID();
     recipe.id = recipeUUID;
 
-    const payload: any = {
+    const payload: Record<string, unknown> = {
       id: recipeUUID,
       establishment_id: estId,
-      name: recipe.name.trim(),
+      name: (recipe.name || '').trim(),
       category: recipe.category || 'Plats',
       description: recipe.description ? recipe.description.trim() : '',
-      portions: Number(recipe.portions || 1),
-      yield_qty: Number(recipe.yieldQty || 1),
+      portions: Number(recipe.portions ?? 1),
+      yield_qty: Number(recipe.yieldQty ?? 1),
       yield_unit: recipe.yieldUnit || 'portion',
-      stock: Number(recipe.stock || 0),
+      stock: Number(recipe.stock ?? 0),
       prep_time_minutes: recipe.prepTimeMinutes ? Number(recipe.prepTimeMinutes) : null,
-      utensils_notes: recipe.utensilsNotes ? recipe.utensilsNotes.trim() : null,
-      notes: recipe.notes ? recipe.notes.trim() : null,
+      utensils_notes: recipe.utensilsNotes ? recipe.utensilsNotes.trim() : '',
+      notes: recipe.notes ? recipe.notes.trim() : '',
       is_active: recipe.isActive !== false,
       photo: recipe.photo || null,
-      instructions: recipe.instructions ? recipe.instructions.trim() : null,
+      instructions: recipe.instructions ? recipe.instructions.trim() : '',
     };
 
     if (recipe.originalPortions) payload.original_portions = Number(recipe.originalPortions);
@@ -401,40 +406,46 @@ export class CloudDbService {
     }
 
     // Ingrédients
-    if (ingredients && ingredients.length > 0) {
+    if (ingredients) {
       await supabase.from('marmicout_recipe_ingredients').delete().eq('recipe_id', recipeUUID);
-      const ingPayloads = ingredients.map((ing) => ({
-        id: generateUUID(),
-        establishment_id: estId,
-        recipe_id: recipeUUID,
-        product_id: ing.productId && isUUID(ing.productId) ? ing.productId : null,
-        custom_name: ing.customName || null,
-        qty_used: ing.qtyUsed,
-        unit: ing.unit,
-        custom_cost_per_unit: ing.customCostPerUnit || 0,
-      }));
-      const { error: ingErr } = await supabase.from('marmicout_recipe_ingredients').insert(ingPayloads);
-      if (ingErr) {
-        console.error('[Supabase recipe_ingredients error]', ingErr);
-        notifyCloudError('Erreur ingrédients recette', ingErr.message);
+      if (ingredients.length > 0) {
+        const ingPayloads = ingredients.map((ing) => ({
+          id: generateUUID(),
+          establishment_id: estId,
+          recipe_id: recipeUUID,
+          product_id: ing.productId && isUUID(ing.productId) ? ing.productId : null,
+          custom_name: ing.customName ?? '',
+          qty_used: Number(ing.qtyUsed ?? 0),
+          unit: ing.unit || 'g',
+          custom_cost_per_unit: Number(ing.customCostPerUnit ?? 0),
+        }));
+        const { error: ingErr } = await supabase.from('marmicout_recipe_ingredients').insert(ingPayloads);
+        if (ingErr) {
+          console.error('[Supabase recipe_ingredients error]', ingErr);
+          notifyCloudError('Erreur ingrédients recette', ingErr.message);
+          throw new Error(`Erreur Supabase marmicout_recipe_ingredients: ${ingErr.message}`);
+        }
       }
     }
 
     // Emballages
-    if (packagings && packagings.length > 0) {
+    if (packagings) {
       await supabase.from('marmicout_recipe_packaging').delete().eq('recipe_id', recipeUUID);
-      const packPayloads = packagings.map((pack) => ({
-        id: generateUUID(),
-        establishment_id: estId,
-        recipe_id: recipeUUID,
-        name: pack.name,
-        qty_used: pack.qtyUsed,
-        cost_per_unit: pack.costPerUnit || 0,
-      }));
-      const { error: packErr } = await supabase.from('marmicout_recipe_packaging').insert(packPayloads);
-      if (packErr) {
-        console.error('[Supabase recipe_packaging error]', packErr);
-        notifyCloudError('Erreur emballages recette', packErr.message);
+      if (packagings.length > 0) {
+        const packPayloads = packagings.map((pack) => ({
+          id: generateUUID(),
+          establishment_id: estId,
+          recipe_id: recipeUUID,
+          name: (pack.name || '').trim(),
+          qty_used: Number(pack.qtyUsed ?? 1),
+          cost_per_unit: Number(pack.costPerUnit ?? 0),
+        }));
+        const { error: packErr } = await supabase.from('marmicout_recipe_packaging').insert(packPayloads);
+        if (packErr) {
+          console.error('[Supabase recipe_packaging error]', packErr);
+          notifyCloudError('Erreur emballages recette', packErr.message);
+          throw new Error(`Erreur Supabase marmicout_recipe_packaging: ${packErr.message}`);
+        }
       }
     }
 
@@ -467,6 +478,7 @@ export class CloudDbService {
       console.warn('[CloudDbService] getPurchases fallback to cache:', error);
       return indexedDbService.getAll<Purchase>('purchases');
     }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const purchases: Purchase[] = (data || []).map((row: any) => ({
       id: row.id,
       date: row.purchase_date,
@@ -493,19 +505,19 @@ export class CloudDbService {
     const purchaseUUID = isUUID(purchase.id) ? purchase.id : generateUUID();
     purchase.id = purchaseUUID;
 
-    const payload: any = {
+    const payload: Record<string, unknown> = {
       id: purchaseUUID,
       establishment_id: estId,
-      purchase_date: purchase.date,
+      purchase_date: purchase.date || new Date().toISOString().split('T')[0],
       store_id: isUUID(purchase.storeId) ? purchase.storeId : null,
       product_id: isUUID(purchase.productId) ? purchase.productId : null,
-      qty: purchase.qty,
-      unit: purchase.unit,
-      unit_price: purchase.unitPrice,
-      price_paid: purchase.pricePaid,
-      batch_no: purchase.batchNo || null,
+      qty: Number(purchase.qty ?? 0),
+      unit: purchase.unit || 'kg',
+      unit_price: Number(purchase.unitPrice ?? 0),
+      price_paid: Number(purchase.pricePaid ?? 0),
+      batch_no: purchase.batchNo ?? '',
       expiry_date: purchase.expiryDate || null,
-      notes: purchase.notes || null,
+      notes: purchase.notes ?? '',
     };
 
     const { error } = await supabase.from('marmicout_purchases').upsert(payload, { onConflict: 'id' });
@@ -541,6 +553,7 @@ export class CloudDbService {
     if (error) {
       return indexedDbService.getAll<Production>('productions');
     }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const list: Production[] = (data || []).map((row: any) => ({
       id: row.id,
       date: row.production_date,
@@ -560,15 +573,18 @@ export class CloudDbService {
     const estId = await this.ensureEstablishmentId();
     const prodUUID = isUUID(production.id) ? production.id : generateUUID();
     production.id = prodUUID;
+    if (!isUUID(production.recipeId)) {
+      throw new Error('Recette invalide pour la production.');
+    }
 
-    const payload: any = {
+    const payload: Record<string, unknown> = {
       id: prodUUID,
       establishment_id: estId,
-      production_date: production.date,
-      recipe_id: isUUID(production.recipeId) ? production.recipeId : null,
-      portions_produced: production.portionsProduced,
-      calculated_cost: production.calculatedCost,
-      notes: production.notes || null,
+      production_date: production.date || new Date().toISOString().split('T')[0],
+      recipe_id: production.recipeId,
+      portions_produced: Number(production.portionsProduced ?? 1),
+      calculated_cost: Number(production.calculatedCost ?? 0),
+      notes: production.notes ?? '',
     };
 
     const { error } = await supabase.from('marmicout_productions').upsert(payload, { onConflict: 'id' });
@@ -592,6 +608,7 @@ export class CloudDbService {
     if (error) {
       return indexedDbService.getAll<Sale>('sales');
     }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const list: Sale[] = (data || []).map((row: any) => ({
       id: row.id,
       date: row.sale_date,
@@ -613,17 +630,20 @@ export class CloudDbService {
     const estId = await this.ensureEstablishmentId();
     const saleUUID = isUUID(sale.id) ? sale.id : generateUUID();
     sale.id = saleUUID;
+    if (!isUUID(sale.itemId)) {
+      throw new Error('Article invalide pour la vente.');
+    }
 
-    const payload: any = {
+    const payload: Record<string, unknown> = {
       id: saleUUID,
       establishment_id: estId,
-      sale_date: sale.date,
-      item_id: isUUID(sale.itemId) ? sale.itemId : null,
-      item_type: sale.itemType,
-      qty_sold: sale.qtySold,
-      unit_price: sale.unitPrice,
+      sale_date: sale.date || new Date().toISOString().split('T')[0],
+      item_id: sale.itemId,
+      item_type: sale.itemType || 'RECIPE',
+      qty_sold: Number(sale.qtySold ?? 1),
+      unit_price: Number(sale.unitPrice ?? 0),
       location: sale.location || 'Boutique',
-      notes: sale.notes || null,
+      notes: sale.notes ?? '',
     };
 
     const { error } = await supabase.from('marmicout_sales').upsert(payload, { onConflict: 'id' });
@@ -659,6 +679,7 @@ export class CloudDbService {
     if (error) {
       return indexedDbService.getAll<StockMovement>('stock_movements');
     }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const list: StockMovement[] = (data || []).map((row: any) => ({
       id: row.id,
       date: row.movement_date,
@@ -679,16 +700,19 @@ export class CloudDbService {
     const estId = await this.ensureEstablishmentId();
     const smUUID = isUUID(movement.id) ? movement.id : generateUUID();
     movement.id = smUUID;
+    if (!isUUID(movement.productId)) {
+      throw new Error('Produit invalide pour le mouvement de stock.');
+    }
 
-    const payload: any = {
+    const payload: Record<string, unknown> = {
       id: smUUID,
       establishment_id: estId,
-      movement_date: movement.date,
-      product_id: isUUID(movement.productId) ? movement.productId : null,
-      qty: movement.qty,
-      type: movement.type,
+      movement_date: movement.date || new Date().toISOString().split('T')[0],
+      product_id: movement.productId,
+      qty: Number(movement.qty ?? 0),
+      type: movement.type || 'AJUSTEMENT',
       ref_id: movement.refId || 'MANUAL',
-      notes: movement.notes || null,
+      notes: movement.notes ?? '',
     };
 
     const { error } = await supabase.from('marmicout_stock_movements').upsert(payload, { onConflict: 'id' });
@@ -703,6 +727,7 @@ export class CloudDbService {
   // --- SETTINGS ---
   public async getSettings(): Promise<Settings | null> {
     if (!this.isOnline()) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const items = await indexedDbService.getAll<any>('settings');
       return items.find((i) => i.key === 'app_settings')?.value || null;
     }
@@ -712,6 +737,7 @@ export class CloudDbService {
       .limit(1)
       .maybeSingle();
     if (error || !data) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const items = await indexedDbService.getAll<any>('settings');
       return items.find((i) => i.key === 'app_settings')?.value || null;
     }
@@ -737,19 +763,19 @@ export class CloudDbService {
       throw new Error('Hors connexion : consultation seule pendant 72 h.');
     }
     const estId = await this.ensureEstablishmentId();
-    const payload: any = {
+    const payload: Record<string, unknown> = {
       establishment_id: estId,
-      business_name: settings.businessName,
-      currency: settings.currency,
-      default_target_margin: settings.defaultTargetMargin,
-      categories: settings.categories,
-      recipe_categories: settings.recipeCategories,
-      units: settings.units,
-      sales_locations: settings.salesLocations,
-      default_min_stock_alert: settings.defaultMinStockAlert,
-      google_sheet_link: settings.googleSheetLink || null,
-      google_sheet_id: settings.googleSheetId || null,
-      google_web_app_url: settings.googleWebAppUrl || null,
+      business_name: settings.businessName || 'Mon Atelier Traiteur',
+      currency: settings.currency || '€',
+      default_target_margin: Number(settings.defaultTargetMargin ?? 60),
+      categories: settings.categories || [],
+      recipe_categories: settings.recipeCategories || [],
+      units: settings.units || [],
+      sales_locations: settings.salesLocations || [],
+      default_min_stock_alert: Number(settings.defaultMinStockAlert ?? 2),
+      google_sheet_link: settings.googleSheetLink ?? '',
+      google_sheet_id: settings.googleSheetId ?? '',
+      google_web_app_url: settings.googleWebAppUrl ?? '',
     };
 
     const { error } = await supabase

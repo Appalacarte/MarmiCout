@@ -83,6 +83,7 @@ export const Recipes: React.FC<RecipesProps> = ({ initialTriggerAdd, initialView
   // Résultat du bouton "Cuisiner" dans le panneau détail
   const [detailCookResult, setDetailCookResult] = useState<'idle' | 'success' | 'error'>('idle');
   const [detailCookError, setDetailCookError] = useState('');
+  const [quickProductError, setQuickProductError] = useState<string | null>(null);
 
   // États de la Liste de courses (sélection de recettes pour prestation)
   const [planningSelections, setPlanningSelections] = useState<Map<string, number>>(new Map());
@@ -227,6 +228,7 @@ export const Recipes: React.FC<RecipesProps> = ({ initialTriggerAdd, initialView
     };
 
     try {
+      setQuickProductError(null);
       await dbService.saveProduct(newProduct);
 
       const ings = dbService.getRecipeIngredients(selectedRecipeDetails.id).map(({ id, recipeId: _rId, ...rest }) => {
@@ -255,8 +257,9 @@ export const Recipes: React.FC<RecipesProps> = ({ initialTriggerAdd, initialView
       setDetailsIngredients(dbService.getRecipeIngredients(updatedRecipe.id));
       setDetailsPackagings(dbService.getRecipePackagings(updatedRecipe.id));
       setDetailsCost(costInfo);
-    } catch (err) {
+    } catch (err: unknown) {
       console.error('Erreur lors de la création rapide du produit:', err);
+      setQuickProductError(err instanceof Error ? err.message : "Échec de l'ajout du produit à vos stocks.");
     }
   };
 
@@ -282,6 +285,7 @@ export const Recipes: React.FC<RecipesProps> = ({ initialTriggerAdd, initialView
     };
 
     try {
+      setSaveError(null);
       await dbService.saveProduct(newProduct);
       loadData();
       const updated = [...formIngredients];
@@ -292,8 +296,9 @@ export const Recipes: React.FC<RecipesProps> = ({ initialTriggerAdd, initialView
         customCostPerUnit: undefined
       };
       setFormIngredients(updated);
-    } catch (err) {
+    } catch (err: unknown) {
       console.error('Erreur lors de la création rapide du produit dans le formulaire:', err);
+      setSaveError(err instanceof Error ? err.message : "Échec de l'ajout du produit à vos stocks.");
     }
   };
 
@@ -313,6 +318,7 @@ export const Recipes: React.FC<RecipesProps> = ({ initialTriggerAdd, initialView
     setCopiedCourses(false);
     setDetailCookResult('idle');
     setDetailCookError('');
+    setQuickProductError(null);
   };
 
   // Cuisiner depuis le panneau détail : crée une vraie production et déduit les stocks
@@ -1508,6 +1514,28 @@ export const Recipes: React.FC<RecipesProps> = ({ initialTriggerAdd, initialView
 
             {/* LISTE DES INGRÉDIENTS DÉTAILLÉS AJUSTÉS */}
             <div style={{ marginBottom: '20px' }}>
+              {quickProductError && (
+                <div style={{
+                  marginBottom: '12px',
+                  padding: '10px 12px',
+                  backgroundColor: 'var(--color-danger-light)',
+                  border: '1px solid rgba(255,75,75,0.3)',
+                  borderRadius: 'var(--radius-md)',
+                  fontSize: '12px',
+                  color: 'var(--color-danger)',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}>
+                  <span>❌ {quickProductError}</span>
+                  <button
+                    type="button"
+                    onClick={() => setQuickProductError(null)}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-danger)', fontWeight: 700, fontSize: '16px', lineHeight: 1 }}
+                  >×</button>
+                </div>
+              )}
               <h4 style={{ fontSize: '14px', fontWeight: '700', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <List size={16} />
                 Ingrédients et stocks requis ({detailsIngredients.length})

@@ -4,6 +4,24 @@ Toutes les modifications notables apportées à ce projet sont documentées dans
 
 ---
 
+## [2.0.52] - 2026-11-14
+
+### Conformité NOT NULL Cloud (`cloudDbService.ts`) & Affichage des Erreurs de Création Rapide Produit
+- **Remplacement de `null` par des chaînes vides `''` et valeurs par défaut sur les colonnes `NOT NULL` dans [`src/services/cloudDbService.ts`](file:///d:/Aplli/Marmicout/Appli%20Marmicout/src/services/cloudDbService.ts)** :
+  - `marmicout_products` (`saveProduct`) : envoi de `''` au lieu de `null` pour `brand`, `format`, `barcode` et `notes`, avec valeurs par défaut sur `category` (`'Épicerie'`), `unit` (`'kg'`), `stock` (`0`), `min_stock_alert` (`0`), `avg_purchase_price` (`0`) et `is_active` (`true`).
+  - `marmicout_stores` (`saveStore`) : envoi de `''` au lieu de `null` pour `address`, `phone` et `notes`, et valeur par défaut `'Grossiste'` pour `type`.
+  - `marmicout_recipes` (`saveRecipe`) : envoi de `''` au lieu de `null` pour `description`, `utensils_notes`, `notes` et `instructions`, et valeurs par défaut pour `category`, `portions`, `yield_qty`, `yield_unit`, `stock` et `is_active`.
+  - `marmicout_recipe_ingredients` & `marmicout_recipe_packaging` (`saveRecipe`) : envoi de `''` au lieu de `null` pour `custom_name`, valeurs numériques non nulles pour `qty_used`, `custom_cost_per_unit` et `cost_per_unit`, et remontée explicite des erreurs d'insertion.
+  - `marmicout_purchases` (`savePurchase`) : envoi de `''` au lieu de `null` pour `batch_no` et `notes`, et valeurs par défaut pour `purchase_date`, `qty`, `unit`, `unit_price` et `price_paid`.
+  - `marmicout_productions` (`saveProduction`) : vérification de `recipe_id` (`NOT NULL`), envoi de `''` au lieu de `null` pour `notes`, et valeurs par défaut pour `production_date`, `portions_produced` et `calculated_cost`.
+  - `marmicout_sales` (`saveSale`) : vérification de `item_id` (`NOT NULL`), envoi de `''` au lieu de `null` pour `notes`, et valeurs par défaut pour `sale_date`, `item_type`, `qty_sold`, `unit_price` et `location`.
+  - `marmicout_stock_movements` (`saveStockMovement`) : vérification de `product_id` (`NOT NULL`), envoi de `''` au lieu de `null` pour `notes`, et valeurs par défaut pour `movement_date`, `qty`, `type` et `ref_id`.
+  - `marmicout_settings` (`saveSettings`) : envoi de `''` au lieu de `null` pour `google_sheet_link`, `google_sheet_id` et `google_web_app_url`.
+- **Affichage clair des erreurs sur « + Ajouter à mes produits »** :
+  - Dans [`src/components/Recipes.tsx`](file:///d:/Aplli/Marmicout/Appli%20Marmicout/src/components/Recipes.tsx) et [`src/components/ShoppingListDrawer.tsx`](file:///d:/Aplli/Marmicout/Appli%20Marmicout/src/components/ShoppingListDrawer.tsx) : affichage d'un bandeau d'erreur explicite à l'écran si l'enregistrement rapide d'un produit échoue.
+
+---
+
 ## [2.0.51] - 2026-11-14
 
 ### Liste de Courses Complète (Ingrédients Non Liés), Bouton « Ajouter à mes produits » & Écoute Synchronisation Cloud

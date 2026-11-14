@@ -61,6 +61,7 @@ export const ShoppingListDrawer: React.FC<ShoppingListDrawerProps> = ({
   const [copiedText, setCopiedText] = useState(false);
   const [showAvailable, setShowAvailable] = useState(false);
   const [refreshTick, setRefreshTick] = useState(0);
+  const [quickAddError, setQuickAddError] = useState<string | null>(null);
 
   // États du flux cuisine
   type CookState = 'idle' | 'confirming' | 'done';
@@ -207,6 +208,7 @@ export const ShoppingListDrawer: React.FC<ShoppingListDrawerProps> = ({
     };
 
     try {
+      setQuickAddError(null);
       await dbService.saveProduct(newProduct);
 
       // Regrouper les références par recette
@@ -243,8 +245,9 @@ export const ShoppingListDrawer: React.FC<ShoppingListDrawerProps> = ({
 
       setRefreshTick(t => t + 1);
       onDataChanged?.();
-    } catch (err) {
+    } catch (err: unknown) {
       console.error('Erreur lors de la création rapide du produit:', err);
+      setQuickAddError(err instanceof Error ? err.message : "Échec de l'ajout du produit à vos stocks.");
     }
   };
 
@@ -466,6 +469,28 @@ export const ShoppingListDrawer: React.FC<ShoppingListDrawerProps> = ({
         {/* ── ÉTAT NORMAL : liste de courses ── */}
         {cookingState === 'idle' && (
           <div style={{ flex: 1, overflowY: 'auto', padding: '16px 24px' }}>
+            {quickAddError && (
+              <div style={{
+                marginBottom: '16px',
+                padding: '10px 14px',
+                backgroundColor: 'var(--color-danger-light)',
+                border: '1px solid rgba(255, 75, 75, 0.3)',
+                borderRadius: 'var(--radius-md)',
+                fontSize: '12px',
+                color: 'var(--color-danger)',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                gap: '8px'
+              }}>
+                <span>❌ {quickAddError}</span>
+                <button
+                  type="button"
+                  onClick={() => setQuickAddError(null)}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-danger)', fontWeight: 700, fontSize: '16px', lineHeight: 1 }}
+                >×</button>
+              </div>
+            )}
 
             {/* Total estimé */}
             {toOrderItems.length > 0 && (
