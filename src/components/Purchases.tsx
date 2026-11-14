@@ -7,7 +7,9 @@ import {
   Trash2, 
   Calendar, 
   AlertTriangle,
-  FileText
+  FileText,
+  TrendingUp,
+  TrendingDown
 } from 'lucide-react';
 import { dbService } from '../services/db';
 import { 
@@ -27,6 +29,7 @@ import { InvoiceScanner } from './InvoiceScanner';
 import { ProductDuplicateSuggestions } from './ProductDuplicateSuggestions';
 import { findExactDuplicateProduct } from '../utils/productDuplicate';
 import { formatExpiryDate, getDaysUntilExpiry } from '../utils/expiry';
+import { comparePurchasePrice } from '../utils/purchasePriceAlert';
 
 interface PurchasesProps {
   initialTriggerScan?: boolean;
@@ -47,6 +50,17 @@ export const Purchases: React.FC<PurchasesProps> = ({ initialTriggerScan, initia
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [isInvoiceScannerOpen, setIsInvoiceScannerOpen] = useState(false);
   const [isAiScannerOpen, setIsAiScannerOpen] = useState(false);
+
+  // Alerte d'écart de prix (> 10%) après enregistrement
+  const [priceAlert, setPriceAlert] = useState<{
+    message: string;
+    productName: string;
+    type: 'increase' | 'decrease';
+    diffPercent: number;
+    prevPrice: number;
+    newPrice: number;
+    unit: string;
+  } | null>(null);
 
   // Valeurs du formulaire d'achat
   const [formDate, setFormDate] = useState(new Date().toISOString().split('T')[0]);
@@ -255,6 +269,16 @@ export const Purchases: React.FC<PurchasesProps> = ({ initialTriggerScan, initia
     setIsSaving(true);
     setSaveError(null);
 
+    // Comparer le prix unitaire ramené à l'unité de stock au prix moyen précédent
+    const targetProduct = products.find(p => p.id === formProductId) || dbService.getProduct(formProductId);
+    const prevAvg = targetProduct ? targetProduct.avgPurchasePrice : 0;
+    const qtyInStockUnit = targetProduct ? convertUnits(qtyNum, formUnit, targetProduct.unit) : qtyNum;
+    const pricePerStockUnit = (qtyInStockUnit !== null && qtyInStockUnit > 0)
+      ? (pricePaidNum / qtyInStockUnit)
+      : (qtyNum > 0 ? pricePaidNum / qtyNum : 0);
+
+    const priceComparison = comparePurchasePrice(pricePerStockUnit, prevAvg);
+
     const newPurchase: Purchase = {
       id: 'A_' + Date.now(),
       date: formDate,
@@ -274,6 +298,21 @@ export const Purchases: React.FC<PurchasesProps> = ({ initialTriggerScan, initia
       setIsFormOpen(false);
       setSaveError(null);
       loadData();
+
+      // Si l'écart dépasse 10 %, afficher le message après l'enregistrement
+      if (priceComparison.hasAlert && priceComparison.message) {
+        const prodName = targetProduct ? cleanProductName(targetProduct.name) : 'Produit';
+        setPriceAlert({
+          message: priceComparison.message,
+          productName: prodName,
+          type: priceComparison.type || 'increase',
+          diffPercent: priceComparison.diffPercent || 0,
+          prevPrice: prevAvg,
+          newPrice: pricePerStockUnit,
+          unit: targetProduct?.unit || formUnit
+        });
+        alert(`${prodName} : ${priceComparison.message}`);
+      }
     } catch (err: unknown) {
       console.error('Erreur achat:', err);
       setSaveError(err instanceof Error ? err.message : "Échec de l'enregistrement de l'achat dans le Cloud.");
@@ -283,16 +322,33 @@ export const Purchases: React.FC<PurchasesProps> = ({ initialTriggerScan, initia
   };
 
   // Enregistrer les achats extraits du scanner de factures
-  const handleSaveInvoicePurchases = (scannedPurchases: Omit<Purchase, 'id'>[]) => {
-    scannedPurchases.forEach(p => {
+  const handleSaveInvoicePurchases = async (scannedPurchases: Omit<Purchase, 'id'>[]) => {
+    const alertMessages: string[] = [];
+
+    for (const p of scannedPurchases) {
+      const prod = dbService.getProduct(p.productId);
+      if (prod && prod.avgPurchasePrice > 0) {
+        const qtyInStock = convertUnits(p.qty, p.unit, prod.unit);
+        const stockPrice = (qtyInStock !== null && qtyInStock > 0) ? p.pricePaid / qtyInStock : p.unitPrice;
+        const comp = comparePurchasePrice(stockPrice, prod.avgPurchasePrice);
+        if (comp.hasAlert && comp.message) {
+          alertMessages.push(`${cleanProductName(prod.name)} : ${comp.message}`);
+        }
+      }
+
       const fullPurchase: Purchase = {
         id: 'A_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
         ...p
       };
-      dbService.addPurchase(fullPurchase);
-    });
+      await dbService.addPurchase(fullPurchase);
+    }
+
     setIsInvoiceScannerOpen(false);
     loadData();
+
+    if (alertMessages.length > 0) {
+      alert(alertMessages.join('\n'));
+    }
   };
 
   // Supprimer un achat
@@ -347,6 +403,58 @@ export const Purchases: React.FC<PurchasesProps> = ({ initialTriggerScan, initia
           </button>
         </div>
       </div>
+
+      {/* Bannière d'alerte variation de prix > 10% */}
+      {priceAlert && (
+        <div 
+          style={{
+            marginBottom: '20px',
+            padding: '14px 18px',
+            borderRadius: 'var(--radius-md)',
+            backgroundColor: priceAlert.type === 'increase' ? 'rgba(239, 68, 68, 0.08)' : 'rgba(16, 185, 129, 0.08)',
+            border: `1px solid ${priceAlert.type === 'increase' ? 'rgba(239, 68, 68, 0.4)' : 'rgba(16, 185, 129, 0.4)'}`,
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            gap: '12px'
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{
+              width: '36px',
+              height: '36px',
+              borderRadius: '50%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: priceAlert.type === 'increase' ? 'rgba(239, 68, 68, 0.15)' : 'rgba(16, 185, 129, 0.15)',
+              color: priceAlert.type === 'increase' ? 'var(--color-danger)' : 'var(--color-secondary)',
+              flexShrink: 0
+            }}>
+              {priceAlert.type === 'increase' ? <TrendingUp size={20} /> : <TrendingDown size={20} />}
+            </div>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                <strong style={{ fontSize: '14px', color: 'var(--color-dark)' }}>{priceAlert.productName}</strong>
+                <span className={`badge ${priceAlert.type === 'increase' ? 'badge-danger' : 'badge-success'}`}>
+                  {priceAlert.message}
+                </span>
+              </div>
+              <div style={{ fontSize: '12px', color: 'var(--color-dark-light)', marginTop: '2px' }}>
+                Prix de cet achat : {priceAlert.newPrice.toFixed(2)} {settings.currency}/{priceAlert.unit} (prix moyen précédent : {priceAlert.prevPrice.toFixed(2)} {settings.currency}/{priceAlert.unit})
+              </div>
+            </div>
+          </div>
+          <button 
+            type="button" 
+            className="btn btn-secondary"
+            style={{ height: '30px', padding: '0 12px', fontSize: '12px' }}
+            onClick={() => setPriceAlert(null)}
+          >
+            Fermer
+          </button>
+        </div>
+      )}
 
       {/* Liste des achats récents */}
       <div className="table-container">

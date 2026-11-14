@@ -4,6 +4,25 @@ Toutes les modifications notables apportées à ce projet sont documentées dans
 
 ---
 
+## [2.0.61] - 2026-11-14
+
+### Alertes d'écart de prix d'achat, courbe d'évolution produit et recettes sous marge cible
+- **Alerte d'écart de prix d'achat à l'enregistrement (`src/components/Purchases.tsx`, `src/utils/purchasePriceAlert.ts`)** :
+  - Comparaison automatique du prix unitaire (ramené à l'unité de stock du produit) avec le prix moyen d'achat précédent lors de la validation d'un achat.
+  - Détection automatique si l'écart dépasse 10 % (à la hausse ou à la baisse).
+  - Affichage immédiat après l'enregistrement d'un message conforme « Prix en hausse de X % » ou « Prix en baisse de X % » (boîte de dialogue native et bannière visuelle informative détaillée avec repères chiffrés).
+- **Évolution du prix d'achat dans la fiche produit (`src/components/Products.tsx`)** :
+  - Affichage de la liste des derniers achats avec le prix unitaire systématiquement ramené à l'unité de stock (`selectedProduct.unit`), en conservant également le prix d'achat brut d'origine si l'unité d'achat diffère.
+  - Intégration d'une petite courbe vectorielle (SVG réactif) visualisant l'évolution chronologique du prix d'achat au fil du temps avec points interactifs, repères min/max et indicateur de tendance globale.
+- **Liste des recettes passées sous la marge cible sur le tableau de bord (`src/components/Dashboard.tsx`, `src/utils/recipeMarginAlert.ts`)** :
+  - Identification précise de toutes les recettes dont la marge réelle observée est passée sous la marge cible paramétrée (`settings.defaultTargetMargin`).
+  - Détection de l'ingrédient pesant le plus lourd dans le coût de la recette (nom, coût par portion et part en pourcentage du coût total).
+  - Calcul et affichage du prix de vente conseillé pour restaurer la marge cible, avec écart de prix à combler et bouton d'accès direct pour ajuster la recette.
+- **Tests unitaires dédiés (`src/utils/purchasePriceAlert.test.ts`, `src/utils/recipeMarginAlert.test.ts`)** :
+  - Validation exhaustive de la logique de détection de variation de prix (> 10%), du calcul de l'ingrédient principal et du prix conseillé pour rétablir la marge.
+
+---
+
 ## [2.0.60] - 2026-11-14
 
 ### Sélecteur de Période, KPIs Dynamiques avec Écarts, Total des Achats & Graphique de Chiffre d'Affaires

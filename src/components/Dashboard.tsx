@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   TrendingUp,
+  TrendingDown,
   AlertTriangle,
   ShoppingCart,
   ChefHat,
@@ -28,6 +29,7 @@ import {
   ChartDataPoint,
   MetricDiff
 } from '../utils/dashboardPeriod';
+import { getRecipesBelowTargetMargin } from '../utils/recipeMarginAlert';
 
 interface DashboardProps {
   onNavigate: (tab: string, extraData?: Record<string, unknown>) => void;
@@ -128,7 +130,18 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
     periodRange.current,
     id => dbService.calculateRecipeCost(id)
   );
-  const lowMarginRecipes = recipesWithProfit.filter(r => r.marginPercent < settings.defaultTargetMargin);
+
+  // Recettes passées sous la marge cible avec ingrédient principal et prix conseillé
+  const allRecipeIngredients = dbService.getAllRecipeIngredients();
+  const recipesBelowTargetMargin = getRecipesBelowTargetMargin({
+    recipes,
+    sales,
+    ingredients: allRecipeIngredients,
+    products,
+    targetMargin: settings.defaultTargetMargin,
+    calculateRecipeCost: id => dbService.calculateRecipeCost(id),
+    periodRange: periodRange.current
+  });
 
   // Données pour le petit graphique de chiffre d'affaires
   const chartData = generateSalesChartData(sales, periodRange.current, selectedPeriod, activeGranularity);
@@ -818,7 +831,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
       </div>
 
       {/* --- SECTION DES ALERTES DÉTECTÉES --- */}
-      {(lowStockProducts.length > 0 || lowMarginRecipes.length > 0) && (
+      {(lowStockProducts.length > 0 || recipesBelowTargetMargin.length > 0) && (
         <div className="card" style={{ marginBottom: '28px', backgroundColor: 'var(--color-danger-light)', borderColor: 'rgba(255, 75, 75, 0.2)' }}>
           <div className="card-title" style={{ color: 'var(--color-danger)', marginBottom: '16px' }}>
             <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -827,7 +840,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
             </span>
           </div>
           
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
             {/* Alerte stock faible */}
             {lowStockProducts.length > 0 && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -847,20 +860,86 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
               </div>
             )}
 
-            {/* Alerte Marge Faible (recalculée sur la période) */}
-            {lowMarginRecipes.length > 0 && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', borderTop: '1px solid rgba(255, 75, 75, 0.1)', paddingTop: '12px' }}>
-                <strong style={{ fontSize: '14px', color: 'var(--color-dark)' }}>💸 Recettes avec marges sous la cible ({settings.defaultTargetMargin}%) sur la période :</strong>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                  {lowMarginRecipes.slice(0, 3).map(r => (
-                    <span 
-                      key={r.recipe.id} 
-                      className="badge badge-danger"
-                      style={{ cursor: 'pointer' }}
-                      onClick={() => onNavigate('Recettes', { viewRecipeId: r.recipe.id })}
+            {/* Recettes passées sous la marge cible */}
+            {recipesBelowTargetMargin.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', borderTop: lowStockProducts.length > 0 ? '1px solid rgba(255, 75, 75, 0.15)' : 'none', paddingTop: lowStockProducts.length > 0 ? '14px' : '0' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                  <strong style={{ fontSize: '14px', color: 'var(--color-dark)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <TrendingDown size={18} style={{ color: 'var(--color-danger)' }} />
+                    Recettes passées sous la marge cible ({settings.defaultTargetMargin}%) :
+                  </strong>
+                  <span className="badge badge-danger">
+                    {recipesBelowTargetMargin.length} recette{recipesBelowTargetMargin.length > 1 ? 's' : ''} à ajuster
+                  </span>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {recipesBelowTargetMargin.map(({ recipe, currentMargin, costPerPortion, observedSellingPrice, suggestedSellingPrice, priceGap, heaviestIngredient }) => (
+                    <div 
+                      key={recipe.id}
+                      style={{
+                        backgroundColor: '#ffffff',
+                        border: '1px solid rgba(239, 68, 68, 0.3)',
+                        borderRadius: 'var(--radius-md)',
+                        padding: '12px 14px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '8px'
+                      }}
                     >
-                      {r.recipe.name} (Marge : {r.marginPercent.toFixed(0)}%) - Ajuster prix
-                    </span>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <strong style={{ fontSize: '14px', color: 'var(--color-dark)' }}>{recipe.name}</strong>
+                          <span className="badge badge-danger" style={{ fontSize: '11px', fontWeight: 700 }}>
+                            Marge actuelle : {currentMargin.toFixed(0)}% (Cible : {settings.defaultTargetMargin}%)
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          className="btn btn-secondary"
+                          style={{ height: '28px', padding: '0 10px', fontSize: '11px', borderColor: 'var(--color-primary)', color: 'var(--color-primary)' }}
+                          onClick={() => onNavigate('Recettes', { viewRecipeId: recipe.id })}
+                        >
+                          Ajuster la recette →
+                        </button>
+                      </div>
+
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '10px', fontSize: '12px' }}>
+                        <div style={{ background: 'var(--color-light)', padding: '8px 10px', borderRadius: 'var(--radius-sm)' }}>
+                          <div style={{ color: 'var(--color-dark-light)', fontSize: '11px' }}>Prix constaté vs Coût</div>
+                          <strong style={{ color: 'var(--color-dark)' }}>
+                            {observedSellingPrice.toFixed(2)} {settings.currency}
+                          </strong>
+                          <span style={{ color: 'var(--color-dark-light)', marginLeft: '6px' }}>
+                            (Coût : {costPerPortion.toFixed(2)} {settings.currency}/portion)
+                          </span>
+                        </div>
+
+                        {heaviestIngredient && (
+                          <div style={{ background: 'var(--color-light)', padding: '8px 10px', borderRadius: 'var(--radius-sm)' }}>
+                            <div style={{ color: 'var(--color-dark-light)', fontSize: '11px' }}>Ingrédient qui pèse le plus dans le coût</div>
+                            <strong style={{ color: 'var(--color-danger)' }}>
+                              {heaviestIngredient.name}
+                            </strong>
+                            <span style={{ color: 'var(--color-dark-light)', marginLeft: '6px' }}>
+                              ({heaviestIngredient.costPerPortion.toFixed(2)} {settings.currency}/portion • {heaviestIngredient.percentOfTotalCost}% du coût)
+                            </span>
+                          </div>
+                        )}
+
+                        <div style={{ background: 'rgba(16, 185, 129, 0.08)', border: '1px solid rgba(16, 185, 129, 0.3)', padding: '8px 10px', borderRadius: 'var(--radius-sm)' }}>
+                          <div style={{ color: 'var(--color-secondary)', fontSize: '11px', fontWeight: 600 }}>Prix de vente conseillé (marge {settings.defaultTargetMargin}%)</div>
+                          <strong style={{ color: 'var(--color-secondary)', fontSize: '13px' }}>
+                            {suggestedSellingPrice.toFixed(2)} {settings.currency} / portion
+                          </strong>
+                          {priceGap > 0 && (
+                            <span style={{ color: 'var(--color-secondary)', marginLeft: '6px', fontSize: '11px' }}>
+                              (+{priceGap.toFixed(2)} {settings.currency})
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
                   ))}
                 </div>
               </div>

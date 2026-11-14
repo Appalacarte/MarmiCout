@@ -5,13 +5,13 @@ import {
   Search,
   Barcode,
   Edit,
-  History,
   Archive,
   ArrowRightLeft,
   FileText,
   Trash2,
   SlidersHorizontal,
-  Calendar
+  Calendar,
+  TrendingUp
 } from 'lucide-react';
 import { dbService } from '../services/db';
 import { generateUUID } from '../services/cloudDbService';
@@ -25,6 +25,7 @@ import {
   formatStock,
   areUnitsCompatible,
   convertProductUnitValues,
+  convertUnits,
 } from '../utils/units';
 import { getProductNextExpiry, formatExpiryDate, getDaysUntilExpiry } from '../utils/expiry';
 import { ProductDuplicateSuggestions } from './ProductDuplicateSuggestions';
@@ -1167,45 +1168,202 @@ export const Products: React.FC<ProductsProps> = ({ initialTriggerAdd, initialSe
               )}
             </div>
 
+            {/* Évolution du prix d'achat et Historique des achats */}
             <div>
               <h3 style={{ fontSize: '14px', fontWeight: '700', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <History size={16} />
-                Historique des achats
+                <TrendingUp size={16} />
+                Évolution du prix d'achat
               </h3>
               
               {purchaseHistory.length === 0 ? (
                 <p style={{ fontSize: '13px', color: 'var(--color-dark-light)', padding: '10px 0' }}>Aucun achat enregistré pour ce produit.</p>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '200px', overflowY: 'auto' }}>
-                  {purchaseHistory.map(p => {
-                    const st = stores.find(s => s.id === p.storeId);
-                    return (
-                      <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px', borderBottom: '1px solid var(--color-border)', fontSize: '12px' }}>
-                        <div>
-                          <strong>{st ? st.name : 'Fournisseur inconnu'}</strong>
-                          <div style={{ color: 'var(--color-dark-light)' }}>
-                            {p.date} • {p.qty} {p.unit} achetés
-                            {p.batchNo && <span> • Lot : {p.batchNo}</span>}
-                            {p.expiryDate && (
-                              <span style={{
-                                marginLeft: '6px',
-                                fontWeight: 600,
-                                color: (getDaysUntilExpiry(p.expiryDate) ?? 999) < 0 ? '#dc2626' : (getDaysUntilExpiry(p.expiryDate) ?? 999) <= (settings.expiryAlertDays ?? 7) ? '#d97706' : 'inherit'
-                              }}>
-                                • DLC : {formatExpiryDate(p.expiryDate)}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                        <div style={{ textAlign: 'right' }}>
-                          <strong>{p.pricePaid.toFixed(2)} {settings.currency}</strong>
-                          <div style={{ fontSize: '10px', color: 'var(--color-dark-light)' }}>{(p.pricePaid / p.qty).toFixed(2)} {settings.currency}/{p.unit}</div>
+              ) : (() => {
+                const purchasesWithStockPrice = purchaseHistory.map(p => {
+                  const stockUnit = selectedProductDetails.unit;
+                  const convQty = convertUnits(p.qty, p.unit, stockUnit);
+                  const pricePerStockUnit = (convQty !== null && convQty > 0)
+                    ? (p.pricePaid / convQty)
+                    : (p.unit === stockUnit ? p.pricePaid / p.qty : p.unitPrice);
+
+                  return {
+                    ...p,
+                    pricePerStockUnit: Number(pricePerStockUnit.toFixed(4)),
+                    convQty
+                  };
+                });
+
+                // Tri chronologique croissant pour tracer la courbe dans le bon ordre temporel
+                const chronologicalPurchases = [...purchasesWithStockPrice].sort((a, b) => a.date.localeCompare(b.date));
+
+                const svgWidth = 380;
+                const svgHeight = 90;
+                const padLeft = 48;
+                const padRight = 18;
+                const padTop = 14;
+                const padBottom = 22;
+                const plotW = svgWidth - padLeft - padRight;
+                const plotH = svgHeight - padTop - padBottom;
+
+                const prices = chronologicalPurchases.map(p => p.pricePerStockUnit);
+                const minPrice = Math.min(...prices);
+                const maxPrice = Math.max(...prices);
+                const priceRange = maxPrice - minPrice || (minPrice > 0 ? minPrice * 0.1 : 1);
+
+                const firstPrice = chronologicalPurchases[0].pricePerStockUnit;
+                const lastPrice = chronologicalPurchases[chronologicalPurchases.length - 1].pricePerStockUnit;
+                const trendDiffPercent = firstPrice > 0 ? ((lastPrice - firstPrice) / firstPrice) * 100 : 0;
+
+                const coords = chronologicalPurchases.map((p, idx) => {
+                  const x = chronologicalPurchases.length === 1 
+                    ? padLeft + plotW / 2 
+                    : padLeft + (idx / (chronologicalPurchases.length - 1)) * plotW;
+                  const normY = (p.pricePerStockUnit - minPrice) / priceRange;
+                  const y = padTop + plotH * (1 - normY);
+                  return { x, y, p };
+                });
+
+                const polylinePoints = coords.map(c => `${c.x.toFixed(1)},${c.y.toFixed(1)}`).join(' ');
+                const areaPath = coords.length > 1
+                  ? `M ${coords[0].x},${padTop + plotH} ` +
+                    coords.map(c => `L ${c.x.toFixed(1)},${c.y.toFixed(1)}`).join(' ') +
+                    ` L ${coords[coords.length - 1].x},${padTop + plotH} Z`
+                  : '';
+
+                return (
+                  <div>
+                    {/* Petite courbe d'évolution */}
+                    <div style={{
+                      marginBottom: '16px',
+                      padding: '12px',
+                      borderRadius: 'var(--radius-md)',
+                      backgroundColor: 'var(--color-light)',
+                      border: '1px solid var(--color-border)'
+                    }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', fontSize: '12px' }}>
+                        <span style={{ color: 'var(--color-dark-light)', fontWeight: 500 }}>
+                          Courbe ({chronologicalPurchases.length} achat{chronologicalPurchases.length > 1 ? 's' : ''})
+                        </span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          {chronologicalPurchases.length > 1 && (
+                            <span style={{
+                              fontSize: '11px',
+                              fontWeight: 700,
+                              color: trendDiffPercent > 0 ? 'var(--color-danger)' : trendDiffPercent < 0 ? 'var(--color-secondary)' : 'var(--color-dark-light)'
+                            }}>
+                              {trendDiffPercent > 0 ? `↗ +${trendDiffPercent.toFixed(1)} %` : trendDiffPercent < 0 ? `↘ ${trendDiffPercent.toFixed(1)} %` : '→ Stable'}
+                            </span>
+                          )}
+                          <span style={{ fontWeight: 700, color: 'var(--color-primary)' }}>
+                            Dernier : {lastPrice.toFixed(2)} {settings.currency}/{selectedProductDetails.unit}
+                          </span>
                         </div>
                       </div>
-                    );
-                  })}
-                </div>
-              )}
+
+                      <svg viewBox={`0 0 ${svgWidth} ${svgHeight}`} style={{ width: '100%', height: 'auto', display: 'block' }}>
+                        <defs>
+                          <linearGradient id="priceCurveGrad" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="var(--color-primary)" stopOpacity="0.25" />
+                            <stop offset="100%" stopColor="var(--color-primary)" stopOpacity="0.02" />
+                          </linearGradient>
+                        </defs>
+
+                        {/* Ligne repère prix max */}
+                        <line x1={padLeft} y1={padTop} x2={svgWidth - padRight} y2={padTop} stroke="var(--color-border)" strokeDasharray="3 3" strokeWidth="1" />
+                        <text x={padLeft - 6} y={padTop + 4} textAnchor="end" fontSize="9" fill="var(--color-dark-light)">
+                          {maxPrice.toFixed(2)}
+                        </text>
+
+                        {/* Ligne repère prix min */}
+                        <line x1={padLeft} y1={padTop + plotH} x2={svgWidth - padRight} y2={padTop + plotH} stroke="var(--color-border)" strokeWidth="1" />
+                        <text x={padLeft - 6} y={padTop + plotH + 3} textAnchor="end" fontSize="9" fill="var(--color-dark-light)">
+                          {minPrice.toFixed(2)}
+                        </text>
+
+                        {/* Remplissage dégradé sous la courbe */}
+                        {areaPath && <path d={areaPath} fill="url(#priceCurveGrad)" />}
+
+                        {/* Tracé de la courbe */}
+                        {coords.length > 1 && (
+                          <polyline
+                            fill="none"
+                            stroke="var(--color-primary)"
+                            strokeWidth="2.5"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            points={polylinePoints}
+                          />
+                        )}
+
+                        {/* Points d'achats avec infobulle native */}
+                        {coords.map((c, i) => {
+                          const st = stores.find(s => s.id === c.p.storeId);
+                          return (
+                            <g key={c.p.id || i}>
+                              <title>{`${c.p.date} : ${c.p.pricePerStockUnit.toFixed(2)} ${settings.currency}/${selectedProductDetails.unit} (${st ? st.name : 'Fournisseur'})`}</title>
+                              <circle
+                                cx={c.x}
+                                cy={c.y}
+                                r="4"
+                                fill="#ffffff"
+                                stroke="var(--color-primary)"
+                                strokeWidth="2"
+                              />
+                            </g>
+                          );
+                        })}
+
+                        {/* Dates extrêmes */}
+                        <text x={coords[0].x} y={svgHeight - 4} fontSize="9" fill="var(--color-dark-light)" textAnchor="start">
+                          {chronologicalPurchases[0].date}
+                        </text>
+                        {coords.length > 1 && (
+                          <text x={coords[coords.length - 1].x} y={svgHeight - 4} fontSize="9" fill="var(--color-dark-light)" textAnchor="end">
+                            {chronologicalPurchases[chronologicalPurchases.length - 1].date}
+                          </text>
+                        )}
+                      </svg>
+                    </div>
+
+                    {/* Liste des derniers achats avec prix ramené à l'unité de stock */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '220px', overflowY: 'auto' }}>
+                      {purchasesWithStockPrice.map(p => {
+                        const st = stores.find(s => s.id === p.storeId);
+                        const isDifferentUnit = p.unit !== selectedProductDetails.unit;
+                        return (
+                          <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 12px', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)', fontSize: '12px', backgroundColor: '#ffffff' }}>
+                            <div>
+                              <strong style={{ fontSize: '13px', color: 'var(--color-dark)' }}>{st ? st.name : 'Fournisseur inconnu'}</strong>
+                              <div style={{ color: 'var(--color-dark-light)', marginTop: '2px' }}>
+                                {p.date} • {p.qty} {p.unit} achetés pour {p.pricePaid.toFixed(2)} {settings.currency}
+                                {p.batchNo && <span> • Lot : {p.batchNo}</span>}
+                                {p.expiryDate && (
+                                  <span style={{
+                                    marginLeft: '6px',
+                                    fontWeight: 600,
+                                    color: (getDaysUntilExpiry(p.expiryDate) ?? 999) < 0 ? '#dc2626' : (getDaysUntilExpiry(p.expiryDate) ?? 999) <= (settings.expiryAlertDays ?? 7) ? '#d97706' : 'inherit'
+                                  }}>
+                                    • DLC : {formatExpiryDate(p.expiryDate)}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                              <strong style={{ fontSize: '13px', color: 'var(--color-primary)' }}>
+                                {p.pricePerStockUnit.toFixed(2)} {settings.currency}/{selectedProductDetails.unit}
+                              </strong>
+                              {isDifferentUnit && (
+                                <div style={{ fontSize: '10px', color: 'var(--color-dark-light)' }}>
+                                  ({(p.pricePaid / p.qty).toFixed(2)} {settings.currency}/{p.unit})
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
             
             <div style={{ marginTop: '24px', display: 'flex', gap: '12px', flexWrap: 'wrap' }}>

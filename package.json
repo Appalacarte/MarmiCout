@@ -1,11 +1,11 @@
 {
   "name": "appli-marmicout",
   "private": true,
-  "version": "2.0.60",
+  "version": "2.0.61",
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "test": "node --experimental-strip-types src/utils/units.test.ts && node --experimental-strip-types src/utils/productDuplicate.test.ts && node --experimental-strip-types src/utils/expiry.test.ts && node --experimental-strip-types src/utils/dashboardPeriod.test.ts",
+    "test": "node --experimental-strip-types src/utils/units.test.ts && node --experimental-strip-types src/utils/productDuplicate.test.ts && node --experimental-strip-types src/utils/expiry.test.ts && node --experimental-strip-types src/utils/dashboardPeriod.test.ts && node --experimental-strip-types src/utils/purchasePriceAlert.test.ts && node --experimental-strip-types src/utils/recipeMarginAlert.test.ts",
     "check:legal": "node scripts/sync-legal-from-central.mjs && node scripts/verify-legal.mjs",
     "build": "node scripts/sync-legal-from-central.mjs && node scripts/verify-legal.mjs && tsc -b && vite build",
     "lint": "eslint .",
