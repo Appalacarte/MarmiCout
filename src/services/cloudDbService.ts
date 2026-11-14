@@ -40,6 +40,7 @@ export function generateUUID(): string {
 
 export function notifyCloudError(title: string, details: string) {
   console.error(`[Marmicout Cloud Error] ${title} :`, details);
+  void indexedDbService.markUnsyncedOperation(1);
   if (typeof window !== 'undefined') {
     window.dispatchEvent(
       new CustomEvent('marmicout-cloud-error', {

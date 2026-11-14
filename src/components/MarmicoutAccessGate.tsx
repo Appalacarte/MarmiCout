@@ -34,7 +34,10 @@ export const MarmicoutAccessGate: React.FC<MarmicoutAccessGateProps> = ({ childr
   );
 
   useEffect(() => {
-    const handleOnline = () => setIsOffline(false);
+    const handleOnline = () => {
+      setIsOffline(false);
+      void accessVerificationService.verifyAccess();
+    };
     const handleOffline = () => setIsOffline(true);
     const handleCloudError = (e: Event) => {
       const customEvt = e as CustomEvent<{ title: string; details: string; timestamp: number }>;

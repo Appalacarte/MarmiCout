@@ -4,6 +4,19 @@ Toutes les modifications notables apportées à ce projet sont documentées dans
 
 ---
 
+## [2.0.50] - 2026-11-14
+
+### Bouton « Se déconnecter », Préservation des Données Hors-Ligne & Contrôle de Date de Fin Hors-Ligne
+- **Bouton « Se déconnecter » dans le menu et les paramètres** :
+  - Ajout du bouton « Se déconnecter » dans la barre latérale et le tiroir mobile ([`src/App.tsx`](file:///d:/Aplli/Marmicout/Appli%20Marmicout/src/App.tsx)) ainsi que dans l'écran Paramètres ([`src/components/Settings.tsx`](file:///d:/Aplli/Marmicout/Appli%20Marmicout/src/components/Settings.tsx)).
+  - La déconnexion efface uniquement la session locale (`supabase.auth.signOut({ scope: 'local' })`, `marmicout_supabase_auth_token`, cache `last_access_verification`) sans supprimer aucune donnée hors-ligne non synchronisée.
+  - Détection automatique des données hors-ligne non synchronisées (`dbService.checkUnsyncedOfflineData()`) avec message d'avertissement et confirmation avant déconnexion.
+- **Revérification en ligne & Validité hors-ligne jusqu'à la date de fin connue** :
+  - Dans [`src/services/accessVerificationService.ts`](file:///d:/Aplli/Marmicout/Appli%20Marmicout/src/services/accessVerificationService.ts) et [`src/components/MarmicoutAccessGate.tsx`](file:///d:/Aplli/Marmicout/Appli%20Marmicout/src/components/MarmicoutAccessGate.tsx) : à chaque ouverture avec internet (et au retour de connexion), revérification via `/api/access/verify` et renvoi vers la connexion si la session est invalide ou si l'abonnement a pris fin.
+  - Hors-ligne, l'application continue de fonctionner jusqu'à la date de fin d'accès connue (`expiresAt` / `consultationUntil` dans IndexedDB) et bloque l'accès une fois cette date dépassée.
+
+---
+
 ## [2.0.49] - 2026-11-14
 
 ### Sécurité SSO à Usage Unique, Suppression des QR Codes de Partage & Codes Testeurs Longs

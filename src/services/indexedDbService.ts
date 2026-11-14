@@ -145,6 +145,60 @@ class IndexedDbService {
     }
   }
 
+  public async markUnsyncedOperation(delta: number = 1): Promise<void> {
+    try {
+      const current = await this.getUnsyncedOperationsCount();
+      const next = Math.max(0, current + delta);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('marmicout_unsynced_ops', String(next));
+      }
+      await this.put('cache_meta', {
+        key: 'unsynced_operations_count',
+        value: next,
+        updatedAt: Date.now(),
+      });
+    } catch {
+      // Ignorer
+    }
+  }
+
+  public async clearUnsyncedOperations(): Promise<void> {
+    try {
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('marmicout_unsynced_ops');
+      }
+      await this.put('cache_meta', {
+        key: 'unsynced_operations_count',
+        value: 0,
+        updatedAt: Date.now(),
+      });
+    } catch {
+      // Ignorer
+    }
+  }
+
+  public async getUnsyncedOperationsCount(): Promise<number> {
+    try {
+      const db = await this.getDB();
+      return new Promise((resolve) => {
+        const tx = db.transaction('cache_meta', 'readonly');
+        const store = tx.objectStore('cache_meta');
+        const req = store.get('unsynced_operations_count');
+        req.onsuccess = () => {
+          const val = req.result ? Number(req.result.value || 0) : 0;
+          resolve(Number.isFinite(val) ? val : 0);
+        };
+        req.onerror = () => resolve(0);
+      });
+    } catch {
+      if (typeof window !== 'undefined') {
+        const raw = localStorage.getItem('marmicout_unsynced_ops');
+        return raw ? Number(raw) || 0 : 0;
+      }
+      return 0;
+    }
+  }
+
   public async isCacheValid72h(): Promise<boolean> {
     const lastSync = await this.getLastSyncTimestamp();
     if (!lastSync) return false;

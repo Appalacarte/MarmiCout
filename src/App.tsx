@@ -14,7 +14,8 @@ import {
   MessageSquare,
   FileText,
   Mail,
-  ShieldCheck
+  ShieldCheck,
+  LogOut
 } from 'lucide-react';
 import './App.css'; // Nous allons vider ce fichier pour éviter les conflits
 
@@ -39,6 +40,7 @@ import { WelcomeScreen } from './components/WelcomeScreen';
 import { MarmicoutAccessGate } from './components/MarmicoutAccessGate';
 
 import { dbService, getActiveTesterCode } from './services/db';
+import { accessVerificationService } from './services/accessVerificationService';
 import { markTesterCodeIssued, isTesterCodeExpired, getTesterCodeExpiryDate } from './services/testerCodes';
 import { APP_VERSION } from './version';
 
@@ -249,32 +251,32 @@ function App() {
       case 'Produits':
         return (
           <Products
-            initialTriggerAdd={extra?.triggerAdd as any}
+            initialTriggerAdd={Boolean(extra?.triggerAdd)}
             onNavigate={handleNavigate}
           />
         );
       case 'Achats':
         return (
           <Purchases
-            initialTriggerScan={extra?.triggerScan as any}
-            initialPrefillProductId={extra?.prefillProductId as any}
+            initialTriggerScan={Boolean(extra?.triggerScan)}
+            initialPrefillProductId={extra?.prefillProductId as string | undefined}
           />
         );
       case 'Recettes':
         return (
           <Recipes
-            initialTriggerAdd={extra?.triggerAdd as any}
-            initialViewRecipeId={extra?.viewRecipeId as any}
+            initialTriggerAdd={Boolean(extra?.triggerAdd)}
+            initialViewRecipeId={extra?.viewRecipeId as string | undefined}
           />
         );
       case 'Production':
-        return <Productions initialTriggerAdd={extra?.triggerAdd as any} />;
+        return <Productions initialTriggerAdd={Boolean(extra?.triggerAdd)} />;
       case 'Ventes':
-        return <Sales initialTriggerAdd={extra?.triggerAdd as any} />;
+        return <Sales initialTriggerAdd={Boolean(extra?.triggerAdd)} />;
       case 'Magasins':
         return <Stores />;
       case 'Paramètres':
-        return <Settings initialSubTab={extra?.subTab as any} />;
+        return <Settings initialSubTab={extra?.subTab as 'general' | 'subscription' | undefined} />;
       case 'Suggestions':
         return <Suggestions />;
       case 'Devis':
@@ -371,6 +373,33 @@ function App() {
               </div>
             ) : null;
           })()}
+          <button
+            type="button"
+            onClick={() => {
+              void accessVerificationService.requestSignOutWithWarning(() =>
+                dbService.checkUnsyncedOfflineData()
+              );
+            }}
+            style={{
+              marginTop: '12px',
+              width: '100%',
+              padding: '8px 10px',
+              borderRadius: '8px',
+              border: '1px solid rgba(239, 68, 68, 0.35)',
+              backgroundColor: 'rgba(239, 68, 68, 0.08)',
+              color: '#ef4444',
+              fontSize: '12px',
+              fontWeight: '700',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '6px'
+            }}
+          >
+            <LogOut size={14} />
+            <span>Se déconnecter</span>
+          </button>
         </div>
       </aside>
 
@@ -655,6 +684,27 @@ function App() {
             <ShieldCheck size={18} style={{ marginRight: '12px', color: 'var(--color-primary)' }} />
             Mentions Légales
           </button>
+
+          <button
+            className="btn btn-secondary"
+            style={{
+              height: '50px',
+              justifyContent: 'flex-start',
+              paddingLeft: '20px',
+              borderColor: 'rgba(239, 68, 68, 0.35)',
+              color: 'var(--color-danger)'
+            }}
+            onClick={() => {
+              setIsMobileActionOpen(false);
+              void accessVerificationService.requestSignOutWithWarning(() =>
+                dbService.checkUnsyncedOfflineData()
+              );
+            }}
+          >
+            <LogOut size={18} style={{ marginRight: '12px', color: 'var(--color-danger)' }} />
+            Se déconnecter
+          </button>
+
           <button
             className="btn btn-danger"
             style={{ height: '44px', marginTop: '12px' }}

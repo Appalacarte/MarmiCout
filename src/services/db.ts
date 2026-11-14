@@ -381,6 +381,35 @@ export const dbService = {
   },
 
   // --- SYNCHRONISATION CLOUD & FAÇADE ---
+  async checkUnsyncedOfflineData(): Promise<{
+    hasUnsynced: boolean;
+    unsyncedCount: number;
+    localItemsCount: number;
+    isLocalOnlyPlan: boolean;
+  }> {
+    const unsyncedCount = await indexedDbService.getUnsyncedOperationsCount();
+    const isLocalOnly = isLocalMode();
+    const [products, recipes, purchases, productions, sales] = await Promise.all([
+      indexedDbService.getAll<Product>('products'),
+      indexedDbService.getAll<Recipe>('recipes'),
+      indexedDbService.getAll<Purchase>('purchases'),
+      indexedDbService.getAll<Production>('productions'),
+      indexedDbService.getAll<Sale>('sales'),
+    ]);
+    const localItemsCount =
+      products.length + recipes.length + purchases.length + productions.length + sales.length;
+    const isOfflineNow = typeof navigator !== 'undefined' && !navigator.onLine;
+    const hasUnsynced =
+      unsyncedCount > 0 || (isLocalOnly && localItemsCount > 0) || (isOfflineNow && localItemsCount > 0);
+
+    return {
+      hasUnsynced,
+      unsyncedCount: unsyncedCount > 0 ? unsyncedCount : (hasUnsynced ? localItemsCount : 0),
+      localItemsCount,
+      isLocalOnlyPlan: isLocalOnly,
+    };
+  },
+
   async syncFromCloud(): Promise<void> {
     if (!isCloudMode()) return;
     try {
@@ -412,6 +441,9 @@ export const dbService = {
       inMemoryCache.recipe_ingredients = data.recipeIngredients || [];
       inMemoryCache.recipe_packaging = data.recipePackaging || [];
       if (data.settings) inMemorySettings = data.settings;
+
+      await indexedDbService.setLastSyncTimestamp(Date.now());
+      await indexedDbService.clearUnsyncedOperations();
 
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('marmicout-data-synced'));

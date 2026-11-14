@@ -32,7 +32,7 @@ export interface AccessVerificationResult {
   planCode?: string;
   planName?: string;
   features?: string[];
-  limits?: Record<string, any>;
+  limits?: Record<string, unknown>;
   expiresAt?: string;
   daysRemaining?: number;
   consultationUntil?: string;
@@ -51,24 +51,46 @@ export interface AccessVerificationResult {
   userEmail?: string;
 }
 
+interface CachedSettingEntry {
+  key: string;
+  value?: AccessVerificationResult;
+  cachedAt?: string;
+}
+
 class AccessVerificationService {
   private lastResult: AccessVerificationResult | null = null;
   private listeners: ((result: AccessVerificationResult) => void)[] = [];
-  private checkIntervalId: any = null;
+  private checkIntervalId: ReturnType<typeof setInterval> | null = null;
 
   constructor() {
-    this.loadCachedResult();
+    void this.loadCachedResult();
     this.startPeriodicCheck();
+  }
+
+  private isKnownAccessStillValid(cached: AccessVerificationResult): boolean {
+    if (!cached.hasAccess) return false;
+    const knownEndStr =
+      cached.mode === 'consultation_seule'
+        ? cached.consultationUntil || cached.expiresAt
+        : cached.expiresAt || cached.consultationUntil;
+    if (!knownEndStr) return true;
+    const endMs = new Date(knownEndStr).getTime();
+    if (Number.isNaN(endMs)) return true;
+    return endMs > Date.now();
   }
 
   private async loadCachedResult() {
     try {
-      const items = await indexedDbService.getAll<any>('settings');
+      const items = await indexedDbService.getAll<CachedSettingEntry>('settings');
       const cached = items.find((i) => i.key === 'last_access_verification');
       if (cached && cached.value && !this.lastResult) {
-        this.lastResult = cached.value;
+        if (this.isKnownAccessStillValid(cached.value)) {
+          this.lastResult = cached.value;
+        } else {
+          await indexedDbService.delete('settings', 'last_access_verification');
+        }
       }
-    } catch (e) {
+    } catch {
       // Ignorer
     }
   }
@@ -98,20 +120,164 @@ class AccessVerificationService {
     return this.lastResult;
   }
 
+  private getLoginRedirectUrl(): string {
+    const nextTarget =
+      typeof window !== 'undefined'
+        ? window.location.origin + window.location.pathname
+        : '';
+    return `${APPALACARTE_URL}/auth/login?next=${encodeURIComponent(nextTarget)}`;
+  }
+
   /**
-   * Vérifie l'accès en appelant l'API centrale d'App à la Carte
+   * Évalue l'accès en mode hors-ligne à partir de la dernière vérification connue.
+   * Hors-ligne, Marmicout continue de fonctionner jusqu'à la date de fin d'accès connue (expiresAt).
+   */
+  private async resolveOfflineAccess(): Promise<AccessVerificationResult> {
+    try {
+      const items = await indexedDbService.getAll<CachedSettingEntry>('settings');
+      const cached = items.find((i) => i.key === 'last_access_verification');
+      if (cached && cached.value && cached.value.hasAccess) {
+        if (this.isKnownAccessStillValid(cached.value)) {
+          const endStr = cached.value.expiresAt
+            ? new Date(cached.value.expiresAt).toLocaleDateString('fr-FR')
+            : null;
+          const cachedResult: AccessVerificationResult = {
+            ...cached.value,
+            alertMessage:
+              cached.value.alertMessage ||
+              (endStr
+                ? `Mode hors-ligne : accès valide jusqu'au ${endStr}.`
+                : 'Mode hors-ligne : utilisation de vos droits enregistrés localement.'),
+          };
+          this.notify(cachedResult);
+          return cachedResult;
+        }
+
+        // La date de fin d'accès connue est dépassée
+        await indexedDbService.delete('settings', 'last_access_verification');
+        const expiredOfflineResult: AccessVerificationResult = {
+          hasAccess: false,
+          mode: 'unauthenticated',
+          error:
+            "Votre période d'accès connue a pris fin. Veuillez vous connecter à internet pour renouveler votre abonnement ou vous reconnecter.",
+          actionButtonText: 'Se connecter avec mon compte App à la Carte',
+          actionUrl: this.getLoginRedirectUrl(),
+          tarifsUrl: `${APPALACARTE_URL}/tarifs?app=marmicout-stock-restauration`,
+        };
+        this.notify(expiredOfflineResult);
+        return expiredOfflineResult;
+      }
+    } catch (dbErr) {
+      console.error('Erreur lecture cache IndexedDB:', dbErr);
+    }
+
+    const unauthOfflineResult: AccessVerificationResult = {
+      hasAccess: false,
+      mode: 'unauthenticated',
+      error: 'Aucune session active enregistrée sur cet appareil. Connectez-vous à internet pour vous identifier.',
+      actionButtonText: 'Se connecter avec mon compte App à la Carte',
+      actionUrl: this.getLoginRedirectUrl(),
+      tarifsUrl: `${APPALACARTE_URL}/tarifs?app=marmicout-stock-restauration`,
+    };
+    this.notify(unauthOfflineResult);
+    return unauthOfflineResult;
+  }
+
+  /**
+   * Déconnexion locale sécurisée :
+   * Efface uniquement la session d'authentification locale et le jeton d'accès mis en cache,
+   * SANS supprimer aucune donnée métier hors-ligne (produits, recettes, achats, ventes, etc.).
+   */
+  public async signOutLocal(): Promise<void> {
+    try {
+      await supabase.auth.signOut({ scope: 'local' });
+    } catch {
+      // Ignorer si déjà déconnecté
+    }
+
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('marmicout_supabase_auth_token');
+      const searchParams = new URLSearchParams(window.location.search);
+      if (searchParams.has('code') || searchParams.has('sso_token')) {
+        searchParams.delete('code');
+        searchParams.delete('sso_token');
+        const cleanSearch = searchParams.toString();
+        window.history.replaceState(
+          null,
+          '',
+          window.location.pathname + (cleanSearch ? `?${cleanSearch}` : '') + window.location.hash
+        );
+      }
+    }
+
+    try {
+      await indexedDbService.delete('settings', 'last_access_verification');
+    } catch {
+      // Ignorer
+    }
+
+    const loggedOutResult: AccessVerificationResult = {
+      hasAccess: false,
+      mode: 'unauthenticated',
+      error: 'Vous avez été déconnecté. Vos données locales sur cet appareil ont été conservées.',
+      actionButtonText: 'Se connecter avec mon compte App à la Carte',
+      actionUrl: this.getLoginRedirectUrl(),
+      tarifsUrl: `${APPALACARTE_URL}/tarifs?app=marmicout-stock-restauration`,
+    };
+    this.notify(loggedOutResult);
+  }
+
+  /**
+   * Vérifie s'il reste des données hors-ligne non synchronisées, avertit l'utilisateur
+   * le cas échéant, puis efface uniquement la session locale sans supprimer les données.
+   */
+  public async requestSignOutWithWarning(
+    checkUnsyncedFn: () => Promise<{
+      hasUnsynced: boolean;
+      unsyncedCount: number;
+      localItemsCount: number;
+      isLocalOnlyPlan: boolean;
+    }>
+  ): Promise<boolean> {
+    try {
+      const summary = await checkUnsyncedFn();
+      if (summary.hasUnsynced && typeof window !== 'undefined') {
+        const message = summary.isLocalOnlyPlan
+          ? `Attention : vous disposez de ${summary.localItemsCount} donnée(s) enregistrée(s) localement sur cet appareil (mode hors-ligne / Essentiel).\n\nLa déconnexion effacera votre session locale sans supprimer vos données, qui resteront intégralement conservées sur cet appareil.\n\nConfirmer la déconnexion ?`
+          : `Attention : il reste des données hors-ligne non synchronisées sur cet appareil (${summary.unsyncedCount} élément(s)).\n\nLa déconnexion effacera votre session locale sans supprimer ces données hors-ligne non synchronisées.\n\nSouhaitez-vous vous déconnecter maintenant ?`;
+        const confirmed = window.confirm(message);
+        if (!confirmed) {
+          return false;
+        }
+      }
+    } catch {
+      // En cas d'erreur de lecture, poursuivre la déconnexion sans supprimer les données
+    }
+
+    await this.signOutLocal();
+    return true;
+  }
+
+  /**
+   * Vérifie l'accès en appelant l'API centrale d'App à la Carte (/api/access/verify)
    */
   public async verifyAccess(): Promise<AccessVerificationResult> {
+    // Si l'appareil est hors-ligne, utiliser immédiatement les droits connus jusqu'à leur date de fin
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      return this.resolveOfflineAccess();
+    }
+
     try {
       const token = await getAccessToken();
 
       if (!token) {
+        await indexedDbService.delete('settings', 'last_access_verification').catch(() => {});
         const unauthResult: AccessVerificationResult = {
           hasAccess: false,
           mode: 'unauthenticated',
           error: 'Vous devez être connecté avec votre compte App à la Carte pour utiliser Marmicout.',
           actionButtonText: 'Se connecter avec mon compte App à la Carte',
-          actionUrl: `${APPALACARTE_URL}/auth/login?next=${encodeURIComponent(typeof window !== 'undefined' ? window.location.href : '')}`,
+          actionUrl: this.getLoginRedirectUrl(),
           tarifsUrl: `${APPALACARTE_URL}/tarifs?app=marmicout-stock-restauration`,
         };
         this.notify(unauthResult);
@@ -132,6 +298,26 @@ class AccessVerificationService {
       const data = await res.json().catch(() => ({}));
 
       if (!res.ok) {
+        // La réponse du serveur est négative : on invalide le cache local d'accès
+        await indexedDbService.delete('settings', 'last_access_verification').catch(() => {});
+
+        if (res.status === 401) {
+          await supabase.auth.signOut({ scope: 'local' }).catch(() => {});
+          if (typeof window !== 'undefined') {
+            localStorage.removeItem('marmicout_supabase_auth_token');
+          }
+          const unauthResult: AccessVerificationResult = {
+            hasAccess: false,
+            mode: 'unauthenticated',
+            error: data.error || 'Votre session a expiré. Veuillez vous reconnecter.',
+            actionButtonText: 'Se connecter avec mon compte App à la Carte',
+            actionUrl: this.getLoginRedirectUrl(),
+            tarifsUrl: `${APPALACARTE_URL}/tarifs?app=marmicout-stock-restauration`,
+          };
+          this.notify(unauthResult);
+          return unauthResult;
+        }
+
         // Traitement des statuts spécifiques
         if (data.mode === 'mfa_required') {
           const mfaResult: AccessVerificationResult = {
@@ -139,7 +325,7 @@ class AccessVerificationService {
             mode: 'mfa_required',
             error: data.error || 'Double authentification obligatoire non validée (AAL2 requis).',
             actionButtonText: data.actionButtonText || 'Valider mon code 2FA',
-            actionUrl: data.actionUrl || `${APPALACARTE_URL}/auth/login`,
+            actionUrl: data.actionUrl || this.getLoginRedirectUrl(),
             tarifsUrl: `${APPALACARTE_URL}/tarifs?app=marmicout-stock-restauration`,
           };
           this.notify(mfaResult);
@@ -161,40 +347,31 @@ class AccessVerificationService {
           return virResult;
         }
 
-        if (data.mode === 'no_subscription') {
-          const noSubResult: AccessVerificationResult = {
+        if (data.mode === 'no_subscription' || data.mode === 'blocked_hard') {
+          // Si l'abonnement a pris fin, renvoyer vers la connexion / renouvellement
+          const endedResult: AccessVerificationResult = {
             hasAccess: false,
-            mode: 'no_subscription',
-            isOwner: data.isOwner,
-            error: data.error,
-            tarifsUrl: data.tarifsUrl || `${APPALACARTE_URL}/tarifs?app=marmicout-stock-restauration`,
-            actionButtonText: 'Découvrir les forfaits',
-            actionUrl: `${APPALACARTE_URL}/tarifs?app=marmicout-stock-restauration`,
-          };
-          this.notify(noSubResult);
-          return noSubResult;
-        }
-
-        if (data.mode === 'blocked_hard') {
-          const blockedResult: AccessVerificationResult = {
-            hasAccess: false,
-            mode: 'blocked_hard',
+            mode: data.mode,
             status: data.status,
             isOwner: data.isOwner,
-            error: data.error,
+            error:
+              data.error ||
+              "Votre abonnement a pris fin ou aucun abonnement actif n'est associé à ce compte.",
             tarifsUrl: data.tarifsUrl || `${APPALACARTE_URL}/tarifs?app=marmicout-stock-restauration`,
-            actionButtonText: data.isOwner ? 'Choisir un forfait' : 'Contacter le propriétaire',
-            actionUrl: data.isOwner ? `${APPALACARTE_URL}/tarifs?app=marmicout-stock-restauration` : `${APPALACARTE_URL}/contact`,
+            actionButtonText: 'Se reconnecter / Choisir un forfait',
+            actionUrl: this.getLoginRedirectUrl(),
           };
-          this.notify(blockedResult);
-          return blockedResult;
+          this.notify(endedResult);
+          return endedResult;
         }
 
-        // Autre erreur 401/403
+        // Autre erreur 403
         const errResult: AccessVerificationResult = {
           hasAccess: false,
-          mode: res.status === 401 ? 'unauthenticated' : 'error',
-          error: data.error || 'Erreur lors de la vérification de vos droits.',
+          mode: 'unauthenticated',
+          error: data.error || 'Session invalide ou abonnement arrivé à échéance. Veuillez vous reconnecter.',
+          actionButtonText: 'Se connecter avec mon compte App à la Carte',
+          actionUrl: this.getLoginRedirectUrl(),
           tarifsUrl: `${APPALACARTE_URL}/tarifs?app=marmicout-stock-restauration`,
         };
         this.notify(errResult);
@@ -232,7 +409,7 @@ class AccessVerificationService {
         tarifsUrl: `${APPALACARTE_URL}/tarifs?app=marmicout-stock-restauration`,
       };
 
-      // Sauvegarde du dernier forfait connu et droits dans IndexedDB (Point 1)
+      // Sauvegarde du dernier forfait connu et de la date de fin d'accès dans IndexedDB
       try {
         await indexedDbService.put('settings', {
           key: 'last_access_verification',
@@ -245,31 +422,9 @@ class AccessVerificationService {
 
       this.notify(successResult);
       return successResult;
-    } catch (err: any) {
-      console.warn('Erreur réseau verifyAccess (secours IndexedDB):', err);
-      // Hors connexion : on utilise le dernier forfait connu stocké dans IndexedDB
-      try {
-        const items = await indexedDbService.getAll<any>('settings');
-        const cached = items.find((i) => i.key === 'last_access_verification');
-        if (cached && cached.value) {
-          const cachedResult: AccessVerificationResult = {
-            ...cached.value,
-            alertMessage: cached.value.alertMessage || 'Mode hors-ligne : utilisation de vos droits enregistrés localement.'
-          };
-          this.notify(cachedResult);
-          return cachedResult;
-        }
-      } catch (dbErr) {
-        console.error('Erreur lecture cache IndexedDB:', dbErr);
-      }
-
-      const networkErrResult: AccessVerificationResult = {
-        hasAccess: false,
-        mode: 'error',
-        error: 'Impossible de joindre le serveur d\'authentification App à la Carte.',
-      };
-      this.notify(networkErrResult);
-      return networkErrResult;
+    } catch (err: unknown) {
+      console.warn('Erreur réseau verifyAccess (secours IndexedDB jusqu\'à date de fin connue):', err);
+      return this.resolveOfflineAccess();
     }
   }
 
@@ -280,7 +435,7 @@ class AccessVerificationService {
     if (this.checkIntervalId) clearInterval(this.checkIntervalId);
     // 15 minutes = 15 * 60 * 1000 = 900000 ms
     this.checkIntervalId = setInterval(() => {
-      this.verifyAccess();
+      void this.verifyAccess();
     }, 15 * 60 * 1000);
   }
 }

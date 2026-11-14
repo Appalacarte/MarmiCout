@@ -10,9 +10,11 @@ import {
   AlertTriangle,
   Trash2,
   CreditCard,
-  Sliders
+  Sliders,
+  LogOut
 } from 'lucide-react';
 import { dbService } from '../services/db';
+import { accessVerificationService } from '../services/accessVerificationService';
 import { Settings as SettingsType } from '../types';
 import { APP_VERSION } from '../version';
 import { SubscriptionSettings } from './SubscriptionSettings';
@@ -108,9 +110,9 @@ export const Settings: React.FC<SettingsProps> = ({ initialSubTab = 'general' })
       setSettings(updatedSettings);
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Erreur réglages:', err);
-      setSaveError(err.message || "Échec de l'enregistrement des paramètres dans le Cloud.");
+      setSaveError((err as Error).message || "Échec de l'enregistrement des paramètres dans le Cloud.");
     } finally {
       setIsSaving(false);
     }
@@ -860,6 +862,42 @@ export const Settings: React.FC<SettingsProps> = ({ initialSubTab = 'general' })
                 Lancer l'importation manuelle
               </button>
             </form>
+          </div>
+
+          {/* Session & Déconnexion locale sécurisée */}
+          <div className="card" style={{ borderColor: 'var(--color-border)' }}>
+            <h3 className="card-title" style={{ marginBottom: '8px' }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <LogOut size={20} style={{ color: 'var(--color-primary)' }} />
+                Session & Compte App à la Carte
+              </span>
+            </h3>
+            <p style={{ fontSize: '12px', color: 'var(--color-dark-light)', lineHeight: '1.5', marginBottom: '12px' }}>
+              La déconnexion ferme votre session sur cet appareil sans supprimer vos données hors-ligne non synchronisées. S&apos;il reste des données non synchronisées, un avertissement vous sera affiché avant de fermer la session.
+            </p>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              style={{
+                width: '100%',
+                height: '42px',
+                fontWeight: '700',
+                borderColor: 'rgba(239, 68, 68, 0.4)',
+                color: 'var(--color-danger)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px'
+              }}
+              onClick={() => {
+                void accessVerificationService.requestSignOutWithWarning(() =>
+                  dbService.checkUnsyncedOfflineData()
+                );
+              }}
+            >
+              <LogOut size={16} />
+              <span>Se déconnecter de Marmicout</span>
+            </button>
           </div>
 
           {/* Éditeur de l'application & Informations Légales */}
