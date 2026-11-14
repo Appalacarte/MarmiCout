@@ -201,13 +201,10 @@ function App() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  // Effacer les données supplémentaires après le rendu pour éviter de les réappliquer en boucle
-  useEffect(() => {
-    if (tabExtraData !== null) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setTabExtraData(null);
-    }
-  }, [tabExtraData]);
+  // Effacer manuellement les données supplémentaires après leur consommation effective par la vue
+  const handleClearTabExtraData = () => {
+    setTabExtraData(null);
+  };
 
   // Si l'utilisateur est sur une route légale publique dédiée, l'afficher directement
   if (routeState.type === 'legal') {
@@ -265,6 +262,10 @@ function App() {
             initialEditProductId={extra?.editProductId as string | undefined}
             initialFocusEquivalence={Boolean(extra?.focusEquivalence)}
             initialFocusAllergens={Boolean(extra?.focusAllergens)}
+            initialPrefillName={extra?.prefillName as string | undefined}
+            initialReturnToRecipeId={extra?.returnToRecipeId as string | undefined}
+            initialReturnToRecipeName={extra?.returnToRecipeName as string | undefined}
+            onClearExtraData={handleClearTabExtraData}
             onNavigate={handleNavigate}
           />
         );
@@ -280,6 +281,7 @@ function App() {
           <Recipes
             initialTriggerAdd={Boolean(extra?.triggerAdd)}
             initialViewRecipeId={extra?.viewRecipeId as string | undefined}
+            onClearExtraData={handleClearTabExtraData}
             onNavigate={handleNavigate}
           />
         );

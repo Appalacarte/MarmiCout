@@ -49,10 +49,11 @@ import {
 interface RecipesProps {
   initialTriggerAdd?: boolean;
   initialViewRecipeId?: string;
+  onClearExtraData?: () => void;
   onNavigate?: (tab: string, extraData?: Record<string, unknown>) => void;
 }
 
-export const Recipes: React.FC<RecipesProps> = ({ initialTriggerAdd, initialViewRecipeId, onNavigate }) => {
+export const Recipes: React.FC<RecipesProps> = ({ initialTriggerAdd, initialViewRecipeId, onClearExtraData, onNavigate }) => {
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [allProducts, setAllProducts] = useState<Product[]>([]);
@@ -60,7 +61,25 @@ export const Recipes: React.FC<RecipesProps> = ({ initialTriggerAdd, initialView
 
   const handleOpenProductEquivalence = (productId: string) => {
     if (onNavigate) {
-      onNavigate('Produits', { editProductId: productId, focusEquivalence: true });
+      const rec = selectedRecipeDetails || editingRecipe;
+      onNavigate('Produits', {
+        editProductId: productId,
+        focusEquivalence: true,
+        returnToRecipeId: rec?.id,
+        returnToRecipeName: rec?.name,
+      });
+    }
+  };
+
+  const handleOpenProductAllergens = (productId: string) => {
+    if (onNavigate) {
+      const rec = selectedRecipeDetails || editingRecipe;
+      onNavigate('Produits', {
+        editProductId: productId,
+        focusAllergens: true,
+        returnToRecipeId: rec?.id,
+        returnToRecipeName: rec?.name,
+      });
     }
   };
 
@@ -537,16 +556,21 @@ export const Recipes: React.FC<RecipesProps> = ({ initialTriggerAdd, initialView
     if (initialTriggerAdd) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       handleOpenAddForm();
+      onClearExtraData?.();
     } else if (initialViewRecipeId) {
+      loadData();
       const r = dbService.getRecipe(initialViewRecipeId);
-      if (r) handleOpenDetails(r);
+      if (r) {
+        handleOpenDetails(r);
+      }
+      onClearExtraData?.();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialTriggerAdd, initialViewRecipeId]);
 
   // Formulaire d'édition
-  const handleOpenEditForm = (recipe: Recipe, e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleOpenEditForm = (recipe: Recipe, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
     setEditingRecipe(recipe);
     setFormName(recipe.name);
     setFormCategory(recipe.category);
@@ -665,7 +689,7 @@ export const Recipes: React.FC<RecipesProps> = ({ initialTriggerAdd, initialView
 
     const recipeId = (editingRecipe && editingRecipe.id) 
       ? editingRecipe.id 
-      : (editingRecipe?.externalId ? 'R_API_' + editingRecipe.externalId : 'R_' + Date.now());
+      : (editingRecipe?.externalId ? 'R_API_' + editingRecipe.externalId : generateUUID());
 
     const newRecipe: Recipe = {
       id: recipeId,
@@ -1793,15 +1817,15 @@ export const Recipes: React.FC<RecipesProps> = ({ initialTriggerAdd, initialView
                             <span style={{ color: '#7f1d1d', fontSize: '11px', marginLeft: '4px' }}>
                               ({item.reason === 'unlinked' ? 'ingrédient non lié au stock' : 'allergènes non renseignés'})
                             </span>
-                            {item.productId && onNavigate && (
+                            {item.productId ? (
                               <button
                                 type="button"
                                 className="btn btn-secondary"
                                 style={{
                                   marginLeft: '8px',
-                                  height: '20px',
-                                  padding: '0 6px',
-                                  fontSize: '10px',
+                                  height: '22px',
+                                  padding: '0 8px',
+                                  fontSize: '11px',
                                   lineHeight: '1',
                                   display: 'inline-flex',
                                   alignItems: 'center',
@@ -1812,12 +1836,68 @@ export const Recipes: React.FC<RecipesProps> = ({ initialTriggerAdd, initialView
                                 }}
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  onNavigate('Produits', { editProductId: item.productId, focusAllergens: true });
+                                  handleOpenProductAllergens(item.productId!);
                                 }}
                                 title="Ouvrir le produit pour renseigner ses allergènes"
                               >
                                 Renseigner
                               </button>
+                            ) : (
+                              <div style={{ display: 'inline-flex', gap: '6px', marginLeft: '8px', verticalAlign: 'middle', flexWrap: 'wrap' }}>
+                                <button
+                                  type="button"
+                                  className="btn btn-secondary"
+                                  style={{
+                                    height: '22px',
+                                    padding: '0 8px',
+                                    fontSize: '11px',
+                                    lineHeight: '1',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '2px',
+                                    color: 'var(--color-primary)',
+                                    borderColor: 'var(--color-primary)'
+                                  }}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (selectedRecipeDetails) {
+                                      handleOpenEditForm(selectedRecipeDetails, e);
+                                    }
+                                  }}
+                                  title="Ouvrir la recette pour relier cet ingrédient à un produit du stock"
+                                >
+                                  Relier dans la recette
+                                </button>
+                                <button
+                                  type="button"
+                                  className="btn btn-secondary"
+                                  style={{
+                                    height: '22px',
+                                    padding: '0 8px',
+                                    fontSize: '11px',
+                                    lineHeight: '1',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '2px',
+                                    color: 'var(--color-secondary)',
+                                    borderColor: 'var(--color-secondary)'
+                                  }}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    const rec = selectedRecipeDetails || editingRecipe;
+                                    onNavigate?.('Produits', {
+                                      triggerAdd: true,
+                                      prefillName: item.name,
+                                      focusAllergens: true,
+                                      returnToRecipeId: rec?.id,
+                                      returnToRecipeName: rec?.name,
+                                    });
+                                  }}
+                                  title="Créer un nouveau produit pour cet ingrédient et renseigner ses allergènes"
+                                >
+                                  Créer le produit
+                                </button>
+                              </div>
                             )}
                           </li>
                         ))}

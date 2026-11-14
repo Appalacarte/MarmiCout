@@ -14,7 +14,9 @@ import {
   TrendingUp,
   Scale,
   ShieldAlert,
-  Sparkles
+  Sparkles,
+  Check,
+  ArrowLeft
 } from 'lucide-react';
 import { dbService } from '../services/db';
 import { generateUUID } from '../services/cloudDbService';
@@ -41,6 +43,10 @@ interface ProductsProps {
   initialEditProductId?: string;
   initialFocusEquivalence?: boolean;
   initialFocusAllergens?: boolean;
+  initialPrefillName?: string;
+  initialReturnToRecipeId?: string;
+  initialReturnToRecipeName?: string;
+  onClearExtraData?: () => void;
   onNavigate?: (tab: string, extraData?: Record<string, unknown>) => void;
 }
 
@@ -66,6 +72,10 @@ export const Products: React.FC<ProductsProps> = ({
   initialEditProductId,
   initialFocusEquivalence,
   initialFocusAllergens,
+  initialPrefillName,
+  initialReturnToRecipeId,
+  initialReturnToRecipeName,
+  onClearExtraData,
   onNavigate,
 }) => {
   const [products, setProducts] = useState<Product[]>([]);
@@ -103,6 +113,8 @@ export const Products: React.FC<ProductsProps> = ({
   const [formDensity, setFormDensity] = useState('');
   const [formAllergens, setFormAllergens] = useState<string[]>([]);
   const [formNoAllergensVerified, setFormNoAllergensVerified] = useState(false);
+  const returnToRecipe = initialReturnToRecipeId ? { id: initialReturnToRecipeId, name: initialReturnToRecipeName } : null;
+  const [savedReturnToRecipe, setSavedReturnToRecipe] = useState<{ id: string; name?: string } | null>(null);
 
   // État du scanneur dans le formulaire
   const [isScannerOpen, setIsScannerOpen] = useState(false);
@@ -178,9 +190,21 @@ export const Products: React.FC<ProductsProps> = ({
     loadData();
     if (initialTriggerAdd) {
       handleOpenAddForm();
+      if (initialPrefillName) {
+        setFormName(initialPrefillName);
+      }
+      if (initialFocusAllergens) {
+        setTimeout(() => {
+          const el = document.getElementById('product-allergens-section');
+          if (el) {
+            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
+        }, 250);
+      }
+      onClearExtraData?.();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialTriggerAdd]);
+  }, [initialTriggerAdd, initialPrefillName, initialFocusAllergens]);
 
   useEffect(() => {
     const handleDataSynced = () => loadData();
@@ -293,18 +317,19 @@ export const Products: React.FC<ProductsProps> = ({
   };
 
   useEffect(() => {
-    if (initialSelectedProductId && products.length > 0) {
-      const target = products.find(p => p.id === initialSelectedProductId);
+    if (initialSelectedProductId) {
+      const target = products.find(p => p.id === initialSelectedProductId) || dbService.getProduct(initialSelectedProductId);
       if (target) {
         // eslint-disable-next-line react-hooks/set-state-in-effect
         handleOpenDetails(target);
+        onClearExtraData?.();
       }
     }
-  }, [initialSelectedProductId, products]);
+  }, [initialSelectedProductId, onClearExtraData, products]);
 
   useEffect(() => {
-    if (initialEditProductId && products.length > 0) {
-      const target = products.find(p => p.id === initialEditProductId);
+    if (initialEditProductId) {
+      const target = products.find(p => p.id === initialEditProductId) || dbService.getProduct(initialEditProductId);
       if (target) {
         // eslint-disable-next-line react-hooks/set-state-in-effect
         handleOpenEditForm(target);
@@ -325,9 +350,10 @@ export const Products: React.FC<ProductsProps> = ({
             }
           }, 250);
         }
+        onClearExtraData?.();
       }
     }
-  }, [initialEditProductId, initialFocusEquivalence, initialFocusAllergens, products]);
+  }, [initialEditProductId, initialFocusEquivalence, initialFocusAllergens, onClearExtraData, products]);
 
   // Ouvrir la fenêtre « Corriger le stock »
   const handleOpenStockCorrection = (prod: Product) => {
@@ -553,6 +579,9 @@ export const Products: React.FC<ProductsProps> = ({
         });
       }
       
+      if (returnToRecipe) {
+        setSavedReturnToRecipe(returnToRecipe);
+      }
       setIsFormOpen(false);
       setSaveError(null);
       loadData();
@@ -668,6 +697,52 @@ export const Products: React.FC<ProductsProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Bouton de retour à la recette après enregistrement */}
+      {savedReturnToRecipe && (
+        <div style={{
+          backgroundColor: '#ecfdf5',
+          border: '1px solid #a7f3d0',
+          borderRadius: 'var(--radius-md)',
+          padding: '12px 16px',
+          marginBottom: '16px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: '12px',
+          flexWrap: 'wrap',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#065f46', fontSize: '13px', fontWeight: '600' }}>
+            <Check size={18} style={{ color: '#059669', flexShrink: 0 }} />
+            <span>Produit enregistré avec succès ! Vous pouvez revenir à votre recette.</span>
+          </div>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button
+              type="button"
+              className="btn btn-primary"
+              style={{ height: '34px', padding: '0 14px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}
+              onClick={() => {
+                if (onNavigate) {
+                  onNavigate('Recettes', { viewRecipeId: savedReturnToRecipe.id });
+                }
+              }}
+            >
+              <ArrowLeft size={16} />
+              Retour à la recette {savedReturnToRecipe.name ? `« ${savedReturnToRecipe.name} »` : ''}
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              style={{ height: '34px', padding: '0 10px', fontSize: '12px' }}
+              onClick={() => setSavedReturnToRecipe(null)}
+              title="Fermer ce message"
+            >
+              Fermer
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Barre de Recherche et Filtres */}
       <div className="card filter-bar">
@@ -833,7 +908,21 @@ export const Products: React.FC<ProductsProps> = ({
                 Supprimer
               </button>
             )}
-            <div style={{ display: 'flex', gap: '8px' }}>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              {returnToRecipe && (
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => {
+                    setIsFormOpen(false);
+                    onNavigate?.('Recettes', { viewRecipeId: returnToRecipe.id });
+                  }}
+                  title="Revenir directement à la recette"
+                >
+                  <ArrowLeft size={14} style={{ marginRight: '4px' }} />
+                  Retour à la recette
+                </button>
+              )}
               <button type="button" className="btn btn-secondary" onClick={() => setIsFormOpen(false)} disabled={isSaving || isDeletingOrDeactivating}>Annuler</button>
               <button type="button" className="btn btn-primary" onClick={handleSaveProduct} disabled={isSaving || isDeletingOrDeactivating}>
                 {isSaving ? 'Enregistrement...' : saveError ? 'Réessayer' : 'Enregistrer'}
@@ -843,6 +932,34 @@ export const Products: React.FC<ProductsProps> = ({
         }
       >
         <form onSubmit={handleSaveProduct}>
+          {returnToRecipe && (
+            <div style={{
+              marginBottom: '14px',
+              padding: '10px 14px',
+              backgroundColor: '#eff6ff',
+              border: '1px solid #bfdbfe',
+              borderRadius: '8px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '10px',
+              fontSize: '12px',
+              color: '#1e40af'
+            }}>
+              <span>Lien actif vers la recette <strong>« {returnToRecipe.name || returnToRecipe.id} »</strong></span>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                style={{ height: '26px', padding: '0 8px', fontSize: '11px', backgroundColor: '#fff', color: '#1d4ed8', borderColor: '#bfdbfe' }}
+                onClick={() => {
+                  setIsFormOpen(false);
+                  onNavigate?.('Recettes', { viewRecipeId: returnToRecipe.id });
+                }}
+              >
+                Retour à la recette
+              </button>
+            </div>
+          )}
           {saveError && (
             <div style={{ marginBottom: '16px', padding: '12px', background: '#fee2e2', border: '1px solid #ef4444', borderRadius: '8px', color: '#991b1b', fontSize: '13px' }}>
               <div style={{ fontWeight: 700, marginBottom: '4px' }}>⚠️ Échec de l'enregistrement</div>

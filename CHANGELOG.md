@@ -4,6 +4,27 @@ Toutes les modifications notables apportées à ce projet sont documentées dans
 
 ---
 
+## [2.0.66] - 2026-11-14
+
+### Navigation recette ➔ produit (allergènes, équivalences), gestion ingrédients non liés et retour recette
+- **Gestion des paramètres de navigation (`src/App.tsx`)** :
+  - Suppression de l'effacement prématuré et synchrone de `tabExtraData` dans un `useEffect` : les paramètres restent disponibles jusqu'à leur consommation effective par la vue cible.
+  - Transmission du callback `onClearExtraData` pour permettre aux composants de signaler quand ils ont exploité les données.
+- **Ouverture directe du produit & positionnement (`src/components/Products.tsx`)** :
+  - Recherche du produit ciblé par `initialEditProductId` à la fois dans l'état réactif et directement via `dbService.getProduct()` : garantit l'ouverture immédiate du formulaire même si la liste des produits est encore en cours de chargement initial.
+  - Positionnement automatique et centrage fluide sur la section Allergènes (`#product-allergens-section`) lors du clic sur « Renseigner » depuis une recette.
+  - Positionnement automatique et focus sur la section Équivalences (`#product-equivalences-section`) lors du clic sur « Préciser l'équivalence » depuis une recette.
+- **Ingrédients libres non liés au stock (`src/components/Recipes.tsx`)** :
+  - Pour tout ingrédient non lié au stock, la recette ne tente plus d'ouvrir un formulaire vide : elle propose explicitement deux actions ciblées :
+    - « Relier dans la recette » : ouvre directement le formulaire d'édition de la recette pour sélectionner un produit du stock existant.
+    - « Créer le produit » : bascule vers l'ajout de produit prérempli avec l'intitulé de l'ingrédient, positionné sur la section des allergènes.
+- **Bouton « Retour à la recette » (`src/components/Products.tsx`)** :
+  - Mémorisation de la recette d'origine (`returnToRecipeId` et `returnToRecipeName`).
+  - Affichage d'un raccourci d'accès dans le formulaire d'édition/création du produit.
+  - Affichage d'une bannière de confirmation après enregistrement avec le bouton « ↩️ Retour à la recette « [Nom de la recette] » » qui rouvre instantanément le tiroir de détail de la recette d'origine mise à jour.
+
+---
+
 ## [2.0.65] - 2026-11-14
 
 ### Trois états allergènes produit (non renseigné, vérifié sans allergène, déclarés), filtre et alertes recettes
