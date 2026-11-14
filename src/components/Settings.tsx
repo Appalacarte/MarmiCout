@@ -76,6 +76,7 @@ export const Settings: React.FC<SettingsProps> = ({ initialSubTab = 'general' })
   const [currency, setCurrency] = useState(settings.currency);
   const [defaultMargin, setDefaultMargin] = useState(settings.defaultTargetMargin);
   const [minStock, setMinStock] = useState(settings.defaultMinStockAlert);
+  const [expiryAlertDays, setExpiryAlertDays] = useState(settings.expiryAlertDays ?? 7);
 
   // Listes sous forme de texte (une ligne par item)
   const [categoriesText, setCategoriesText] = useState(settings.categories.join('\n'));
@@ -149,6 +150,7 @@ export const Settings: React.FC<SettingsProps> = ({ initialSubTab = 'general' })
       currency: currency.trim(),
       defaultTargetMargin: Number(defaultMargin),
       defaultMinStockAlert: Number(minStock),
+      expiryAlertDays: Number(expiryAlertDays) > 0 ? Number(expiryAlertDays) : 7,
       categories: categoriesText.split('\n').map(c => c.trim()).filter(c => c.length > 0),
       recipeCategories: recipeCategoriesText.split('\n').map(c => c.trim()).filter(c => c.length > 0),
       units: unitsText.split('\n').map(c => c.trim()).filter(c => c.length > 0),
@@ -566,6 +568,18 @@ export const Settings: React.FC<SettingsProps> = ({ initialSubTab = 'general' })
                   min="0"
                   value={minStock}
                   onChange={(e) => setMinStock(parseDecimalInput(e.target.value))}
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Délai d'alerte DLC (jours)</label>
+                <input
+                  type="number"
+                  className="form-input"
+                  min="1"
+                  max="365"
+                  value={expiryAlertDays}
+                  onChange={(e) => setExpiryAlertDays(parseDecimalInput(e.target.value))}
                 />
               </div>
             </div>

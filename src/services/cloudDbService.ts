@@ -817,6 +817,7 @@ export class CloudDbService {
       const items = await indexedDbService.getAll<any>('settings');
       return items.find((i) => i.key === 'app_settings')?.value || null;
     }
+    const localExpiry = typeof localStorage !== 'undefined' ? (Number(localStorage.getItem('marmicout_expiry_alert_days')) || 7) : 7;
     const settings: Settings = {
       businessName: data.business_name || 'Mon Établissement',
       currency: data.currency || '€',
@@ -826,6 +827,7 @@ export class CloudDbService {
       units: data.units || ['kg', 'g', 'l', 'cl', 'ml', 'cs', 'cc', 'pièce'],
       salesLocations: data.sales_locations || ['Marché', 'Commande', 'En Ligne', 'Domicile', 'Autre'],
       defaultMinStockAlert: Number(data.default_min_stock_alert || 2),
+      expiryAlertDays: localExpiry,
       googleSheetId: data.google_sheet_id || undefined,
       googleSheetLink: data.google_sheet_link || undefined,
       googleWebAppUrl: data.google_web_app_url || undefined,

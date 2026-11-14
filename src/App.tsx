@@ -15,9 +15,11 @@ import {
   FileText,
   Mail,
   ShieldCheck,
-  LogOut
+  LogOut,
+  Clock
 } from 'lucide-react';
 import './App.css'; // Nous allons vider ce fichier pour éviter les conflits
+import { getExpiringPurchases } from './utils/expiry';
 
 // Importation des composants
 import { Dashboard } from './components/Dashboard';
@@ -126,6 +128,7 @@ function App() {
   const [routeState, setRouteState] = useState<RouteState>(resolveCurrentRoute);
   const [tabExtraData, setTabExtraData] = useState<Record<string, unknown> | null>(null);
   const [lowStockCount, setLowStockCount] = useState(0);
+  const [expiryAlertCount, setExpiryAlertCount] = useState(0);
   const [isMobileActionOpen, setIsMobileActionOpen] = useState(false);
 
   useEffect(() => {
@@ -158,11 +161,17 @@ function App() {
     }
   };
 
-  // Mettre à jour le nombre d'alertes de stock
+  // Mettre à jour le nombre d'alertes de stock et de dates limites
   const updateAlerts = () => {
     const products = dbService.getProducts();
     const lowStock = products.filter(p => p.isActive && p.stock <= p.minStockAlert).length;
     setLowStockCount(lowStock);
+
+    const purchases = dbService.getPurchases();
+    const settings = dbService.getSettings();
+    const alertDays = settings.expiryAlertDays ?? 7;
+    const expiring = getExpiringPurchases(purchases, products, [], alertDays);
+    setExpiryAlertCount(expiring.length);
   };
 
   const activeTab = routeState.type === 'app' ? routeState.tab : 'Dashboard';
@@ -229,7 +238,7 @@ function App() {
   const menuItems = [
     { id: 'Dashboard', label: 'Tableau de bord', icon: LayoutDashboard },
     { id: 'Produits', label: 'Produits & Stocks', icon: Package, badge: () => lowStockCount > 0 ? lowStockCount : undefined },
-    { id: 'Achats', label: 'Achats & Entrées', icon: ShoppingCart },
+    { id: 'Achats', label: 'Achats & Entrées', icon: ShoppingCart, badge: () => expiryAlertCount > 0 ? expiryAlertCount : undefined },
     { id: 'Recettes', label: 'Recettes & Marges', icon: ChefHat },
     { id: 'Production', label: 'Productions Lot', icon: Sparkles },
     { id: 'Ventes', label: 'Ventes & Profits', icon: DollarSign },
@@ -252,6 +261,7 @@ function App() {
         return (
           <Products
             initialTriggerAdd={Boolean(extra?.triggerAdd)}
+            initialSelectedProductId={extra?.selectedProductId as string | undefined}
             onNavigate={handleNavigate}
           />
         );
@@ -421,12 +431,36 @@ function App() {
               alignItems: 'center',
               gap: '8px',
               cursor: 'pointer',
-              marginBottom: '20px',
+              marginBottom: '12px',
               border: '1px solid rgba(255, 75, 75, 0.15)'
             }}
           >
             <AlertTriangle size={16} />
             <span>Attention : {lowStockCount} produit(s) en stock faible ou nul. Gérer</span>
+          </div>
+        )}
+
+        {/* Avertissement DLC / péremption persistant */}
+        {expiryAlertCount > 0 && activeTab !== 'Dashboard' && (
+          <div
+            onClick={() => handleNavigate('Dashboard')}
+            style={{
+              backgroundColor: 'rgba(245, 158, 11, 0.1)',
+              color: '#b45309',
+              padding: '10px 16px',
+              borderRadius: 'var(--radius-md)',
+              fontSize: '13px',
+              fontWeight: '600',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              cursor: 'pointer',
+              marginBottom: '20px',
+              border: '1px solid rgba(245, 158, 11, 0.3)'
+            }}
+          >
+            <Clock size={16} />
+            <span>Attention : {expiryAlertCount} lot(s) d'achat à consommer bientôt ou dont la date limite est dépassée. Voir</span>
           </div>
         )}
 

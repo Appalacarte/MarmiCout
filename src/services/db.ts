@@ -116,11 +116,11 @@ const INITIAL_PRODUCTS: Product[] = [
 ];
 
 const INITIAL_PURCHASES: Purchase[] = [
-  { id: 'A1', date: '2026-06-10', productId: 'P1', qty: 10, unit: 'kg', pricePaid: 15.0, unitPrice: 1.5, storeId: 'S3', notes: 'Achat de gros' },
-  { id: 'A2', date: '2026-06-10', productId: 'P2', qty: 15, unit: 'kg', pricePaid: 27.0, unitPrice: 1.8, storeId: 'S3', notes: 'Achat de gros' },
-  { id: 'A3', date: '2026-06-11', productId: 'P3', qty: 3, unit: 'kg', pricePaid: 25.5, unitPrice: 8.5, storeId: 'S1', notes: 'Beurre frais' },
-  { id: 'A4', date: '2026-06-12', productId: 'P4', qty: 20, unit: 'kg', pricePaid: 44.0, unitPrice: 2.2, storeId: 'S2', notes: 'Pommes fraîches' },
-  { id: 'A5', date: '2026-06-12', productId: 'P5', qty: 60, unit: 'pièce', pricePaid: 21.0, unitPrice: 0.35, storeId: 'S2', notes: '2 cartons de 30' }
+  { id: 'A1', date: '2026-06-10', productId: 'P1', qty: 10, unit: 'kg', pricePaid: 15.0, unitPrice: 1.5, storeId: 'S3', notes: 'Achat de gros', batchNo: 'LOT-FAR-99', expiryDate: '2026-12-15' },
+  { id: 'A2', date: '2026-06-10', productId: 'P2', qty: 15, unit: 'kg', pricePaid: 27.0, unitPrice: 1.8, storeId: 'S3', notes: 'Achat de gros', batchNo: 'LOT-SUC-26', expiryDate: '2026-11-10' },
+  { id: 'A3', date: '2026-06-11', productId: 'P3', qty: 3, unit: 'kg', pricePaid: 25.5, unitPrice: 8.5, storeId: 'S1', notes: 'Beurre frais', batchNo: 'LOT-BEU-14', expiryDate: '2026-11-17' },
+  { id: 'A4', date: '2026-06-12', productId: 'P4', qty: 20, unit: 'kg', pricePaid: 44.0, unitPrice: 2.2, storeId: 'S2', notes: 'Pommes fraîches', batchNo: 'LOT-POM-08', expiryDate: '2026-11-20' },
+  { id: 'A5', date: '2026-06-12', productId: 'P5', qty: 60, unit: 'pièce', pricePaid: 21.0, unitPrice: 0.35, storeId: 'S2', notes: '2 cartons de 30', batchNo: 'LOT-OEU-72', expiryDate: '2026-11-14' }
 ];
 
 const INITIAL_RECIPES: Recipe[] = [
@@ -205,6 +205,7 @@ const INITIAL_SETTINGS: Settings = {
   units: [...DEFAULT_UNITS],
   salesLocations: ['Marché', 'Commande', 'En Ligne', 'Domicile', 'Autre'],
   defaultMinStockAlert: 2,
+  expiryAlertDays: 7,
   googleSheetId: '',
   googleSheetLink: '',
   googleWebAppUrl: ''
@@ -472,9 +473,11 @@ export const dbService = {
 
   // --- PARAMÈTRES (SETTINGS) ---
   getSettings(): Settings {
+    const localExpiry = typeof localStorage !== 'undefined' ? (Number(localStorage.getItem('marmicout_expiry_alert_days')) || 7) : 7;
     if (isCloudMode() && inMemorySettings) {
       return {
         ...inMemorySettings,
+        expiryAlertDays: inMemorySettings.expiryAlertDays ?? localExpiry,
         units: ensureRequiredUnits(inMemorySettings.units),
       };
     }
@@ -483,12 +486,16 @@ export const dbService = {
     const parsed: Settings = data ? JSON.parse(data) : INITIAL_SETTINGS;
     return {
       ...parsed,
+      expiryAlertDays: parsed.expiryAlertDays ?? localExpiry,
       units: ensureRequiredUnits(parsed.units),
     };
   },
 
   async saveSettings(settings: Settings): Promise<void> {
     assertAccessKnown();
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('marmicout_expiry_alert_days', String(settings.expiryAlertDays ?? 7));
+    }
     if (isCloudMode()) {
       try {
         await cloudDbService.saveSettings(settings);

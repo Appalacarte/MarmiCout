@@ -7,10 +7,12 @@ import {
   Sparkles,
   DollarSign,
   Activity,
-  Plus
+  Plus,
+  Clock
 } from 'lucide-react';
 import { dbService } from '../services/db';
 import { cleanProductName, formatStock } from '../utils/units';
+import { getExpiringPurchases } from '../utils/expiry';
 
 interface DashboardProps {
   onNavigate: (tab: string, extraData?: Record<string, unknown>) => void;
@@ -31,6 +33,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
   const purchases = dbService.getPurchases();
   const settings = dbService.getSettings();
   const productions = dbService.getProductions();
+  const stores = dbService.getStores();
+
+  // Alertes DLC / DLUO
+  const alertDays = settings.expiryAlertDays ?? 7;
+  const expiringPurchases = getExpiringPurchases(purchases, products, stores, alertDays);
+  const expiredCount = expiringPurchases.filter(item => item.isExpired).length;
+  const warningCount = expiringPurchases.filter(item => !item.isExpired).length;
 
   // --- CALCULS DES METRIQUES ---
   
@@ -227,6 +236,117 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
           <DollarSign size={22} style={{ color: 'var(--color-secondary)' }} />
           <span>Enregistrer Vente</span>
         </button>
+      </div>
+
+      {/* --- BLOC « À CONSOMMER BIENTÔT » (DLC / DLUO) --- */}
+      <div
+        className="card"
+        style={{
+          marginBottom: '28px',
+          borderLeft: `4px solid ${expiredCount > 0 ? 'var(--color-danger)' : warningCount > 0 ? 'var(--color-warning)' : 'var(--color-secondary)'}`,
+          backgroundColor: expiredCount > 0 ? 'rgba(239, 68, 68, 0.04)' : warningCount > 0 ? 'rgba(245, 158, 11, 0.04)' : 'var(--color-surface)'
+        }}
+      >
+        <div
+          className="card-title"
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: '14px',
+            flexWrap: 'wrap',
+            gap: '8px'
+          }}
+        >
+          <span style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: '700', fontSize: '16px' }}>
+            <Clock size={20} style={{ color: expiredCount > 0 ? 'var(--color-danger)' : warningCount > 0 ? 'var(--color-warning)' : 'var(--color-secondary)' }} />
+            À consommer bientôt
+          </span>
+          <div style={{ display: 'flex', gap: '6px', fontSize: '12px' }}>
+            {expiredCount > 0 && (
+              <span className="badge badge-danger" style={{ padding: '3px 8px', fontWeight: '700' }}>
+                {expiredCount} dépassé{expiredCount > 1 ? 's' : ''}
+              </span>
+            )}
+            {warningCount > 0 && (
+              <span className="badge badge-warning" style={{ padding: '3px 8px', fontWeight: '700' }}>
+                {warningCount} dans les {alertDays} jours
+              </span>
+            )}
+            {expiringPurchases.length === 0 && (
+              <span className="badge badge-success" style={{ padding: '3px 8px' }}>
+                Tous les stocks à jour
+              </span>
+            )}
+          </div>
+        </div>
+
+        {expiringPurchases.length === 0 ? (
+          <p style={{ color: 'var(--color-dark-light)', fontSize: '13px', margin: 0, fontStyle: 'italic' }}>
+            ✅ Aucun achat à date limite dépassée ou arrivant dans les {alertDays} jours pour les produits actuellement en stock.
+          </p>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {expiringPurchases.map(item => {
+              const isPast = item.isExpired;
+              return (
+                <div
+                  key={item.purchase.id}
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    padding: '10px 14px',
+                    borderRadius: 'var(--radius-md)',
+                    border: `1px solid ${isPast ? 'rgba(239, 68, 68, 0.35)' : 'rgba(245, 158, 11, 0.35)'}`,
+                    backgroundColor: isPast ? 'rgba(239, 68, 68, 0.08)' : 'rgba(245, 158, 11, 0.08)',
+                    gap: '12px',
+                    flexWrap: 'wrap'
+                  }}
+                >
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', minWidth: '220px', flex: 1 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                      <strong
+                        style={{ fontSize: '14px', cursor: 'pointer', color: 'var(--color-primary)' }}
+                        onClick={() => onNavigate('Produits', { selectedProductId: item.product.id })}
+                      >
+                        {cleanProductName(item.product.name)}
+                      </strong>
+                      <span style={{ fontSize: '12px', color: 'var(--color-dark-light)' }}>
+                        ({formatStock(item.product.stock)} {item.product.unit} en stock)
+                      </span>
+                    </div>
+                    <div style={{ fontSize: '12px', color: 'var(--color-dark-light)', display: 'flex', gap: '14px', flexWrap: 'wrap' }}>
+                      <span>
+                        <strong>Lot :</strong> {item.purchase.batchNo || 'Non précisé'}
+                      </span>
+                      <span>
+                        <strong>Fournisseur :</strong> {item.store?.name || 'Inconnu'}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontSize: '13px', fontWeight: '700', color: isPast ? '#dc2626' : '#b45309' }}>
+                        {item.formattedDate}
+                      </div>
+                      <div style={{ fontSize: '11px', color: isPast ? '#dc2626' : '#b45309', fontWeight: '500' }}>
+                        {item.label}
+                      </div>
+                    </div>
+                    <span
+                      className={`badge ${isPast ? 'badge-danger' : 'badge-warning'}`}
+                      style={{ padding: '4px 10px', fontSize: '11px', fontWeight: '700' }}
+                    >
+                      {isPast ? 'DÉPASSÉE' : 'À CONSOMMER'}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* --- SECTION DES ALERTES DÉTECTÉES --- */}

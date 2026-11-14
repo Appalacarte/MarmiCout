@@ -119,6 +119,7 @@ export interface Settings {
   units: string[];
   salesLocations: string[];
   defaultMinStockAlert: number;
+  expiryAlertDays?: number; // Délai d'alerte DLC en jours (7 par défaut)
   googleSheetId?: string;
   googleSheetLink?: string;
   googleWebAppUrl?: string;

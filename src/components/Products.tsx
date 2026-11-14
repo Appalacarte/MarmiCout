@@ -10,7 +10,8 @@ import {
   ArrowRightLeft,
   FileText,
   Trash2,
-  SlidersHorizontal
+  SlidersHorizontal,
+  Calendar
 } from 'lucide-react';
 import { dbService } from '../services/db';
 import { generateUUID } from '../services/cloudDbService';
@@ -25,11 +26,13 @@ import {
   areUnitsCompatible,
   convertProductUnitValues,
 } from '../utils/units';
+import { getProductNextExpiry, formatExpiryDate, getDaysUntilExpiry } from '../utils/expiry';
 import { ProductDuplicateSuggestions } from './ProductDuplicateSuggestions';
 import { findExactDuplicateProduct } from '../utils/productDuplicate';
 
 interface ProductsProps {
   initialTriggerAdd?: boolean;
+  initialSelectedProductId?: string;
   onNavigate?: (tab: string, extraData?: Record<string, unknown>) => void;
 }
 
@@ -40,7 +43,7 @@ const STOCK_CORRECTION_REASONS = [
   'Autre'
 ] as const;
 
-export const Products: React.FC<ProductsProps> = ({ initialTriggerAdd, onNavigate }) => {
+export const Products: React.FC<ProductsProps> = ({ initialTriggerAdd, initialSelectedProductId, onNavigate }) => {
   const [products, setProducts] = useState<Product[]>([]);
   const [stores, setStores] = useState<Store[]>([]);
   const settings = dbService.getSettings();
@@ -241,6 +244,16 @@ export const Products: React.FC<ProductsProps> = ({ initialTriggerAdd, onNavigat
     setStockHistory(dbService.getProductStockMovements(prod.id));
     setPurchaseHistory(dbService.getProductPurchaseHistory(prod.id));
   };
+
+  useEffect(() => {
+    if (initialSelectedProductId && products.length > 0) {
+      const target = products.find(p => p.id === initialSelectedProductId);
+      if (target) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        handleOpenDetails(target);
+      }
+    }
+  }, [initialSelectedProductId, products]);
 
   // Ouvrir la fenêtre « Corriger le stock »
   const handleOpenStockCorrection = (prod: Product) => {
@@ -1063,6 +1076,64 @@ export const Products: React.FC<ProductsProps> = ({ initialTriggerAdd, onNavigat
                 </div>
               </div>
 
+              {/* Prochaine date limite (DLC / DLUO) */}
+              {(() => {
+                const nextExpiry = getProductNextExpiry(selectedProductDetails.id, purchaseHistory, settings.expiryAlertDays ?? 7);
+                return (
+                  <div style={{
+                    marginTop: '12px',
+                    padding: '12px',
+                    backgroundColor: nextExpiry ? (nextExpiry.statusLevel === 'danger' ? 'rgba(239, 68, 68, 0.08)' : nextExpiry.statusLevel === 'warning' ? 'rgba(245, 158, 11, 0.08)' : 'var(--color-light)') : 'var(--color-light)',
+                    borderRadius: 'var(--radius-md)',
+                    border: `1px solid ${nextExpiry ? (nextExpiry.statusLevel === 'danger' ? 'rgba(239, 68, 68, 0.35)' : nextExpiry.statusLevel === 'warning' ? 'rgba(245, 158, 11, 0.35)' : 'var(--color-border)') : 'var(--color-border)'}`,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: '12px',
+                    flexWrap: 'wrap'
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <div style={{
+                        width: '32px',
+                        height: '32px',
+                        borderRadius: '8px',
+                        backgroundColor: nextExpiry ? (nextExpiry.statusLevel === 'danger' ? 'rgba(239, 68, 68, 0.15)' : nextExpiry.statusLevel === 'warning' ? 'rgba(245, 158, 11, 0.15)' : 'rgba(59, 130, 246, 0.12)') : 'rgba(100, 116, 139, 0.1)',
+                        color: nextExpiry ? (nextExpiry.statusLevel === 'danger' ? '#dc2626' : nextExpiry.statusLevel === 'warning' ? '#d97706' : 'var(--color-primary)') : 'var(--color-dark-light)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center'
+                      }}>
+                        <Calendar size={18} />
+                      </div>
+                      <div>
+                        <div style={{ fontSize: '11px', color: 'var(--color-dark-light)', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 600 }}>
+                          Prochaine date limite
+                        </div>
+                        {nextExpiry ? (
+                          <div style={{ fontSize: '14px', fontWeight: 700, color: nextExpiry.statusLevel === 'danger' ? '#dc2626' : nextExpiry.statusLevel === 'warning' ? '#b45309' : 'var(--color-dark)' }}>
+                            {nextExpiry.formattedDate}
+                            {nextExpiry.batchNo && (
+                              <span style={{ fontSize: '12px', fontWeight: 500, color: 'var(--color-dark-light)', marginLeft: '8px' }}>
+                                (Lot : {nextExpiry.batchNo})
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <div style={{ fontSize: '13px', color: 'var(--color-dark-light)', fontStyle: 'italic' }}>
+                            Aucune date limite renseignée sur les achats
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    {nextExpiry && (
+                      <span className={`badge ${nextExpiry.statusLevel === 'danger' ? 'badge-danger' : nextExpiry.statusLevel === 'warning' ? 'badge-warning' : 'badge-info'}`} style={{ padding: '4px 8px', fontWeight: '700' }}>
+                        {nextExpiry.label}
+                      </span>
+                    )}
+                  </div>
+                );
+              })()}
+
               {selectedProductDetails.notes && (
                 <div style={{ marginTop: '16px', fontSize: '13px', fontStyle: 'italic', color: 'var(--color-dark-light)' }}>
                   Notes : {selectedProductDetails.notes}
@@ -1111,8 +1182,20 @@ export const Products: React.FC<ProductsProps> = ({ initialTriggerAdd, onNavigat
                     return (
                       <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px', borderBottom: '1px solid var(--color-border)', fontSize: '12px' }}>
                         <div>
-                          <strong>{st ? st.name : 'Magasin inconnu'}</strong>
-                          <div style={{ color: 'var(--color-dark-light)' }}>{p.date} • {p.qty} {p.unit} achetés</div>
+                          <strong>{st ? st.name : 'Fournisseur inconnu'}</strong>
+                          <div style={{ color: 'var(--color-dark-light)' }}>
+                            {p.date} • {p.qty} {p.unit} achetés
+                            {p.batchNo && <span> • Lot : {p.batchNo}</span>}
+                            {p.expiryDate && (
+                              <span style={{
+                                marginLeft: '6px',
+                                fontWeight: 600,
+                                color: (getDaysUntilExpiry(p.expiryDate) ?? 999) < 0 ? '#dc2626' : (getDaysUntilExpiry(p.expiryDate) ?? 999) <= (settings.expiryAlertDays ?? 7) ? '#d97706' : 'inherit'
+                              }}>
+                                • DLC : {formatExpiryDate(p.expiryDate)}
+                              </span>
+                            )}
+                          </div>
                         </div>
                         <div style={{ textAlign: 'right' }}>
                           <strong>{p.pricePaid.toFixed(2)} {settings.currency}</strong>

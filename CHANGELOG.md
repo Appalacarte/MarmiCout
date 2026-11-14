@@ -4,6 +4,28 @@ Toutes les modifications notables apportées à ce projet sont documentées dans
 
 ---
 
+## [2.0.59] - 2026-11-14
+
+### Alertes DLC / Dates Limites des Achats, Bloc Tableau de Bord & Paramètre de Délai
+- **Bloc « À consommer bientôt » sur le Tableau de bord ([`src/components/Dashboard.tsx`](file:///d:/Aplli/Marmicout/Appli%20Marmicout/src/components/Dashboard.tsx))** :
+  - Ajout d'une carte dédiée « À consommer bientôt » listant les achats dont la date limite (DLC / DLUO) est dépassée (rouge) ou arrive dans le délai d'alerte (orange).
+  - Affichage détaillé pour chaque achat : produit, lot (`batchNo`), date limite formatée avec décompte relatif, et fournisseur lié.
+  - Filtrage strict : seuls les produits dont le stock actif est supérieur à 0 sont affichés.
+- **Réglage du délai d'alerte dans les Paramètres ([`src/components/Settings.tsx`](file:///d:/Aplli/Marmicout/Appli%20Marmicout/src/components/Settings.tsx), [`src/services/db.ts`](file:///d:/Aplli/Marmicout/Appli%20Marmicout/src/services/db.ts), [`src/services/cloudDbService.ts`](file:///d:/Aplli/Marmicout/Appli%20Marmicout/src/services/cloudDbService.ts))** :
+  - Nouveau champ « Délai d'alerte DLC (jours) » (7 jours par défaut).
+  - Stockage transparent dans les réglages applicatifs existants (localStorage & IndexedDB) sans modification de schéma ni ajout de nouvelle colonne dans la base de données Supabase.
+- **Prochaine date limite sur la fiche produit ([`src/components/Products.tsx`](file:///d:/Aplli/Marmicout/Appli%20Marmicout/src/components/Products.tsx))** :
+  - Affichage direct de la prochaine date limite parmi les achats récents dans le panneau de détails du produit avec badge d'état (dépassée, urgente ou normale) et mention du lot.
+  - Affichage enrichi des numéros de lot et des DLC dans l'historique des achats de la fiche produit.
+- **Badge d'alertes dans le menu de navigation ([`src/App.tsx`](file:///d:/Aplli/Marmicout/Appli%20Marmicout/src/App.tsx))** :
+  - Ajout d'un badge dynamique affichant le nombre d'alertes de date active sur l'entrée de menu « Achats & Entrées », similaire au badge de stocks faibles sur « Produits & Stocks ».
+  - Bandeau d'avertissement persistant en cas d'achats à date limite dépassée ou imminente.
+- **Module utilitaire et tests unitaires ([`src/utils/expiry.ts`](file:///d:/Aplli/Marmicout/Appli%20Marmicout/src/utils/expiry.ts), [`src/utils/expiry.test.ts`](file:///d:/Aplli/Marmicout/Appli%20Marmicout/src/utils/expiry.test.ts))** :
+  - Fonctions pures pour le calcul d'écart calendaire, le formatage, le filtrage des achats expirants et l'extraction de la prochaine date limite par produit.
+  - Suite de tests unitaires automatisée validant les règles d'expiration et de filtrage.
+
+---
+
 ## [2.0.58] - 2026-11-14
 
 ### Connexion et Configuration Directes de Google Sheets dans la Carte de Synchronisation

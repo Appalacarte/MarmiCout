@@ -26,6 +26,7 @@ import { LookupResult } from '../services/barcodeLookupService';
 import { InvoiceScanner } from './InvoiceScanner';
 import { ProductDuplicateSuggestions } from './ProductDuplicateSuggestions';
 import { findExactDuplicateProduct } from '../utils/productDuplicate';
+import { formatExpiryDate, getDaysUntilExpiry } from '../utils/expiry';
 
 interface PurchasesProps {
   initialTriggerScan?: boolean;
@@ -389,9 +390,18 @@ export const Purchases: React.FC<PurchasesProps> = ({ initialTriggerScan, initia
                     </td>
                     <td data-label="Produit" style={{ fontWeight: '600' }}>
                       {prod ? cleanProductName(prod.name) : 'Produit inconnu'}
-                      {p.batchNo && (
-                        <div style={{ fontSize: '10px', color: 'var(--color-dark-light)', fontWeight: 'normal' }}>
-                          Lot: {p.batchNo} {p.expiryDate ? `• DLUO: ${p.expiryDate}` : ''}
+                      {(p.batchNo || p.expiryDate) && (
+                        <div style={{ fontSize: '10px', color: 'var(--color-dark-light)', fontWeight: 'normal', display: 'flex', gap: '6px', alignItems: 'center', marginTop: '2px', flexWrap: 'wrap' }}>
+                          {p.batchNo && <span>Lot: {p.batchNo}</span>}
+                          {p.batchNo && p.expiryDate && <span>•</span>}
+                          {p.expiryDate && (
+                            <span style={{
+                              fontWeight: 600,
+                              color: (getDaysUntilExpiry(p.expiryDate) ?? 999) < 0 ? 'var(--color-danger)' : (getDaysUntilExpiry(p.expiryDate) ?? 999) <= (settings.expiryAlertDays ?? 7) ? '#d97706' : 'inherit'
+                            }}>
+                              DLC : {formatExpiryDate(p.expiryDate)}
+                            </span>
+                          )}
                         </div>
                       )}
                       {prod && conv.value === null && (
