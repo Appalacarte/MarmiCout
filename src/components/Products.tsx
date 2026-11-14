@@ -25,6 +25,8 @@ import {
   areUnitsCompatible,
   convertProductUnitValues,
 } from '../utils/units';
+import { ProductDuplicateSuggestions } from './ProductDuplicateSuggestions';
+import { findExactDuplicateProduct } from '../utils/productDuplicate';
 
 interface ProductsProps {
   initialTriggerAdd?: boolean;
@@ -392,6 +394,22 @@ export const Products: React.FC<ProductsProps> = ({ initialTriggerAdd, onNavigat
   const handleSaveProduct = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formName.trim()) return;
+
+    // Détection de doublon exact
+    const duplicate = findExactDuplicateProduct(
+      formName,
+      products,
+      editingProduct ? editingProduct.id : undefined
+    );
+
+    if (duplicate) {
+      const confirmMsg =
+        `Ce produit existe déjà ("${duplicate.name}"${!duplicate.isActive ? ' — désactivé' : ''}).\n\n` +
+        `Voulez-vous vraiment enregistrer ce doublon ?`;
+      if (!window.confirm(confirmMsg)) {
+        return;
+      }
+    }
 
     setIsSaving(true);
     setSaveError(null);
@@ -815,6 +833,16 @@ export const Products: React.FC<ProductsProps> = ({ initialTriggerAdd, onNavigat
               placeholder="Ex: Farine de Blé T55 Bio"
               value={formName}
               onChange={(e) => setFormName(e.target.value)}
+            />
+            <ProductDuplicateSuggestions
+              inputName={formName}
+              allProducts={products}
+              ignoreProductId={editingProduct?.id}
+              showSuggestions={!editingProduct}
+              actionLabel="Modifier"
+              onSelectProduct={(selectedProd) => {
+                handleOpenEditForm(selectedProd);
+              }}
             />
           </div>
 

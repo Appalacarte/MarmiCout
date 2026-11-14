@@ -4,6 +4,39 @@ Toutes les modifications notables apportées à ce projet sont documentées dans
 
 ---
 
+## [2.0.56] - 2026-11-14
+
+### Détection de Doublons à la Saisie, Suggestions Interactives, Avertissements et Liaison Rapide
+- **Module partagé de détection de doublons ([`src/utils/productDuplicate.ts`](file:///d:/Aplli/Marmicout/Appli%20Marmicout/src/utils/productDuplicate.ts))** :
+  - Normalisation robuste insensible à la casse, aux accents (NFD), aux espaces superflus et au pluriel français (`singularizeFrenchToken` : `-s`, `-x`, `-eaux`, `-eux`, `-aux`, exceptions culinaires comme `yeux` / `aulx`).
+  - Comparaison symétrique permettant à « olive noire » de trouver « Olives noires » et inversement.
+  - Détection exacte de doublon (`isExactProductNameMatch`, `findExactDuplicateProduct`) tolérant également l'ordre des mots.
+  - Recherche graduée de suggestions (`searchDuplicateSuggestions`) dès la première lettre saisie, ordonnée par score de pertinence (correspondance exacte > préfixe > sous-chaîne > correspondance des tokens).
+  - Prise en compte de tous les produits existants, y compris les produits inactifs avec la mention `(désactivé)`.
+- **Composant réutilisable de suggestions ([`src/components/ProductDuplicateSuggestions.tsx`](file:///d:/Aplli/Marmicout/Appli%20Marmicout/src/components/ProductDuplicateSuggestions.tsx))** :
+  - Affichage sous le champ de saisie de la liste des correspondances (5 maximum) avec nom, marque, stock formaté et unité (`Stock : X kg`).
+  - Badge spécifique pour les produits désactivés (`désactivé`).
+  - Bouton interactif avec libellé contextuel (`Modifier →`, `Sélectionner →`, `Relier →`).
+  - Bannière d'avertissement jaune `⚠️ Ce produit existe déjà` dès que le nom correspond exactement après normalisation.
+- **Formulaire Produit ([`src/components/Products.tsx`](file:///d:/Aplli/Marmicout/Appli%20Marmicout/src/components/Products.tsx))** :
+  - En mode « Ajouter un produit » : affichage dynamique des suggestions dès le 1er caractère tapé dans « Nom du produit/ingrédient ».
+  - Un clic sur une suggestion ferme le formulaire d'ajout et bascule directement sur le formulaire d'édition de ce produit existant.
+  - En mode « Modifier le produit » : masquage de la liste de suggestions, avec conservation de l'avertissement si le nom saisi correspond à un autre produit existant (`ignoreProductId`).
+  - Blocage/confirmation avant enregistrement si le nom normalisé correspond exactement à un produit existant (`window.confirm`).
+- **Création rapide dans « Nouvel Achat » ([`src/components/Purchases.tsx`](file:///d:/Aplli/Marmicout/Appli%20Marmicout/src/components/Purchases.tsx))** :
+  - Recherche en temps réel de doublons lors de la saisie dans le tiroir de création rapide de produit.
+  - Un clic sur une suggestion ferme le tiroir et sélectionne automatiquement le produit existant dans le formulaire d'achat (avec son unité et son magasin).
+  - Demande de confirmation avant enregistrement en cas de doublon exact.
+- **Création rapide « + Ajouter à mes produits » ([`src/components/Recipes.tsx`](file:///d:/Aplli/Marmicout/Appli%20Marmicout/src/components/Recipes.tsx) et [`src/components/ShoppingListDrawer.tsx`](file:///d:/Aplli/Marmicout/Appli%20Marmicout/src/components/ShoppingListDrawer.tsx))** :
+  - Recherche dynamique de doublons dans la boîte de dialogue de confirmation de création rapide.
+  - Un clic sur une suggestion relie directement l'ingrédient au produit existant sélectionné sans créer de nouveau produit (dans le détail de la recette, dans le formulaire de recette ou dans la liste de courses).
+  - Réactivation automatique si le produit sélectionné était inactif.
+  - Demande de confirmation avant enregistrement si un doublon exact est soumis.
+- **Tests Automatisés ([`src/utils/productDuplicate.test.ts`](file:///d:/Aplli/Marmicout/Appli%20Marmicout/src/utils/productDuplicate.test.ts))** :
+  - Suite de tests complète validant la singularisation française, la normalisation, la détection de doublons exacts, la recherche dès la première lettre (« o »), le plafonnement à 5 résultats et l'inclusion des produits désactivés.
+
+---
+
 ## [2.0.55] - 2026-11-14
 
 ### Unités Compatibles aux Achats, Création Rapide Produit avec Confirmation, Conversion en Édition & Lisibilité des Stocks

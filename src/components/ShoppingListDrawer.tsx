@@ -24,6 +24,8 @@ import {
   getLogicalStockUnit,
 } from '../utils/units';
 import { generateUUID } from '../services/cloudDbService';
+import { ProductDuplicateSuggestions } from './ProductDuplicateSuggestions';
+import { findExactDuplicateProduct } from '../utils/productDuplicate';
 
 interface RecipeSelection {
   recipe: Recipe;
@@ -240,6 +242,60 @@ export const ShoppingListDrawer: React.FC<ShoppingListDrawerProps> = ({
     });
   };
 
+  // --- Sélectionner ou relier un produit existant depuis les suggestions d'ajout rapide ---
+  const handleSelectExistingProductFromQuick = async (existingProd: Product) => {
+    if (!quickAddModal) return;
+    const item = quickAddModal.item;
+    if (!item.unlinkedRefs || item.unlinkedRefs.length === 0) return;
+
+    if (!existingProd.isActive) {
+      await dbService.saveProduct({ ...existingProd, isActive: true });
+    }
+
+    try {
+      setQuickAddError(null);
+
+      // Regrouper les références par recette
+      const refsByRecipe = new Map<string, Set<string>>();
+      for (const ref of item.unlinkedRefs) {
+        if (!refsByRecipe.has(ref.recipeId)) {
+          refsByRecipe.set(ref.recipeId, new Set());
+        }
+        refsByRecipe.get(ref.recipeId)!.add(ref.ingredientId);
+      }
+
+      for (const [recipeId, ingIds] of refsByRecipe.entries()) {
+        const recipe = dbService.getRecipe(recipeId);
+        if (!recipe) continue;
+        const ings = dbService.getRecipeIngredients(recipeId).map(({ id, recipeId: _rId, ...rest }) => {
+          void _rId;
+          if (ingIds.has(id)) {
+            return {
+              ...rest,
+              productId: existingProd.id,
+              customName: undefined,
+              customCostPerUnit: undefined
+            };
+          }
+          return rest;
+        });
+        const packs = dbService.getRecipePackagings(recipeId).map(({ id: _id, recipeId: _rId, ...rest }) => {
+          void _id;
+          void _rId;
+          return rest;
+        });
+        await dbService.saveRecipe(recipe, ings, packs);
+      }
+
+      setRefreshTick(t => t + 1);
+      onDataChanged?.();
+      setQuickAddModal(null);
+    } catch (err: unknown) {
+      console.error('Erreur lors de la liaison du produit existant:', err);
+      setQuickAddError(err instanceof Error ? err.message : "Échec de la liaison du produit à vos stocks.");
+    }
+  };
+
   // --- Confirmer la création du produit et relier l'ingrédient ---
   const handleConfirmQuickAdd = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -251,6 +307,19 @@ export const ShoppingListDrawer: React.FC<ShoppingListDrawerProps> = ({
       alert("Le nom du produit ne peut pas être vide.");
       return;
     }
+
+    // Détection de doublon exact
+    const allProducts = dbService.getProducts();
+    const duplicate = findExactDuplicateProduct(finalName, allProducts);
+    if (duplicate) {
+      const confirmMsg =
+        `Ce produit existe déjà ("${duplicate.name}"${!duplicate.isActive ? ' — désactivé' : ''}).\n\n` +
+        `Voulez-vous vraiment enregistrer ce doublon ?`;
+      if (!window.confirm(confirmMsg)) {
+        return;
+      }
+    }
+
     const finalUnit = quickAddModal.unit || 'kg';
     const stores = dbService.getStores();
 
@@ -996,6 +1065,13 @@ export const ShoppingListDrawer: React.FC<ShoppingListDrawerProps> = ({
                   required
                   value={quickAddModal.name}
                   onChange={(e) => setQuickAddModal({ ...quickAddModal, name: e.target.value })}
+                />
+                <ProductDuplicateSuggestions
+                  inputName={quickAddModal.name}
+                  allProducts={dbService.getProducts()}
+                  showSuggestions={true}
+                  actionLabel="Relier"
+                  onSelectProduct={handleSelectExistingProductFromQuick}
                 />
               </div>
 

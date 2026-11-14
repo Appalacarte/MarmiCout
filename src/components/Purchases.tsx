@@ -24,6 +24,8 @@ import { Drawer } from './Drawer';
 import { BarcodeScanner } from './BarcodeScanner';
 import { LookupResult } from '../services/barcodeLookupService';
 import { InvoiceScanner } from './InvoiceScanner';
+import { ProductDuplicateSuggestions } from './ProductDuplicateSuggestions';
+import { findExactDuplicateProduct } from '../utils/productDuplicate';
 
 interface PurchasesProps {
   initialTriggerScan?: boolean;
@@ -33,6 +35,7 @@ interface PurchasesProps {
 export const Purchases: React.FC<PurchasesProps> = ({ initialTriggerScan, initialPrefillProductId }) => {
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [allProducts, setAllProducts] = useState<Product[]>([]);
   const [stores, setStores] = useState<Store[]>([]);
   const settings = dbService.getSettings();
 
@@ -66,7 +69,9 @@ export const Purchases: React.FC<PurchasesProps> = ({ initialTriggerScan, initia
 
   const loadData = () => {
     setPurchases(dbService.getPurchases().sort((a, b) => b.date.localeCompare(a.date)));
-    setProducts(dbService.getProducts().filter(p => p.isActive));
+    const all = dbService.getProducts();
+    setAllProducts(all);
+    setProducts(all.filter(p => p.isActive));
     setStores(dbService.getStores());
   };
 
@@ -168,10 +173,37 @@ export const Purchases: React.FC<PurchasesProps> = ({ initialTriggerScan, initia
     }
   };
 
+  // Sélectionner un produit existant depuis les suggestions de création rapide
+  const handleSelectExistingProductFromQuick = async (existingProd: Product) => {
+    if (!existingProd.isActive) {
+      await dbService.saveProduct({ ...existingProd, isActive: true });
+    }
+    const all = dbService.getProducts();
+    setAllProducts(all);
+    setProducts(all.filter(p => p.isActive));
+    setFormProductId(existingProd.id);
+    setFormUnit(existingProd.unit);
+    if (existingProd.mainStoreId) {
+      setFormStoreId(existingProd.mainStoreId);
+    }
+    setIsQuickProductOpen(false);
+  };
+
   // Enregistrer le produit rapide puis l'associer au formulaire d'achat
   const handleSaveQuickProduct = (e: React.FormEvent) => {
     e.preventDefault();
     if (!quickName.trim()) return;
+
+    // Détection de doublon exact
+    const duplicate = findExactDuplicateProduct(quickName, allProducts);
+    if (duplicate) {
+      const confirmMsg =
+        `Ce produit existe déjà ("${duplicate.name}"${!duplicate.isActive ? ' — désactivé' : ''}).\n\n` +
+        `Voulez-vous vraiment enregistrer ce doublon ?`;
+      if (!window.confirm(confirmMsg)) {
+        return;
+      }
+    }
 
     const newProd: Product = {
       id: 'P_' + Date.now(),
@@ -192,8 +224,9 @@ export const Purchases: React.FC<PurchasesProps> = ({ initialTriggerScan, initia
     dbService.saveProduct(newProd);
     
     // Mettre à jour l'état local et pré-remplir l'achat avec ce produit
-    const updatedProducts = dbService.getProducts().filter(p => p.isActive);
-    setProducts(updatedProducts);
+    const all = dbService.getProducts();
+    setAllProducts(all);
+    setProducts(all.filter(p => p.isActive));
     setFormProductId(newProd.id);
     setFormUnit(newProd.unit);
     setIsQuickProductOpen(false);
@@ -607,6 +640,13 @@ export const Purchases: React.FC<PurchasesProps> = ({ initialTriggerScan, initia
               placeholder="Ex: Purée de fraise 1kg"
               value={quickName}
               onChange={(e) => setQuickName(e.target.value)}
+            />
+            <ProductDuplicateSuggestions
+              inputName={quickName}
+              allProducts={allProducts}
+              showSuggestions={true}
+              actionLabel="Sélectionner"
+              onSelectProduct={handleSelectExistingProductFromQuick}
             />
           </div>
 
