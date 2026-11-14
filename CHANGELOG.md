@@ -4,6 +4,22 @@ Toutes les modifications notables apportées à ce projet sont documentées dans
 
 ---
 
+## [2.0.53] - 2026-11-14
+
+### Édition Produit, « Corriger le stock », Prix de départ sans achat & Suppression / Désactivation Sécurisée
+- **Formulaire d'édition de produit ([`src/components/Products.tsx`](file:///d:/Aplli/Marmicout/Appli%20Marmicout/src/components/Products.tsx))** :
+  - Renommage du champ « Stock initial » en « Stock actuel » en mode édition et ajout des lignes d'aide sous « Stock actuel » (*« Le stock se modifie par un achat ou par “Corriger le stock” »*) et sous « Prix d'achat moyen » (*« Calculé automatiquement à partir de vos achats »*).
+  - Autorisation de la saisie du « Prix d'achat moyen » en édition tant que le produit n'a encore aucun achat enregistré ; verrouillage automatique dès qu'au moins un achat existe.
+- **Fonctionnalité « Corriger le stock »** :
+  - Ajout du bouton « Corriger le stock » à côté du champ stock en édition et dans le panneau de détail du produit.
+  - Saisie de la quantité réelle constatée et du motif (*Inventaire*, *Casse / perte*, *Erreur de saisie*, *Autre*), mise à jour immédiate du stock et création d'un mouvement de stock `AJUSTEMENT` avec l'écart, visible dans l'historique du produit.
+- **Boutons « Modifier » et « Supprimer »** :
+  - Ajout du bouton « Modifier » à côté de « Approvisionner (+ Achat) » dans le panneau de détail d'un produit.
+  - Ajout du bouton rouge « Supprimer » avec confirmation dans le formulaire d'édition : si le produit est utilisé dans une recette, un achat ou un mouvement de stock, la suppression est remplacée par une proposition de désactivation (`isActive = false`) avec explication ; sinon suppression via `dbService.deleteProduct`.
+  - Rechargement systématique de la liste et affichage d'un message d'erreur clair à l'écran en cas d'échec.
+
+---
+
 ## [2.0.52] - 2026-11-14
 
 ### Conformité NOT NULL Cloud (`cloudDbService.ts`) & Affichage des Erreurs de Création Rapide Produit
