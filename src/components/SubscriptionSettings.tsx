@@ -7,14 +7,21 @@ import {
   CheckCircle2, 
   XCircle
 } from 'lucide-react';
-import { PRICING_CONFIG, PlanId, BillingInterval } from '../config/pricing';
+import { PlanId, BillingInterval } from '../config/pricing';
 import { subscriptionService, SubscriptionState } from '../services/subscriptionService';
+import { 
+  pricingService, 
+  MergedPricingPlan, 
+  getFallbackPlans, 
+  isSamePlanCode 
+} from '../services/pricingService';
 import { PricingSection } from './PricingSection';
 
 export const SubscriptionSettings: React.FC = () => {
   const [subscription, setSubscription] = useState<SubscriptionState>(() => 
     subscriptionService.getSubscription()
   );
+  const [plans, setPlans] = useState<MergedPricingPlan[]>(() => getFallbackPlans());
   const [notification, setNotification] = useState<{ type: 'success' | 'info' | 'error'; message: string } | null>(null);
 
   // Synchronisation avec l'événement de changement d'abonnement
@@ -26,15 +33,34 @@ export const SubscriptionSettings: React.FC = () => {
     return () => window.removeEventListener('marmicout_subscription_changed', handleUpdate);
   }, []);
 
+  // Chargement des forfaits depuis Supabase
+  useEffect(() => {
+    let isMounted = true;
+    pricingService.getPlans().then(result => {
+      if (isMounted) {
+        setPlans(result.plans);
+      }
+    }).catch(err => {
+      console.warn('[SubscriptionSettings] Erreur chargement forfaits Supabase :', err);
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const isTrial = subscription.planId === 'trial' || subscription.planId === 'demo_14j';
   const remainingTrialDays = subscriptionService.getRemainingTrialDays();
-  const currentPlan = PRICING_CONFIG.plans.find(p => p.id === subscription.planId) || {
+  const currentPlan = plans.find(p => isSamePlanCode(subscription.planId, p.code, p.isTrial)) || {
     id: subscription.planId,
-    name: 'Formule personnalisée',
-    storage: 'Sauvegarde en ligne',
+    code: subscription.planId,
+    name: isTrial ? 'Essai gratuit 14 jours' : subscription.planId,
+    tagline: '',
+    storage: 'Navigateur (local)',
     scanQuota: 150
   };
 
-  const scanQuota = subscriptionService.getCurrentScanQuota();
+  const scanQuota = currentPlan.scanQuota || subscriptionService.getCurrentScanQuota();
   const scansUsed = subscription.scansUsedThisMonth;
   const usagePercentage = Math.min(100, Math.round((scansUsed / scanQuota) * 100));
 
@@ -119,25 +145,25 @@ export const SubscriptionSettings: React.FC = () => {
               gap: '6px',
               padding: '4px 12px',
               borderRadius: '9999px',
-              backgroundColor: subscription.planId === 'trial' ? '#fef3c7' : '#dcfce7',
-              color: subscription.planId === 'trial' ? '#92400e' : '#166534',
+              backgroundColor: isTrial ? '#fef3c7' : '#dcfce7',
+              color: isTrial ? '#92400e' : '#166534',
               fontSize: '12px',
               fontWeight: '700',
               marginBottom: '8px'
             }}>
               <Sparkles size={14} />
-              {subscription.planId === 'trial' ? 'Période d\'essai gratuit active' : 'Abonnement actif'}
+              {isTrial ? 'Période d\'essai gratuit active' : 'Abonnement actif'}
             </div>
 
             <h2 style={{ fontSize: '24px', fontWeight: '800', color: '#1e1b4b', margin: 0 }}>
               Formule active : {currentPlan.name}
             </h2>
             <p style={{ fontSize: '13px', color: '#64748b', margin: '4px 0 0' }}>
-              Stockage : {currentPlan.storage} · Facturation {subscription.billingInterval === 'year' ? 'Annuelle' : 'Mensuelle'}
+              Stockage : {currentPlan.storage || 'Navigateur (local)'} · Facturation {subscription.billingInterval === 'year' ? 'Annuelle' : 'Mensuelle'}
             </p>
           </div>
 
-          {subscription.planId === 'trial' && (
+          {isTrial && (
             <div style={{
               display: 'flex',
               alignItems: 'center',
@@ -229,7 +255,7 @@ export const SubscriptionSettings: React.FC = () => {
           </a>. Aucun frais de résiliation. Vos données restent conservées sur votre appareil.
         </p>
 
-        {subscription.planId !== 'trial' && (
+        {!isTrial && (
           <button
             type="button"
             onClick={handleCancel}

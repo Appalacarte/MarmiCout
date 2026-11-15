@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Check, 
   Minus, 
@@ -17,10 +17,15 @@ import {
 import { 
   PRICING_CONFIG, 
   BillingInterval, 
-  PlanId, 
-  PricingPlan 
+  PlanId
 } from '../config/pricing';
 import { subscriptionService } from '../services/subscriptionService';
+import { 
+  pricingService, 
+  MergedPricingPlan, 
+  getFallbackPlans, 
+  isSamePlanCode 
+} from '../services/pricingService';
 
 interface PricingSectionProps {
   currentPlanId?: PlanId;
@@ -39,6 +44,8 @@ export const PricingSection: React.FC<PricingSectionProps> = ({
   showFaq = true,
   isInsideSettings = false
 }) => {
+  const [plans, setPlans] = useState<MergedPricingPlan[]>(() => getFallbackPlans());
+  const [isOffline, setIsOffline] = useState(false);
   const [interval, setInterval] = useState<BillingInterval>(() => 
     subscriptionService.getBillingIntervalPreference()
   );
@@ -50,28 +57,48 @@ export const PricingSection: React.FC<PricingSectionProps> = ({
   const [waitlistEmail, setWaitlistEmail] = useState('');
   const [waitlistStatus, setWaitlistStatus] = useState<{ message: string; success?: boolean } | null>(null);
 
+  // Chargement des forfaits depuis Supabase (table plans liée à marmicout-stock-restauration)
+  useEffect(() => {
+    let isMounted = true;
+    pricingService.getPlans().then(result => {
+      if (isMounted) {
+        setPlans(result.plans);
+        setIsOffline(result.isOffline);
+      }
+    }).catch(err => {
+      console.warn('[PricingSection] Erreur chargement forfaits Supabase :', err);
+      if (isMounted) {
+        setIsOffline(true);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   const handleIntervalToggle = (newInterval: BillingInterval) => {
     setInterval(newInterval);
     subscriptionService.setBillingIntervalPreference(newInterval);
   };
 
-  const handlePlanCta = (plan: PricingPlan) => {
-    if (plan.id === 'trial') {
+  const handlePlanCta = (plan: MergedPricingPlan) => {
+    if (plan.isTrial) {
       if (onStartTrial) {
         onStartTrial();
       } else if (onSelectPlan) {
-        onSelectPlan('trial', interval);
+        onSelectPlan(plan.code, interval);
       }
       return;
     }
 
-    if (plan.id === 'pro_cloud' && !PRICING_CONFIG.flags.cloudSyncEnabled) {
+    if (plan.code === 'pro_cloud' && !PRICING_CONFIG.flags.cloudSyncEnabled) {
       setIsWaitlistOpen(true);
       return;
     }
 
     if (onSelectPlan) {
-      onSelectPlan(plan.id, interval);
+      onSelectPlan(plan.code, interval);
     }
   };
 
@@ -208,13 +235,33 @@ export const PricingSection: React.FC<PricingSectionProps> = ({
             </span>
           </button>
         </div>
+
+        {/* Mention discrète hors connexion si les tarifs proviennent du fichier de secours */}
+        {isOffline && (
+          <div style={{
+            marginTop: '16px',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '6px',
+            padding: '4px 12px',
+            borderRadius: '9999px',
+            backgroundColor: '#f8fafc',
+            border: '1px solid #e2e8f0',
+            color: '#64748b',
+            fontSize: '12px',
+            fontWeight: '500'
+          }}>
+            <Info size={14} color="#94a3b8" />
+            <span>Tarifs indicatifs, hors connexion</span>
+          </div>
+        )}
       </div>
 
-      {/* 3. Grille des 4 formules */}
+      {/* 3. Grille des formules chargées dynamiquement */}
       <style>{`
         .marmicout-pricing-grid {
           display: grid;
-          grid-template-columns: repeat(4, 1fr);
+          grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
           gap: 20px;
           align-items: stretch;
           margin-bottom: 24px;
@@ -236,11 +283,11 @@ export const PricingSection: React.FC<PricingSectionProps> = ({
       `}</style>
 
       <div className="marmicout-pricing-grid">
-        {PRICING_CONFIG.plans.map(plan => {
-          const isProCloud = plan.id === 'pro_cloud';
-          const isTrial = plan.id === 'trial';
-          const isCurrent = currentPlanId === plan.id;
-          const isComingSoon = plan.id === 'pro_cloud' && !PRICING_CONFIG.flags.cloudSyncEnabled;
+        {plans.map(plan => {
+          const isProCloud = plan.code === 'pro_cloud';
+          const isTrial = plan.isTrial;
+          const isCurrent = isSamePlanCode(currentPlanId, plan.code, isTrial);
+          const isComingSoon = plan.code === 'pro_cloud' && !PRICING_CONFIG.flags.cloudSyncEnabled;
 
           // Déterminer le prix affiché selon l'intervalle sélectionné
           let displayPrice: string;
@@ -249,23 +296,23 @@ export const PricingSection: React.FC<PricingSectionProps> = ({
 
           if (isTrial) {
             displayPrice = '0\u00A0€';
-            displayPeriod = 'pendant 14 jours';
+            displayPeriod = `pendant ${plan.trial_days || 14} jours`;
             subText = 'Sans carte bancaire requise';
           } else if (interval === 'month') {
             displayPrice = plan.monthlyPrice?.formatted || '';
-            displayPeriod = '/ mois';
+            displayPeriod = plan.monthlyPrice?.period || '/ mois';
             subText = 'Sans engagement, résiliable à tout moment';
           } else {
             displayPrice = plan.yearlyPrice?.formatted || '';
-            displayPeriod = '/ an';
+            displayPeriod = plan.yearlyPrice?.period || '/ an';
             subText = plan.yearlyPrice?.equivalentMonthlyFormatted 
               ? `Soit ${plan.yearlyPrice.equivalentMonthlyFormatted} / mois (2 mois offerts)`
               : '';
           }
 
           // Déterminer le libellé du bouton CTA
-          let ctaLabel = plan.ctaText.available;
-          if (isComingSoon && plan.ctaText.comingSoon) {
+          let ctaLabel = plan.ctaText?.available || (isTrial ? 'Démarrer mon essai gratuit' : 'Choisir cette formule');
+          if (isComingSoon && plan.ctaText?.comingSoon) {
             ctaLabel = plan.ctaText.comingSoon;
           } else if (isCurrent) {
             ctaLabel = 'Formule actuelle';
@@ -273,7 +320,7 @@ export const PricingSection: React.FC<PricingSectionProps> = ({
 
           return (
             <div
-              key={plan.id}
+              key={plan.code}
               className={isProCloud ? 'marmicout-card-pro-cloud' : ''}
               style={{
                 position: 'relative',
@@ -314,7 +361,7 @@ export const PricingSection: React.FC<PricingSectionProps> = ({
                   whiteSpace: 'nowrap'
                 }}>
                   <Star size={13} fill="#facc15" color="#facc15" />
-                  {isComingSoon ? 'Bientôt disponible' : 'Recommandé'}
+                  {isComingSoon ? 'Bientôt disponible' : (plan.badge || 'Recommandé')}
                 </div>
               )}
 
@@ -388,21 +435,23 @@ export const PricingSection: React.FC<PricingSectionProps> = ({
               </div>
 
               {/* Stockage des données (exigence d'honnêteté) */}
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                padding: '8px 10px',
-                borderRadius: '8px',
-                backgroundColor: isProCloud ? '#f5f3ff' : '#f8fafc',
-                fontSize: '12px',
-                color: isProCloud ? '#6b21a8' : '#475569',
-                fontWeight: '600',
-                marginBottom: '16px'
-              }}>
-                {isProCloud ? <Cloud size={16} /> : <Laptop size={16} />}
-                <span>Stockage : {plan.storage}</span>
-              </div>
+              {plan.storage && (
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '8px 10px',
+                  borderRadius: '8px',
+                  backgroundColor: isProCloud ? '#f5f3ff' : '#f8fafc',
+                  fontSize: '12px',
+                  color: isProCloud ? '#6b21a8' : '#475569',
+                  fontWeight: '600',
+                  marginBottom: '16px'
+                }}>
+                  {isProCloud ? <Cloud size={16} /> : <Laptop size={16} />}
+                  <span>Stockage : {plan.storage}</span>
+                </div>
+              )}
 
               {/* Liste des fonctionnalités */}
               <ul style={{

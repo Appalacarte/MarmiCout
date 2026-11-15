@@ -1,7 +1,12 @@
 import { createClient } from '@supabase/supabase-js';
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || '';
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+const metaEnv = typeof import.meta !== 'undefined' ? (import.meta as unknown as { env?: Record<string, string> }).env : undefined;
+const nodeEnv = typeof globalThis !== 'undefined' && 'process' in globalThis
+  ? (globalThis as { process?: { env?: Record<string, string> } }).process?.env
+  : undefined;
+
+const SUPABASE_URL = metaEnv?.VITE_SUPABASE_URL || nodeEnv?.VITE_SUPABASE_URL || 'https://cyumdcuqgsmxgbodfrhs.supabase.co';
+const SUPABASE_ANON_KEY = metaEnv?.VITE_SUPABASE_ANON_KEY || nodeEnv?.VITE_SUPABASE_ANON_KEY || 'sb_publishable_qDlFO1FgCcTuN4a4RIK2zQ_NvUiIPuB';
 
 // Configuration du client Supabase Marmicout
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {

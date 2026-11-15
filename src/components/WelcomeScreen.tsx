@@ -51,7 +51,7 @@ export const WelcomeScreen: React.FC = () => {
 
   const handleStartTrial = () => {
     if (name.trim().length >= 2) {
-      startWithCode(name, 'trial');
+      startWithCode(name, 'demo_14j');
     } else {
       if (nameInputRef.current) {
         nameInputRef.current.focus();

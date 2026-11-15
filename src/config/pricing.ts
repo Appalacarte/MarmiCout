@@ -6,7 +6,7 @@
 
 export type BillingInterval = 'month' | 'year';
 
-export type PlanId = 'trial' | 'essentiel' | 'pro' | 'pro_cloud';
+export type PlanId = 'trial' | 'demo_14j' | 'essentiel' | 'pro' | 'pro_cloud' | string;
 
 export interface PlanPrice {
   amount: number;

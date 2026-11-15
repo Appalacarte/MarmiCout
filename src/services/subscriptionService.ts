@@ -5,6 +5,7 @@
  */
 
 import { PlanId, BillingInterval, PRICING_CONFIG } from '../config/pricing';
+import { MARMICOUT_PLANS_META } from './pricingService';
 
 const SUBSCRIPTION_STORAGE_KEY = 'marmicout_subscription';
 const BILLING_INTERVAL_KEY = 'marmicout_billing_interval';
@@ -131,7 +132,7 @@ export const subscriptionService = {
    */
   getRemainingTrialDays(): number {
     const sub = this.getSubscription();
-    if (sub.planId !== 'trial') {
+    if (sub.planId !== 'trial' && sub.planId !== 'demo_14j') {
       return 0;
     }
 
@@ -151,7 +152,11 @@ export const subscriptionService = {
    */
   getCurrentScanQuota(): number {
     const sub = this.getSubscription();
-    const plan = PRICING_CONFIG.plans.find(p => p.id === sub.planId);
+    const meta = MARMICOUT_PLANS_META[sub.planId];
+    if (meta && meta.scanQuota !== undefined && meta.scanQuota !== null) {
+      return meta.scanQuota;
+    }
+    const plan = PRICING_CONFIG.plans.find(p => p.id === sub.planId || (p.id === 'trial' && sub.planId === 'demo_14j'));
     if (plan && plan.scanQuota !== null) {
       return plan.scanQuota;
     }
@@ -190,10 +195,11 @@ export const subscriptionService = {
    */
   changePlan(newPlanId: PlanId, interval?: BillingInterval): SubscriptionState {
     const current = this.getSubscription();
+    const isTrial = newPlanId === 'trial' || newPlanId === 'demo_14j';
     const updated = this.saveSubscription({
       planId: newPlanId,
       billingInterval: interval || current.billingInterval,
-      status: newPlanId === 'trial' ? 'trialing' : 'active'
+      status: isTrial ? 'trialing' : 'active'
     });
 
     // TODO: Déclencher webhook Stripe / session checkout
@@ -207,7 +213,7 @@ export const subscriptionService = {
   cancelSubscription(): SubscriptionState {
     const updated = this.saveSubscription({
       status: 'canceled',
-      planId: 'trial' // Rétrogradation vers essai / local
+      planId: 'demo_14j' // Rétrogradation vers essai / local
     });
     // TODO: Notifier Stripe Customer Portal / Webhook
     console.info('[MarmiCout Subscription] Abonnement résilié sans frais.');

@@ -4,6 +4,31 @@ Toutes les modifications notables apportées à ce projet sont documentées dans
 
 ---
 
+## [2.0.70] - 2026-11-15
+
+### Chargement dynamique des forfaits d'abonnement depuis Supabase (table plans) avec solution de secours hors connexion
+- **Service de tarification dynamique (`src/services/pricingService.ts`)** :
+  - Connexion à la table Supabase `plans` liée à l'application `marmicout-stock-restauration` dans `apps`, triée par `display_order`.
+  - Prise en compte des forfaits actifs et publics (`is_active = true` et `visible_public = true`).
+  - Utilisation des champs : `name`, `description`, `price_monthly`, `price_yearly`, `features`, `trial_days` et `code`.
+  - Détection automatique du forfait d'essai (`code === 'demo_14j'` ou `trial_days > 0`) placé en tête, suivi des forfaits payants dans l'ordre de l'administration.
+  - Enrichissement par le tableau de métadonnées spécifiques à Marmicout (`MARMICOUT_PLANS_META` : type de stockage, badge Recommandé, quotas, CTA). Si un forfait n'y figure pas (ex: forfait personnalisé), il s'affiche sans ces informations.
+- **Grille tarifaire et sélection (`src/components/PricingSection.tsx`)** :
+  - Affichage dynamique des forfaits chargés depuis Supabase avec mise en cache transparente.
+  - Conservation de `src/config/pricing.ts` comme solution de secours en cas d'absence de réseau ou d'indisponibilité de Supabase.
+  - Mention discrète « Tarifs indicatifs, hors connexion » affichée lorsque les tarifs de secours sont utilisés.
+  - Comparaison fiable de la « Formule actuelle » par code de forfait avec prise en charge de la rétrocompatibilité d'essai (`trial` / `demo_14j`).
+  - Grille responsive adaptative (`auto-fit`) pour afficher élégamment tout nombre de forfaits configuré dans l'admin.
+- **Écran Paramètres Abonnement (`src/components/SubscriptionSettings.tsx`)** :
+  - Chargement dynamique du libellé et des caractéristiques de la formule active depuis Supabase via `pricingService`.
+  - Conservation du parcours d'abonnement et de résiliation via `subscriptionService`.
+- **Service d'abonnement (`src/services/subscriptionService.ts`)** :
+  - Prise en charge des codes personnalisés et du code d'essai `demo_14j` aux côtés de `trial`.
+- **Tests unitaires (`src/services/pricingService.test.ts`)** :
+  - Validation du formatage des prix, du partitionnement essai/payant, de la correspondance des codes et du mécanisme de secours hors connexion.
+
+---
+
 ## [2.0.69] - 2026-11-15
 
 ### Alignement migration Supabase, RLS check_marmicout_access, typage UUID strict et réinitialisation de planning lors d'annulation de production
