@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
-import { Send, Mail, Copy, Check, Info, Phone, Building2 } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Send, Mail, Copy, Check, Info, Phone, Building2, AlertCircle, Loader2 } from 'lucide-react';
+import { getConnectedUserInfo, sendContactMessage } from '../services/contactService';
 
 export const Contact: React.FC = () => {
   const [name, setName] = useState('');
@@ -7,9 +8,22 @@ export const Contact: React.FC = () => {
   const [subject, setSubject] = useState('');
   const [message, setMessage] = useState('');
   const [copied, setCopied] = useState(false);
-  const [sent, setSent] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const recipientEmail = 'contact@appalacarte.fr';
+
+  useEffect(() => {
+    let isMounted = true;
+    getConnectedUserInfo().then((info) => {
+      if (!isMounted) return;
+      if (info.name) setName((prev) => (prev ? prev : info.name));
+      if (info.email) setEmail((prev) => (prev ? prev : info.email));
+    });
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const contactText = `✉️ MESSAGE DE CONTACT MARMICOUT
 ---------------------------------------
@@ -24,20 +38,36 @@ ${message}
 Destinataire : App à la Carte (contact@appalacarte.fr)
 Généré depuis l'application MarmiCout`;
 
-  const handleSendEmail = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim() || !email.trim() || !message.trim()) {
-      alert("Veuillez remplir le nom, l'email et le message.");
+      setStatusMessage({ type: 'error', text: "Veuillez remplir le nom, l'e-mail et le message." });
       return;
     }
 
-    const emailSubject = encodeURIComponent(`[MarmiCout Contact] ${subject || 'Nouveau message'}`);
-    const body = encodeURIComponent(contactText);
-    const mailtoUrl = `mailto:${recipientEmail}?subject=${emailSubject}&body=${body}`;
+    setIsSubmitting(true);
+    setStatusMessage(null);
 
-    window.open(mailtoUrl, '_blank');
-    setSent(true);
-    setTimeout(() => setSent(false), 5000);
+    const result = await sendContactMessage({
+      name,
+      email,
+      subject: subject.trim() || 'Demande de contact',
+      message,
+      source: 'Marmicout – Support',
+    });
+
+    setIsSubmitting(false);
+
+    if (result.success) {
+      setStatusMessage({ type: 'success', text: 'Message envoyé' });
+      setMessage('');
+      setSubject('');
+    } else {
+      setStatusMessage({
+        type: 'error',
+        text: result.error || "Une erreur est survenue lors de l'envoi du message.",
+      });
+    }
   };
 
   const handleCopy = () => {
@@ -84,8 +114,8 @@ Généré depuis l'application MarmiCout`;
                 <Mail size={16} />
               </div>
               <div>
-                <div style={{ fontSize: '12px', color: 'var(--color-dark-light)' }}>Email Officiel</div>
-                <a href={`mailto:${recipientEmail}`} style={{ fontSize: '14px', fontWeight: '600', color: 'var(--color-primary)', textDecoration: 'none' }}>
+                <div style={{ fontSize: '12px', color: 'var(--color-dark-light)' }}>Email Officiel (Solution de secours)</div>
+                <a href={`mailto:${recipientEmail}`} style={{ fontSize: '14px', fontWeight: '600', color: 'var(--color-primary)', textDecoration: 'underline' }}>
                   {recipientEmail}
                 </a>
               </div>
@@ -126,7 +156,7 @@ Généré depuis l'application MarmiCout`;
             <div style={{ display: 'flex', gap: '8px' }}>
               <Info size={16} style={{ color: 'var(--color-dark-light)', flexShrink: 0, marginTop: '2px' }} />
               <div style={{ fontSize: '11px', lineHeight: '1.4' }}>
-                L'application MarmiCout est un outil de gestion local édité par App à la Carte. Pour toute demande d'assistance technique ou de développement sur-mesure, utilisez ce formulaire direct.
+                L'application MarmiCout est un outil de gestion édité par App à la Carte. Votre message est transmis directement à notre équipe technique. En cas d'indisponibilité du réseau, vous pouvez utiliser l'adresse e-mail de secours.
               </div>
             </div>
           </div>
@@ -137,8 +167,29 @@ Généré depuis l'application MarmiCout`;
           <h3 style={{ fontSize: '16px', fontWeight: '700', margin: '0 0 16px 0' }}>
             Envoyer un message
           </h3>
-          
-          <form onSubmit={handleSendEmail}>
+
+          {statusMessage && (
+            <div
+              style={{
+                padding: '12px 16px',
+                borderRadius: '8px',
+                marginBottom: '16px',
+                fontSize: '13px',
+                fontWeight: '600',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                backgroundColor: statusMessage.type === 'success' ? 'rgba(34, 197, 94, 0.12)' : 'rgba(239, 68, 68, 0.12)',
+                color: statusMessage.type === 'success' ? '#16a34a' : '#dc2626',
+                border: `1px solid ${statusMessage.type === 'success' ? 'rgba(34, 197, 94, 0.3)' : 'rgba(239, 68, 68, 0.3)'}`,
+              }}
+            >
+              {statusMessage.type === 'success' ? <Check size={18} /> : <AlertCircle size={18} />}
+              <span style={{ flex: 1 }}>{statusMessage.text}</span>
+            </div>
+          )}
+
+          <form onSubmit={handleSubmit}>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '16px', marginBottom: '16px' }}>
               <div className="form-group">
                 <label className="form-label">Votre nom *</label>
@@ -148,7 +199,7 @@ Généré depuis l'application MarmiCout`;
                   required
                   placeholder="Ex : Dupont"
                   value={name}
-                  onChange={e => setName(e.target.value)}
+                  onChange={(e) => setName(e.target.value)}
                 />
               </div>
 
@@ -160,7 +211,7 @@ Généré depuis l'application MarmiCout`;
                   required
                   placeholder="Ex : contact@email.com"
                   value={email}
-                  onChange={e => setEmail(e.target.value)}
+                  onChange={(e) => setEmail(e.target.value)}
                 />
               </div>
             </div>
@@ -170,9 +221,9 @@ Généré depuis l'application MarmiCout`;
               <input
                 type="text"
                 className="form-input"
-                placeholder="Ex : Question sur l'application, Demande de partenariat..."
+                placeholder="Ex : Question sur l'application, Assistance technique..."
                 value={subject}
-                onChange={e => setSubject(e.target.value)}
+                onChange={(e) => setSubject(e.target.value)}
               />
             </div>
 
@@ -185,7 +236,7 @@ Généré depuis l'application MarmiCout`;
                 style={{ minHeight: '100px', resize: 'vertical' }}
                 placeholder="Saisissez votre message ici..."
                 value={message}
-                onChange={e => setMessage(e.target.value)}
+                onChange={(e) => setMessage(e.target.value)}
               />
             </div>
 
@@ -193,10 +244,20 @@ Généré depuis l'application MarmiCout`;
               <button
                 type="submit"
                 className="btn btn-primary"
-                style={{ flex: 1, minWidth: '160px', height: '44px' }}
+                disabled={isSubmitting}
+                style={{ flex: 1, minWidth: '160px', height: '44px', opacity: isSubmitting ? 0.7 : 1 }}
               >
-                <Send size={16} />
-                {sent ? 'Redirection...' : 'Envoyer par mail'}
+                {isSubmitting ? (
+                  <>
+                    <Loader2 size={16} className="spin" />
+                    Envoi en cours...
+                  </>
+                ) : (
+                  <>
+                    <Send size={16} />
+                    Envoyer le message
+                  </>
+                )}
               </button>
 
               <button
@@ -210,7 +271,14 @@ Généré depuis l'application MarmiCout`;
               </button>
             </div>
 
-            <p style={{ fontSize: '12px', color: 'var(--color-dark-light)', marginTop: '12px', textAlign: 'center', lineHeight: '1.4' }}>
+            <div style={{ fontSize: '12px', color: 'var(--color-dark-light)', marginTop: '14px', lineHeight: '1.5', textAlign: 'center' }}>
+              Solution de secours : en cas de difficulté d'envoi, écrivez-nous directement à{' '}
+              <a href={`mailto:${recipientEmail}`} style={{ color: 'var(--color-primary)', textDecoration: 'underline', fontWeight: '600' }}>
+                {recipientEmail}
+              </a>
+            </div>
+
+            <p style={{ fontSize: '12px', color: 'var(--color-dark-light)', marginTop: '8px', textAlign: 'center', lineHeight: '1.4' }}>
               Les informations recueillies sont destinées à traiter votre demande. Consultez notre{' '}
               <a href="/confidentialite" style={{ color: 'var(--color-primary)', textDecoration: 'underline' }}>
                 Politique de Confidentialité

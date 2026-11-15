@@ -12,7 +12,6 @@ import {
   Plus,
   Camera,
   MessageSquare,
-  FileText,
   Mail,
   ShieldCheck,
   LogOut,
@@ -34,7 +33,6 @@ import { Stores } from './components/Stores';
 import { Settings } from './components/Settings';
 import { Drawer } from './components/Drawer';
 import { Suggestions } from './components/Suggestions';
-import { QuoteRequest } from './components/QuoteRequest';
 import { Contact } from './components/Contact';
 import { ExpiredScreen } from './components/ExpiredScreen';
 import { MentionsLegales } from './components/MentionsLegales';
@@ -48,7 +46,7 @@ import { accessVerificationService } from './services/accessVerificationService'
 import { markTesterCodeIssued, isTesterCodeExpired, getTesterCodeExpiryDate } from './services/testerCodes';
 import { APP_VERSION } from './version';
 
-type Tab = 'Dashboard' | 'Planning' | 'Produits' | 'Achats' | 'Recettes' | 'Production' | 'Ventes' | 'Magasins' | 'Paramètres' | 'Suggestions' | 'Devis' | 'Contact' | 'Mentions Légales';
+type Tab = 'Dashboard' | 'Planning' | 'Produits' | 'Achats' | 'Recettes' | 'Production' | 'Ventes' | 'Magasins' | 'Paramètres' | 'Suggestions' | 'Contact' | 'Mentions Légales';
 
 type LegalRoute = '/mentions-legales' | '/confidentialite' | '/cgu';
 
@@ -104,7 +102,7 @@ const resolveCurrentRoute = (): RouteState => {
             window.history.replaceState(null, '', `/mentions-legales${cleanSearch}`);
             return { type: 'legal', path: '/mentions-legales' };
           }
-          const validTabs: Tab[] = ['Dashboard', 'Planning', 'Produits', 'Achats', 'Recettes', 'Production', 'Ventes', 'Magasins', 'Paramètres', 'Suggestions', 'Devis', 'Contact', 'Mentions Légales'];
+          const validTabs: Tab[] = ['Dashboard', 'Planning', 'Produits', 'Achats', 'Recettes', 'Production', 'Ventes', 'Magasins', 'Paramètres', 'Suggestions', 'Contact', 'Mentions Légales'];
           const found = validTabs.find(t => t.toLowerCase() === decoded.toLowerCase());
           if (found) return { type: 'app', tab: found };
         }
@@ -117,7 +115,7 @@ const resolveCurrentRoute = (): RouteState => {
     if (window.location.hash) {
       const raw = window.location.hash.replace('#', '');
       const decoded = decodeURIComponent(raw).trim();
-      const validTabs: Tab[] = ['Dashboard', 'Planning', 'Produits', 'Achats', 'Recettes', 'Production', 'Ventes', 'Magasins', 'Paramètres', 'Suggestions', 'Devis', 'Contact', 'Mentions Légales'];
+      const validTabs: Tab[] = ['Dashboard', 'Planning', 'Produits', 'Achats', 'Recettes', 'Production', 'Ventes', 'Magasins', 'Paramètres', 'Suggestions', 'Contact', 'Mentions Légales'];
       const found = validTabs.find(t => t.toLowerCase() === decoded.toLowerCase());
       if (found) return { type: 'app', tab: found };
     }
@@ -245,7 +243,6 @@ function App() {
     { id: 'Magasins', label: 'Fournisseurs', icon: Store },
     { id: 'Paramètres', label: 'Paramètres & Sync', icon: SettingsIcon },
     { id: 'Suggestions', label: 'Suggestions', icon: MessageSquare },
-    { id: 'Devis', label: 'Demande de devis', icon: FileText },
     { id: 'Contact', label: 'Contact', icon: Mail },
     { id: 'Mentions Légales', label: 'Mentions Légales', icon: ShieldCheck, path: '/mentions-legales' as const }
   ];
@@ -300,8 +297,6 @@ function App() {
         return <Settings initialSubTab={extra?.subTab as 'general' | 'subscription' | undefined} />;
       case 'Suggestions':
         return <Suggestions />;
-      case 'Devis':
-        return <QuoteRequest />;
       case 'Contact':
         return <Contact />;
       case 'Mentions Légales':
@@ -692,18 +687,6 @@ function App() {
           >
             <MessageSquare size={18} style={{ marginRight: '12px', color: 'var(--color-primary)' }} />
             Boîte à suggestions
-          </button>
-
-          <button
-            className="btn btn-secondary"
-            style={{ height: '50px', justifyContent: 'flex-start', paddingLeft: '20px' }}
-            onClick={() => {
-              setIsMobileActionOpen(false);
-              handleNavigate('Devis');
-            }}
-          >
-            <FileText size={18} style={{ marginRight: '12px', color: 'var(--color-primary)' }} />
-            Demande de devis
           </button>
 
           <button

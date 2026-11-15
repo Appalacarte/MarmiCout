@@ -1,20 +1,38 @@
-import React, { useState } from 'react';
-import { Send, MessageSquare, Copy, Check, Info } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Send, MessageSquare, Copy, Check, Info, AlertCircle, Loader2 } from 'lucide-react';
 import { getActiveTesterCode } from '../services/db';
+import { getConnectedUserInfo, sendContactMessage } from '../services/contactService';
 
 export const Suggestions: React.FC = () => {
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
   const [title, setTitle] = useState('');
   const [type, setType] = useState('amélioration');
   const [description, setDescription] = useState('');
   const [copied, setCopied] = useState(false);
-  const [sent, setSent] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const testerCode = getActiveTesterCode() || 'Anonyme';
   const recipientEmail = 'contact@appalacarte.fr';
 
+  useEffect(() => {
+    let isMounted = true;
+    getConnectedUserInfo().then((info) => {
+      if (!isMounted) return;
+      if (info.name) setName((prev) => (prev ? prev : info.name));
+      if (info.email) setEmail((prev) => (prev ? prev : info.email));
+    });
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   const suggestionText = `💡 SUGGESTION MARMICOUT
 ---------------------------------------
-👤 Testeur : ${testerCode.toUpperCase()}
+👤 Expéditeur : ${name || 'Non renseigné'}
+📧 Email : ${email || 'Non renseigné'}
+🧪 Testeur : ${testerCode.toUpperCase()}
 📌 Type : ${type.toUpperCase()}
 📝 Titre : ${title}
 
@@ -22,22 +40,46 @@ export const Suggestions: React.FC = () => {
 ${description}
 
 ---------------------------------------
-Généré le ${new Date().toLocaleDateString('fr-FR')} à ${new Date().toLocaleTimeString('fr-FR')}`;
+Généré le ${new Date().toLocaleDateString('fr-FR')} à ${new Date().toLocaleTimeString('fr-FR')}
+Destinataire : App à la Carte (${recipientEmail})`;
 
-  const handleSendEmail = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!title.trim() || !description.trim()) {
-      alert("Veuillez remplir le titre et la description de votre suggestion.");
+    if (!name.trim() || !email.trim() || !title.trim() || !description.trim()) {
+      setStatusMessage({
+        type: 'error',
+        text: "Veuillez remplir votre nom, votre e-mail, le titre et la description.",
+      });
       return;
     }
 
-    const subject = encodeURIComponent(`[MarmiCout Suggestion] ${type.toUpperCase()} - ${title}`);
-    const body = encodeURIComponent(suggestionText);
-    const mailtoUrl = `mailto:${recipientEmail}?subject=${subject}&body=${body}`;
+    setIsSubmitting(true);
+    setStatusMessage(null);
 
-    window.open(mailtoUrl, '_blank');
-    setSent(true);
-    setTimeout(() => setSent(false), 5000);
+    const fullMessage = testerCode && testerCode !== 'Anonyme'
+      ? `[Espace testeur : ${testerCode.toUpperCase()}]\n\n${description.trim()}`
+      : description.trim();
+
+    const result = await sendContactMessage({
+      name,
+      email,
+      subject: `[${type.toUpperCase()}] ${title.trim()}`,
+      message: fullMessage,
+      source: 'Marmicout – Suggestion',
+    });
+
+    setIsSubmitting(false);
+
+    if (result.success) {
+      setStatusMessage({ type: 'success', text: 'Message envoyé' });
+      setTitle('');
+      setDescription('');
+    } else {
+      setStatusMessage({
+        type: 'error',
+        text: result.error || "Une erreur est survenue lors de l'envoi de la suggestion.",
+      });
+    }
   };
 
   const handleCopy = () => {
@@ -53,13 +95,13 @@ Généré le ${new Date().toLocaleDateString('fr-FR')} à ${new Date().toLocaleT
   };
 
   return (
-    <div style={{ maxWidth: '640px', margin: '0 auto' }}>
+    <div style={{ maxWidth: '680px', margin: '0 auto' }}>
       {/* En-tête */}
       <div className="page-header">
         <div>
           <h1 className="page-title">Boîte à suggestions</h1>
           <p className="page-subtitle">
-            Proposez des idées d'amélioration, signalez un bug ou demandez une modification directement à l'administrateur
+            Proposez des idées d'amélioration, signalez un bug ou demandez une modification directement à l'équipe App à la Carte
           </p>
         </div>
       </div>
@@ -79,13 +121,62 @@ Généré le ${new Date().toLocaleDateString('fr-FR')} à ${new Date().toLocaleT
             <h3 style={{ fontSize: '16px', fontWeight: '700', margin: 0 }}>
               Formulaire de retour d'expérience
             </h3>
-            <span style={{ fontSize: '12px', color: 'var(--color-dark-light)' }}>
-              Espace testeur actif : <strong>{testerCode.toUpperCase()}</strong>
-            </span>
+            {testerCode && testerCode !== 'Anonyme' && (
+              <span style={{ fontSize: '12px', color: 'var(--color-dark-light)' }}>
+                Espace testeur actif : <strong>{testerCode.toUpperCase()}</strong>
+              </span>
+            )}
           </div>
         </div>
 
-        <form onSubmit={handleSendEmail}>
+        {statusMessage && (
+          <div
+            style={{
+              padding: '12px 16px',
+              borderRadius: '8px',
+              marginBottom: '16px',
+              fontSize: '13px',
+              fontWeight: '600',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              backgroundColor: statusMessage.type === 'success' ? 'rgba(34, 197, 94, 0.12)' : 'rgba(239, 68, 68, 0.12)',
+              color: statusMessage.type === 'success' ? '#16a34a' : '#dc2626',
+              border: `1px solid ${statusMessage.type === 'success' ? 'rgba(34, 197, 94, 0.3)' : 'rgba(239, 68, 68, 0.3)'}`,
+            }}
+          >
+            {statusMessage.type === 'success' ? <Check size={18} /> : <AlertCircle size={18} />}
+            <span style={{ flex: 1 }}>{statusMessage.text}</span>
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', marginBottom: '16px' }}>
+            <div className="form-group">
+              <label className="form-label">Votre nom *</label>
+              <input
+                type="text"
+                className="form-input"
+                required
+                placeholder="Ex : Dupont"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+              />
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Votre email *</label>
+              <input
+                type="email"
+                className="form-input"
+                required
+                placeholder="Ex : contact@email.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+              />
+            </div>
+          </div>
+
           <div className="form-group" style={{ marginBottom: '16px' }}>
             <label className="form-label">Titre court de votre idée ou problème *</label>
             <input
@@ -94,7 +185,7 @@ Généré le ${new Date().toLocaleDateString('fr-FR')} à ${new Date().toLocaleT
               required
               placeholder="Ex : Ajouter un bouton d'export PDF, Bug sur le stock de beurre..."
               value={title}
-              onChange={e => setTitle(e.target.value)}
+              onChange={(e) => setTitle(e.target.value)}
             />
           </div>
 
@@ -103,7 +194,7 @@ Généré le ${new Date().toLocaleDateString('fr-FR')} à ${new Date().toLocaleT
             <select
               className="form-input"
               value={type}
-              onChange={e => setType(e.target.value)}
+              onChange={(e) => setType(e.target.value)}
             >
               <option value="amélioration">💡 Amélioration / Suggestion</option>
               <option value="bug">🐛 Signalement de bug</option>
@@ -121,7 +212,7 @@ Généré le ${new Date().toLocaleDateString('fr-FR')} à ${new Date().toLocaleT
               style={{ minHeight: '120px', resize: 'vertical' }}
               placeholder="Décrivez ce que vous souhaitez modifier, pourquoi c'est important pour vous, et comment vous l'imaginez..."
               value={description}
-              onChange={e => setDescription(e.target.value)}
+              onChange={(e) => setDescription(e.target.value)}
             />
           </div>
 
@@ -130,12 +221,13 @@ Généré le ${new Date().toLocaleDateString('fr-FR')} à ${new Date().toLocaleT
             backgroundColor: 'var(--color-light)',
             borderColor: 'var(--color-border)',
             fontSize: '12px',
-            marginBottom: '24px'
+            marginBottom: '20px',
+            padding: '12px 14px'
           }}>
             <div style={{ display: 'flex', gap: '8px' }}>
               <Info size={16} style={{ color: 'var(--color-dark-light)', flexShrink: 0, marginTop: '2px' }} />
               <div>
-                Le bouton <strong>« Envoyer par email »</strong> va ouvrir votre application de messagerie avec un email pré-rempli destiné à l'administrateur. Si vous préférez, vous pouvez utiliser le bouton <strong>« Copier le texte »</strong> pour lui envoyer directement sur WhatsApp ou par SMS.
+                Votre suggestion est transmise directement au serveur central App à la Carte. Si vous préférez, vous pouvez utiliser le bouton <strong>« Copier le texte »</strong> pour nous l'adresser par un autre canal.
               </div>
             </div>
           </div>
@@ -144,10 +236,20 @@ Généré le ${new Date().toLocaleDateString('fr-FR')} à ${new Date().toLocaleT
             <button
               type="submit"
               className="btn btn-primary"
-              style={{ flex: 1, minWidth: '160px', height: '44px' }}
+              disabled={isSubmitting}
+              style={{ flex: 1, minWidth: '160px', height: '44px', opacity: isSubmitting ? 0.7 : 1 }}
             >
-              <Send size={16} />
-              {sent ? 'Redirection mail...' : 'Envoyer par email'}
+              {isSubmitting ? (
+                <>
+                  <Loader2 size={16} className="spin" />
+                  Envoi en cours...
+                </>
+              ) : (
+                <>
+                  <Send size={16} />
+                  Envoyer la suggestion
+                </>
+              )}
             </button>
 
             <button
@@ -161,7 +263,14 @@ Généré le ${new Date().toLocaleDateString('fr-FR')} à ${new Date().toLocaleT
             </button>
           </div>
 
-          <p style={{ fontSize: '12px', color: 'var(--color-dark-light)', marginTop: '12px', textAlign: 'center', lineHeight: '1.4' }}>
+          <div style={{ fontSize: '12px', color: 'var(--color-dark-light)', marginTop: '14px', lineHeight: '1.5', textAlign: 'center' }}>
+            Solution de secours : vous pouvez également nous écrire directement à{' '}
+            <a href={`mailto:${recipientEmail}`} style={{ color: 'var(--color-primary)', textDecoration: 'underline', fontWeight: '600' }}>
+              {recipientEmail}
+            </a>
+          </div>
+
+          <p style={{ fontSize: '12px', color: 'var(--color-dark-light)', marginTop: '8px', textAlign: 'center', lineHeight: '1.4' }}>
             Vos retours nous aident à améliorer l'application. Consultez notre{' '}
             <a href="/confidentialite" style={{ color: 'var(--color-primary)', textDecoration: 'underline' }}>
               Politique de Confidentialité

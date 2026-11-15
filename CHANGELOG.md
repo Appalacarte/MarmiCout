@@ -4,6 +4,32 @@ Toutes les modifications notables apportées à ce projet sont documentées dans
 
 ---
 
+## [2.0.71] - 2026-11-15
+
+### Suppression de l'onglet Devis et envoi direct des formulaires Contact et Suggestions vers l'API centrale
+- **Suppression de l'onglet « Devis » (`src/App.tsx`, `src/components/QuoteRequest.tsx`)** :
+  - Retrait du type `Tab` et des listes d'onglets valides (`validTabs`).
+  - Retrait de l'élément du menu latéral desktop et du tiroir d'actions rapides mobile.
+  - Retrait de la route dans le switch `renderActiveView()`.
+  - Suppression définitive du fichier composant `src/components/QuoteRequest.tsx`.
+- **Formulaire de Contact (`src/components/Contact.tsx`)** :
+  - Remplacement de l'ouverture du lien `mailto:` par un envoi direct en HTTP POST vers `{VITE_APPALACARTE_URL}/api/public/contact`.
+  - Transmission des champs `name`, `email`, `subject`, `message` et `source: "Marmicout – Support"`.
+  - Pré-remplissage automatique du nom et de l'e-mail avec les données du compte connecté (éditables à tout moment).
+  - Affichage clair de « Message envoyé » avec validation visuelle en cas de succès, ou affichage détaillé de l'erreur en cas d'échec.
+  - Conservation de l'adresse `contact@appalacarte.fr` en lien `mailto:` comme solution de secours.
+- **Boîte à suggestions (`src/components/Suggestions.tsx`)** :
+  - Remplacement de l'ouverture du lien `mailto:` par un envoi direct en HTTP POST vers `{VITE_APPALACARTE_URL}/api/public/contact`.
+  - Ajout des champs modifiables « Votre nom » et « Votre email », pré-remplis avec le compte connecté.
+  - Transmission des champs `name`, `email`, `subject`, `message` et `source: "Marmicout – Suggestion"`.
+  - Affichage de « Message envoyé » en cas de succès et de l'erreur en cas d'échec.
+  - Conservation de l'adresse `contact@appalacarte.fr` en lien `mailto:` comme solution de secours.
+- **Service centralisé (`src/services/contactService.ts`)** :
+  - Récupération unifiée de l'identité du compte connecté (`getConnectedUserInfo()`) via la session Supabase, le cache d'accès ou les réglages locaux.
+  - Envoi sécurisé des messages vers l'API publique (`sendContactMessage()`).
+
+---
+
 ## [2.0.70] - 2026-11-15
 
 ### Chargement dynamique des forfaits d'abonnement depuis Supabase (table plans) avec solution de secours hors connexion
