@@ -1412,6 +1412,22 @@ export const dbService = {
       await indexedDbService.delete('productions', production.id);
     }
 
+    // 5. Rétablir la ligne de planning associée en « non cuisinée » si applicable
+    try {
+      const allPlanning = this.getPlanning();
+      const linked = allPlanning.filter((p) => p.productionId === production.id);
+      for (const item of linked) {
+        const reverted: PlannedRecipe = {
+          ...item,
+          isDone: false,
+          productionId: null,
+        };
+        await this.savePlannedRecipe(reverted);
+      }
+    } catch (planErr) {
+      console.warn('[dbService] Erreur réinitialisation ligne planning après annulation fabrication:', planErr);
+    }
+
     return { success: true };
   },
 
@@ -1434,6 +1450,10 @@ export const dbService = {
     assertAccessKnown();
     if (!isUUID(item.id)) {
       item.id = generateUUID();
+    }
+    // production_id doit être envoyé à null (jamais une chaîne vide) tant que la recette n'est pas cuisinée
+    if (!item.isDone || !item.productionId || !isUUID(item.productionId)) {
+      item.productionId = null;
     }
     if (isCloudMode()) {
       try {

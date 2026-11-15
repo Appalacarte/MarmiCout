@@ -100,7 +100,7 @@ export interface PlannedRecipe {
   mealSlot?: 'midi' | 'soir' | 'journee' | string;
   notes?: string;
   isDone?: boolean;
-  productionId?: string;
+  productionId?: string | null;
   createdAt?: string;
 }
 

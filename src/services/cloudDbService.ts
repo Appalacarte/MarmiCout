@@ -51,6 +51,26 @@ export function notifyCloudError(title: string, details: string) {
   }
 }
 
+export function isSubscriptionOrRlsError(error: { code?: string; message?: string } | null | undefined): boolean {
+  if (!error) return false;
+  const msg = (error.message || '').toLowerCase();
+  return (
+    error.code === '42501' ||
+    msg.includes('check_marmicout_access') ||
+    msg.includes('row-level security') ||
+    msg.includes('violates row-level security') ||
+    msg.includes('permission denied') ||
+    msg.includes('insufficient_privilege')
+  );
+}
+
+export function formatSubscriptionErrorMessage(action: string, error: { code?: string; message: string }): string {
+  if (isSubscriptionOrRlsError(error)) {
+    return `Écriture refusée (${action}) : votre abonnement Marmicout est inactif ou arrivé à échéance. Veuillez renouveler votre formule dans les Paramètres pour continuer à enregistrer dans le Cloud.`;
+  }
+  return `Erreur Supabase ${action} (${error.code || 'RLS'}): ${error.message}`;
+}
+
 export class CloudDbService {
   private establishmentId: string | null =
     typeof window !== 'undefined' ? localStorage.getItem('marmicout_establishment_id') : null;
@@ -844,6 +864,19 @@ export class CloudDbService {
     const itemUUID = isUUID(item.id) ? item.id : generateUUID();
     item.id = itemUUID;
 
+    // Vérification stricte : recipe_id doit toujours être un UUID valide (FK marmicout_recipes)
+    if (!isUUID(item.recipeId)) {
+      throw new Error(
+        `Identifiant de recette non valide pour le Cloud : « ${item.recipeId} » n'est pas un UUID valide.`
+      );
+    }
+
+    // production_id doit être envoyé à null (jamais une chaîne vide) tant que la recette n'est pas cuisinée
+    const validProductionId =
+      Boolean(item.isDone) && item.productionId && isUUID(item.productionId)
+        ? item.productionId
+        : null;
+
     const payload: Record<string, unknown> = {
       id: itemUUID,
       establishment_id: estId,
@@ -853,14 +886,14 @@ export class CloudDbService {
       meal_slot: item.mealSlot || 'journee',
       notes: item.notes ?? '',
       is_done: Boolean(item.isDone),
-      production_id: item.productionId || null,
+      production_id: validProductionId,
       updated_at: new Date().toISOString(),
     };
 
     const { error } = await supabase.from('marmicout_planning').upsert(payload, { onConflict: 'id' });
     if (error) {
       notifyCloudError('Enregistrement du planning refusé', error.message);
-      throw new Error(`Erreur Supabase marmicout_planning (${error.code || 'RLS'}): ${error.message}`);
+      throw new Error(formatSubscriptionErrorMessage('enregistrement du planning', error));
     }
     await indexedDbService.put('planning', item);
     return itemUUID;
@@ -873,7 +906,7 @@ export class CloudDbService {
     const { error } = await supabase.from('marmicout_planning').delete().eq('id', id);
     if (error) {
       notifyCloudError('Suppression du planning refusée', error.message);
-      throw new Error(`Erreur suppression planning: ${error.message}`);
+      throw new Error(formatSubscriptionErrorMessage('suppression du planning', error));
     }
     await indexedDbService.delete('planning', id);
   }

@@ -14,9 +14,10 @@ import {
   TrendingUp,
   Package,
   Layers,
+  RotateCcw,
 } from 'lucide-react';
-import { dbService } from '../services/db';
-import { generateUUID } from '../services/cloudDbService';
+import { dbService, isCloudMode } from '../services/db';
+import { generateUUID, isUUID } from '../services/cloudDbService';
 import { PlannedRecipe, Recipe, Product, RecipeIngredient } from '../types';
 import {
   getWeekDays,
@@ -164,6 +165,12 @@ export const Planning: React.FC<PlanningProps> = ({ onNavigate }) => {
       setFormError('Veuillez sélectionner une recette.');
       return;
     }
+    if (isCloudMode() && !isUUID(formRecipeId)) {
+      setFormError(
+        `L'identifiant de la recette sélectionnée (« ${formRecipeId} ») n'est pas un UUID valide pour la base de données.`
+      );
+      return;
+    }
     if (!formDate) {
       setFormError('Veuillez choisir une date.');
       return;
@@ -176,6 +183,12 @@ export const Planning: React.FC<PlanningProps> = ({ onNavigate }) => {
     setIsSaving(true);
     setFormError(null);
     try {
+      // production_id doit être envoyé à null (jamais une chaîne vide) tant que la recette n'est pas cuisinée
+      const validProductionId =
+        editingItem && editingItem.isDone && editingItem.productionId && isUUID(editingItem.productionId)
+          ? editingItem.productionId
+          : null;
+
       const itemToSave: PlannedRecipe = {
         id: editingItem ? editingItem.id : generateUUID(),
         date: formDate,
@@ -183,8 +196,8 @@ export const Planning: React.FC<PlanningProps> = ({ onNavigate }) => {
         portions: Number(formPortions),
         mealSlot: formMealSlot,
         notes: formNotes.trim(),
-        isDone: editingItem ? editingItem.isDone : false,
-        productionId: editingItem ? editingItem.productionId : undefined,
+        isDone: editingItem ? Boolean(editingItem.isDone) : false,
+        productionId: validProductionId,
       };
 
       await dbService.savePlannedRecipe(itemToSave);
@@ -215,7 +228,9 @@ export const Planning: React.FC<PlanningProps> = ({ onNavigate }) => {
       setToastMessage({ type: 'success', text: `« ${name} » retirée du planning.` });
       setTimeout(() => setToastMessage(null), 3000);
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : 'Erreur lors de la suppression.');
+      const msg = err instanceof Error ? err.message : 'Erreur lors de la suppression.';
+      setToastMessage({ type: 'error', text: msg });
+      setTimeout(() => setToastMessage(null), 8000);
     }
   };
 
@@ -223,7 +238,16 @@ export const Planning: React.FC<PlanningProps> = ({ onNavigate }) => {
   const handleCookRecipe = async (item: PlannedRecipe) => {
     const recipe = recipeMap.get(item.recipeId);
     if (!recipe) {
-      alert('Recette introuvable.');
+      setToastMessage({ type: 'error', text: 'Recette introuvable.' });
+      return;
+    }
+
+    if (isCloudMode() && !isUUID(item.recipeId)) {
+      setToastMessage({
+        type: 'error',
+        text: `Identifiant de recette non conforme (« ${item.recipeId} ») : un UUID valide est requis.`,
+      });
+      setTimeout(() => setToastMessage(null), 8000);
       return;
     }
 
@@ -254,11 +278,12 @@ export const Planning: React.FC<PlanningProps> = ({ onNavigate }) => {
       });
 
       if (!res.success) {
-        alert(res.error || 'Impossible de lancer la production.');
+        setToastMessage({ type: 'error', text: res.error || 'Impossible de lancer la production.' });
+        setTimeout(() => setToastMessage(null), 8000);
         return;
       }
 
-      // Marquer comme fait dans le planning
+      // Marquer comme fait dans le planning avec UUID de fabrication
       const updatedItem: PlannedRecipe = {
         ...item,
         isDone: true,
@@ -273,7 +298,55 @@ export const Planning: React.FC<PlanningProps> = ({ onNavigate }) => {
       });
       setTimeout(() => setToastMessage(null), 4500);
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : 'Erreur lors de la fabrication.');
+      const msg = err instanceof Error ? err.message : 'Erreur lors de la fabrication.';
+      setToastMessage({ type: 'error', text: msg });
+      setTimeout(() => setToastMessage(null), 8000);
+    }
+  };
+
+  // Action ANNULER LA FABRICATION : Rétablit les stocks et repasse la ligne en « non cuisinée »
+  const handleCancelCook = async (item: PlannedRecipe) => {
+    const recipe = recipeMap.get(item.recipeId);
+    const recipeName = recipe ? recipe.name : 'cette recette';
+
+    if (
+      !window.confirm(
+        `Annuler la fabrication de « ${recipeName} » (${item.portions} portion(s)) ?\n\n` +
+        `• Les ingrédients et emballages consommés seront réintégrés dans vos stocks.\n` +
+        `• Les portions produites seront déduites du stock de la recette.\n` +
+        `• Cette ligne de planning repassera à « À cuisiner ».\n\n` +
+        `Confirmez-vous l'annulation ?`
+      )
+    ) {
+      return;
+    }
+
+    try {
+      if (item.productionId) {
+        const res = await dbService.deleteProduction(item.productionId);
+        if (!res.success) {
+          setToastMessage({ type: 'error', text: res.error || "Impossible d'annuler cette fabrication." });
+          setTimeout(() => setToastMessage(null), 8000);
+          return;
+        }
+      } else {
+        const reverted: PlannedRecipe = {
+          ...item,
+          isDone: false,
+          productionId: null,
+        };
+        await dbService.savePlannedRecipe(reverted);
+      }
+      loadData();
+      setToastMessage({
+        type: 'success',
+        text: `Fabrication de « ${recipeName} » annulée. La recette est revenue à « À cuisiner ».`,
+      });
+      setTimeout(() => setToastMessage(null), 4500);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Erreur lors de l'annulation de la fabrication.";
+      setToastMessage({ type: 'error', text: msg });
+      setTimeout(() => setToastMessage(null), 8000);
     }
   };
 
@@ -771,19 +844,43 @@ export const Planning: React.FC<PlanningProps> = ({ onNavigate }) => {
                           }}
                         >
                           {item.isDone ? (
-                            <span
-                              style={{
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '5px',
-                                color: '#059669',
-                                fontSize: '12px',
-                                fontWeight: '700',
-                              }}
-                            >
-                              <CheckCircle2 size={15} />
-                              Cuisiné
-                            </span>
+                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+                              <span
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '5px',
+                                  color: '#059669',
+                                  fontSize: '12px',
+                                  fontWeight: '700',
+                                }}
+                              >
+                                <CheckCircle2 size={15} />
+                                Cuisiné
+                              </span>
+                              {item.productionId && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleCancelCook(item)}
+                                  title="Annuler la production associée et restaurer les stocks"
+                                  style={{
+                                    border: '1px solid #cbd5e1',
+                                    backgroundColor: '#fff',
+                                    color: '#64748b',
+                                    borderRadius: '4px',
+                                    fontSize: '11px',
+                                    padding: '2px 6px',
+                                    cursor: 'pointer',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '4px',
+                                  }}
+                                >
+                                  <RotateCcw size={11} />
+                                  Annuler
+                                </button>
+                              )}
+                            </div>
                           ) : (
                             <button
                               type="button"

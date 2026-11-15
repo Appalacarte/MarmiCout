@@ -4,6 +4,23 @@ Toutes les modifications notables apportées à ce projet sont documentées dans
 
 ---
 
+## [2.0.69] - 2026-11-15
+
+### Alignement migration Supabase, RLS check_marmicout_access, typage UUID strict et réinitialisation de planning lors d'annulation de production
+- **Migration Supabase corrigée (`supabase/migrations/20261115100000_add_planning.sql`)** :
+  - Alignement des 4 politiques RLS de `marmicout_planning` avec `public.check_marmicout_access(establishment_id, 'read')` pour SELECT et `'write'` pour INSERT, UPDATE et DELETE.
+  - Clés étrangères strictes : `recipe_id UUID NOT NULL REFERENCES marmicout_recipes(id) ON DELETE CASCADE` et `production_id UUID REFERENCES marmicout_productions(id) ON DELETE SET NULL`.
+- **Typage et assainissement UUID (`src/services/cloudDbService.ts`, `src/services/db.ts`)** :
+  - `production_id` est rigoureusement transmis à `null` (jamais de chaîne vide `""`) tant que la recette n'est pas cuisinée ou si la valeur n'est pas un UUID valide, évitant les erreurs de syntaxe Postgres.
+  - Vérification systématique de validité UUID pour `recipe_id` avant toute écriture en base de données.
+- **Cycle de vie production & annulation (`src/services/db.ts`, `src/components/Planning.tsx`)** :
+  - Lors de la suppression ou de l'annulation d'une production liée (`dbService.deleteProduction`), la ligne de planning correspondante est automatiquement réinitialisée à `isDone: false` et `productionId: null`.
+  - Bouton d'annulation interactif ajouté directement sur les cartes de recettes cuisinées dans le Planning, permettant d'annuler une production et de restaurer les stocks en un clic.
+- **Gestion explicite des erreurs d'accès et d'abonnement** :
+  - Détection dédiée des erreurs RLS et d'abonnement clos (`check_marmicout_access`, code `42501`) avec affichage d'un message d'erreur clair et convivial pour l'utilisateur.
+
+---
+
 ## [2.0.68] - 2026-11-15
 
 ### Ajout de l'onglet Planning hebdomadaire, calcul des besoins en ingrédients et stocks, bouton Cuisiner et migration Supabase
