@@ -4,6 +4,27 @@ Toutes les modifications notables apportées à ce projet sont documentées dans
 
 ---
 
+## [2.0.67] - 2026-11-15
+
+### Impression navigateur (feuille de style dédiée) : fiche technique A4, étiquettes traçabilité/DLC et liste de courses
+- **Fiche technique de fabrication A4 (`src/components/print/RecipeTechSheet.tsx` & `src/components/Recipes.tsx`)** :
+  - Impression d'une fiche A4 professionnelle comprenant le nom de l'établissement, le titre de la recette, sa catégorie, photo, nombre de portions cible modulable, temps de préparation, rendement, matériel et ustensiles, étapes de préparation numérotées, astuces du chef et tableau des allergènes déclarés (règlement UE n° 1169/2011 INCO).
+  - Option « Avec les coûts » : affiche le coût de revient total du lot, le coût par portion, le prix de vente conseillé et la marge cible dans un encadré de gestion, ainsi que le coût par ligne d'ingrédient.
+  - Sans l'option « Avec les coûts » (par défaut) : aucun prix n'apparaît (fiche dédiée pour l'atelier et la cuisine).
+- **Étiquettes de traçabilité / DLC (`src/components/print/RecipeLabels.tsx` & `src/components/Recipes.tsx`)** :
+  - Génération d'étiquettes contenant le nom de l'établissement, le nom du produit, la date de fabrication (par défaut aujourd'hui), la date limite calculée selon la durée de conservation saisie (DLC en jours), les allergènes obligatoires mis en gras (`<strong>`), et les consignes de conservation (+0°C à +4°C).
+  - Prise en charge de 3 formats d'impression : planche A4 de 21 étiquettes (Avery 3 × 7), planche A4 de 24 étiquettes (Avery 3 × 8), ou étiquette unique par page (format thermique / individuel).
+  - Choix du nombre d'étiquettes à imprimer et calcul dynamique de la date limite en direct.
+- **Impression de la liste de courses (`src/components/print/ShoppingListPrint.tsx`, `src/components/ShoppingListDrawer.tsx` & `src/components/Recipes.tsx`)** :
+  - Ajout du bouton « Imprimer la liste de courses » dans le tiroir principal de la liste de courses et dans la section des ingrédients manquants du détail d'une recette.
+  - Impression propre sur page A4 avec case à cocher manuscrite `[ ]` pour chaque ingrédient, regroupement par fournisseur habituel ou liste globale, quantités ajustées, et zone de notes manuscrites.
+- **Feuille de style d'impression native (`src/components/print/print.css` & `src/components/print/PrintPreviewModal.tsx`)** :
+  - Utilisation exclusive de l'impression du navigateur (`@media print` et `window.print()`) sans nouvelle dépendance lourde.
+  - Masquage intégral et strict de l'interface de l'application (menu latéral, barre d'onglets, tiroirs, boutons, modales, en-têtes) lors de l'impression via un portail dédié `#marmicout-print-zone`.
+  - Aperçu avant impression interactif à l'écran dans une feuille au format papier avec barre d'outils de paramétrage.
+
+---
+
 ## [2.0.66] - 2026-11-14
 
 ### Navigation recette ➔ produit (allergènes, équivalences), gestion ingrédients non liés et retour recette

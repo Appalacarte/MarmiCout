@@ -18,8 +18,14 @@ import {
   ExternalLink,
   ShoppingCart,
   Copy,
-  ShieldAlert
+  ShieldAlert,
+  Printer,
+  Tag
 } from 'lucide-react';
+import { PrintPreviewModal } from './print/PrintPreviewModal';
+import { RecipeTechSheet } from './print/RecipeTechSheet';
+import { RecipeLabels, type LabelFormat } from './print/RecipeLabels';
+import { ShoppingListPrint, type ShoppingPrintItem } from './print/ShoppingListPrint';
 import { dbService } from '../services/db';
 import {
   convertUnits,
@@ -141,6 +147,15 @@ export const Recipes: React.FC<RecipesProps> = ({ initialTriggerAdd, initialView
   const [detailCookResult, setDetailCookResult] = useState<'idle' | 'success' | 'error'>('idle');
   const [detailCookError, setDetailCookError] = useState('');
   const [quickProductError, setQuickProductError] = useState<string | null>(null);
+
+  // États d'impression (Fiche technique, Étiquettes, Liste de courses)
+  const [printModalMode, setPrintModalMode] = useState<'tech-sheet' | 'labels' | 'shopping' | null>(null);
+  const [printWithCosts, setPrintWithCosts] = useState(false);
+  const [printPortions, setPrintPortions] = useState(1);
+  const [labelManufactureDate, setLabelManufactureDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [labelConservationDays, setLabelConservationDays] = useState(3);
+  const [labelFormat, setLabelFormat] = useState<LabelFormat>('sheet21');
+  const [labelQuantity, setLabelQuantity] = useState(21);
 
   // État du modal de confirmation de création rapide d'un produit
   const [quickAddModal, setQuickAddModal] = useState<{
@@ -490,6 +505,34 @@ export const Recipes: React.FC<RecipesProps> = ({ initialTriggerAdd, initialView
     setDetailCookResult('idle');
     setDetailCookError('');
     setQuickProductError(null);
+    setPrintPortions(plannedPortions ?? recipe.portions);
+  };
+
+  const handleOpenTechSheetPrint = () => {
+    setPrintWithCosts(false);
+    setPrintPortions(portionsCible);
+    setPrintModalMode('tech-sheet');
+  };
+
+  const handleOpenLabelsPrint = () => {
+    setLabelManufactureDate(new Date().toISOString().split('T')[0]);
+    setLabelConservationDays(3);
+    setLabelFormat('sheet21');
+    setLabelQuantity(21);
+    setPrintModalMode('labels');
+  };
+
+  const handleLabelFormatChange = (newFormat: LabelFormat) => {
+    setLabelFormat(newFormat);
+    if (newFormat === 'sheet21') setLabelQuantity(21);
+    else if (newFormat === 'sheet24') setLabelQuantity(24);
+    else if (newFormat === 'single') setLabelQuantity(1);
+  };
+
+  const calcDlcDate = () => {
+    const d = labelManufactureDate ? new Date(labelManufactureDate) : new Date();
+    d.setDate(d.getDate() + (labelConservationDays || 0));
+    return isNaN(d.getTime()) ? '—' : d.toLocaleDateString('fr-FR');
   };
 
   // Cuisiner depuis le panneau détail : crée une vraie production et déduit les stocks
@@ -1531,6 +1574,51 @@ export const Recipes: React.FC<RecipesProps> = ({ initialTriggerAdd, initialView
                 <p style={{ color: 'var(--color-dark-light)', fontSize: '13px', marginBottom: '16px' }}>{selectedRecipeDetails.description}</p>
               )}
 
+              {/* BOUTONS D'IMPRESSION (FICHE TECHNIQUE & ÉTIQUETTES) */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '16px' }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  style={{
+                    height: '38px',
+                    fontSize: '12px',
+                    fontWeight: '600',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '6px',
+                    backgroundColor: '#fff',
+                    borderColor: 'var(--color-primary)',
+                    color: 'var(--color-primary)'
+                  }}
+                  onClick={handleOpenTechSheetPrint}
+                  title="Imprimer la fiche technique A4"
+                >
+                  <Printer size={15} />
+                  <span>Imprimer la fiche technique</span>
+                </button>
+
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  style={{
+                    height: '38px',
+                    fontSize: '12px',
+                    fontWeight: '600',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '6px',
+                    backgroundColor: '#fff'
+                  }}
+                  onClick={handleOpenLabelsPrint}
+                  title="Imprimer des étiquettes (DLC, traçabilité, allergènes)"
+                >
+                  <Tag size={15} />
+                  <span>Imprimer des étiquettes</span>
+                </button>
+              </div>
+
               {/* Raccourci de production — crée vraiment une production */}
               {detailsCost.hasIncompatibleUnits && (
                 <div style={{
@@ -2282,23 +2370,38 @@ export const Recipes: React.FC<RecipesProps> = ({ initialTriggerAdd, initialView
                     ))}
                   </div>
 
-                  <button 
-                    type="button" 
-                    className="btn btn-secondary" 
-                    style={{ width: '100%', height: '32px', fontSize: '12px', padding: 0 }}
-                    onClick={() => {
-                      const text = missingList.map(m =>
-                        m.incompatibleMsg
-                          ? `- ${m.name} : ${m.incompatibleMsg}`
-                          : `- ${m.name} : ${m.approximate ? '≈ ' : ''}${(m.qty || 0).toFixed(1)} ${m.unit}`
-                      ).join('\n');
-                      navigator.clipboard.writeText(`Liste de courses pour ${selectedRecipeDetails.name} (${portionsCible} portions) :\n${text}`);
-                      setCopiedCourses(true);
-                      setTimeout(() => setCopiedCourses(false), 2000);
-                    }}
-                  >
-                    {copiedCourses ? '✅ Liste copiée !' : '📋 Copier la liste de courses'}
-                  </button>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                    <button 
+                      type="button" 
+                      className="btn btn-secondary" 
+                      style={{ height: '32px', fontSize: '11px', padding: 0 }}
+                      onClick={() => {
+                        const text = missingList.map(m =>
+                          m.incompatibleMsg
+                            ? `- ${m.name} : ${m.incompatibleMsg}`
+                            : `- ${m.name} : ${m.approximate ? '≈ ' : ''}${(m.qty || 0).toFixed(1)} ${m.unit}`
+                        ).join('\n');
+                        navigator.clipboard.writeText(`Liste de courses pour ${selectedRecipeDetails.name} (${portionsCible} portions) :\n${text}`);
+                        setCopiedCourses(true);
+                        setTimeout(() => setCopiedCourses(false), 2000);
+                      }}
+                    >
+                      {copiedCourses ? '✅ Liste copiée !' : '📋 Copier la liste'}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      style={{ height: '32px', fontSize: '11px', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}
+                      onClick={() => {
+                        setPrintPortions(portionsCible);
+                        setPrintModalMode('shopping');
+                      }}
+                      title="Imprimer la liste des ingrédients manquants"
+                    >
+                      <Printer size={13} />
+                      <span>Imprimer la liste</span>
+                    </button>
+                  </div>
                 </div>
               );
             })()}
@@ -2360,13 +2463,33 @@ export const Recipes: React.FC<RecipesProps> = ({ initialTriggerAdd, initialView
             )}
 
             {/* ACTIONS FOOTER */}
-            <div style={{ display: 'flex', gap: '8px', borderTop: '1px solid var(--color-border)', marginTop: '24px', paddingTop: '16px' }}>
+            <div style={{ display: 'flex', gap: '8px', borderTop: '1px solid var(--color-border)', marginTop: '24px', paddingTop: '16px', flexWrap: 'wrap' }}>
               <button 
                 className="btn btn-secondary" 
-                style={{ flex: 1 }}
+                style={{ flex: 1, minWidth: '130px' }}
                 onClick={(e) => handleOpenEditForm(selectedRecipeDetails, e)}
               >
                 Modifier Recette
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                style={{ minWidth: '110px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px' }}
+                onClick={handleOpenTechSheetPrint}
+                title="Imprimer la fiche technique A4"
+              >
+                <Printer size={15} />
+                <span>Fiche A4</span>
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                style={{ minWidth: '110px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px' }}
+                onClick={handleOpenLabelsPrint}
+                title="Imprimer des étiquettes"
+              >
+                <Tag size={15} />
+                <span>Étiquettes</span>
               </button>
               <button 
                 className="btn btn-danger" 
@@ -2453,6 +2576,246 @@ export const Recipes: React.FC<RecipesProps> = ({ initialTriggerAdd, initialView
             </form>
           </div>
         </div>
+      )}
+      {/* MODAL D'APERÇU & IMPRESSION (FICHE TECHNIQUE / ÉTIQUETTES / LISTE COURSES) */}
+      {printModalMode && selectedRecipeDetails && (
+        <PrintPreviewModal
+          isOpen={printModalMode !== null}
+          onClose={() => setPrintModalMode(null)}
+          title={
+            printModalMode === 'tech-sheet'
+              ? `Fiche technique : ${selectedRecipeDetails.name}`
+              : printModalMode === 'labels'
+              ? `Étiquettes : ${selectedRecipeDetails.name}`
+              : `Liste de courses : ${selectedRecipeDetails.name}`
+          }
+          subtitle={
+            printModalMode === 'tech-sheet'
+              ? `Aperçu format page A4 • ${printPortions} portion(s)`
+              : printModalMode === 'labels'
+              ? `Traçabilité & DLC • ${labelQuantity} étiquette(s)`
+              : `Ingrédients manquants pour ${printPortions} portion(s)`
+          }
+          toolbarControls={
+            printModalMode === 'tech-sheet' ? (
+              <>
+                <div className="toolbar-group">
+                  <label className="toolbar-label">Portions :</label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={printPortions}
+                    onChange={(e) => setPrintPortions(Math.max(1, parseDecimalInput(e.target.value)))}
+                    className="toolbar-input"
+                    style={{ width: '64px', textAlign: 'center', fontWeight: '700' }}
+                  />
+                </div>
+
+                <label className="toolbar-checkbox-label">
+                  <input
+                    type="checkbox"
+                    checked={printWithCosts}
+                    onChange={(e) => setPrintWithCosts(e.target.checked)}
+                  />
+                  <span>Avec les coûts (revient, portion, prix conseillé, marge)</span>
+                </label>
+
+                {!printWithCosts && (
+                  <span style={{ fontSize: '11px', color: '#64748b', fontStyle: 'italic' }}>
+                    Fiche pour la cuisine (aucun prix affiché)
+                  </span>
+                )}
+              </>
+            ) : printModalMode === 'labels' ? (
+              <>
+                <div className="toolbar-group">
+                  <label className="toolbar-label">Fabrication :</label>
+                  <input
+                    type="date"
+                    value={labelManufactureDate}
+                    onChange={(e) => setLabelManufactureDate(e.target.value)}
+                    className="toolbar-input"
+                  />
+                </div>
+
+                <div className="toolbar-group">
+                  <label className="toolbar-label">Conservation (DLC) :</label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="365"
+                    value={labelConservationDays}
+                    onChange={(e) => setLabelConservationDays(Math.max(0, parseInt(e.target.value, 10) || 0))}
+                    className="toolbar-input"
+                    style={{ width: '56px', textAlign: 'center', fontWeight: '700' }}
+                  />
+                  <span style={{ fontSize: '11px', color: '#64748b' }}>jours</span>
+                  <span style={{ fontSize: '11px', fontWeight: '700', color: '#b91c1c', marginLeft: '2px' }}>
+                    ➔ DLC : {calcDlcDate()}
+                  </span>
+                </div>
+
+                <div className="toolbar-group">
+                  <label className="toolbar-label">Format :</label>
+                  <select
+                    value={labelFormat}
+                    onChange={(e) => handleLabelFormatChange(e.target.value as LabelFormat)}
+                    className="toolbar-input"
+                    style={{ fontWeight: '600' }}
+                  >
+                    <option value="sheet21">Planche A4 de 21 étiquettes (3 × 7)</option>
+                    <option value="sheet24">Planche A4 de 24 étiquettes (3 × 8)</option>
+                    <option value="single">Une étiquette par page</option>
+                  </select>
+                </div>
+
+                <div className="toolbar-group">
+                  <label className="toolbar-label">Quantité :</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="240"
+                    value={labelQuantity}
+                    onChange={(e) => setLabelQuantity(Math.max(1, parseInt(e.target.value, 10) || 1))}
+                    className="toolbar-input"
+                    style={{ width: '60px', textAlign: 'center', fontWeight: '700' }}
+                  />
+                  <span style={{ fontSize: '11px', color: '#64748b' }}>étiquette(s)</span>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="toolbar-group">
+                  <label className="toolbar-label">Portions :</label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={printPortions}
+                    onChange={(e) => setPrintPortions(Math.max(1, parseDecimalInput(e.target.value)))}
+                    className="toolbar-input"
+                    style={{ width: '64px', textAlign: 'center', fontWeight: '700' }}
+                  />
+                </div>
+
+                <label className="toolbar-checkbox-label">
+                  <input
+                    type="checkbox"
+                    checked={printWithCosts}
+                    onChange={(e) => setPrintWithCosts(e.target.checked)}
+                  />
+                  <span>Inclure les coûts estimés</span>
+                </label>
+              </>
+            )
+          }
+        >
+          {printModalMode === 'tech-sheet' ? (
+            <RecipeTechSheet
+              recipe={selectedRecipeDetails}
+              ingredients={detailsIngredients}
+              packagings={detailsPackagings}
+              products={products}
+              portions={printPortions}
+              withCosts={printWithCosts}
+              costInfo={detailsCost}
+              sellingPrice={simSellPrice}
+              margin={simMargin}
+              establishmentName={settings.businessName}
+              currency={settings.currency}
+            />
+          ) : printModalMode === 'labels' ? (
+            (() => {
+              const productMap = new Map(products.map(p => [p.id, p]));
+              const allergenInfo = calculateRecipeAllergens(detailsIngredients, productMap);
+              return (
+                <RecipeLabels
+                  recipe={selectedRecipeDetails}
+                  establishmentName={settings.businessName}
+                  allergens={allergenInfo.allergens}
+                  isFullyVerified={allergenInfo.isFullyVerified}
+                  manufactureDate={labelManufactureDate}
+                  conservationDays={labelConservationDays}
+                  format={labelFormat}
+                  quantity={labelQuantity}
+                />
+              );
+            })()
+          ) : (
+            (() => {
+              const scaleFactor = printPortions / (selectedRecipeDetails.portions || 1);
+              const missingShoppingItems: ShoppingPrintItem[] = [];
+              detailsIngredients.forEach(ri => {
+                const qtyOrig = ri.originalQtyUsed || ri.qtyUsed;
+                const qtyAjust = qtyOrig * scaleFactor;
+                const normRiUnit = normalizeUnit(ri.unit) || ri.unit;
+                const prod = ri.productId ? products.find(p => p.id === ri.productId) : undefined;
+                if (prod) {
+                  const normProdUnit = normalizeUnit(prod.unit) || prod.unit;
+                  const conv = convertUnitsWithInfo(qtyAjust, normRiUnit, normProdUnit, prod);
+                  if (conv.value === null) {
+                    missingShoppingItems.push({
+                      key: prod.id,
+                      productName: prod.name,
+                      productUnit: normRiUnit,
+                      toOrder: qtyAjust,
+                      needed: qtyAjust,
+                      inStock: prod.stock,
+                      estimatedCost: 0,
+                      avgPurchasePrice: prod.avgPurchasePrice,
+                      fromRecipes: [selectedRecipeDetails.name],
+                      mainStoreId: prod.mainStoreId,
+                    });
+                  } else if (prod.stock < conv.value) {
+                    const deficit = conv.value - prod.stock;
+                    const deficitBack = convertUnitsWithInfo(deficit, normProdUnit, normRiUnit, prod);
+                    const toOrderQty = deficitBack.value !== null ? deficitBack.value : deficit;
+                    const toOrderUnit = deficitBack.value !== null ? normRiUnit : normProdUnit;
+                    missingShoppingItems.push({
+                      key: prod.id,
+                      productName: prod.name,
+                      productUnit: toOrderUnit,
+                      toOrder: Math.round(toOrderQty * 1000) / 1000,
+                      needed: conv.value,
+                      inStock: prod.stock,
+                      estimatedCost: deficit * prod.avgPurchasePrice,
+                      avgPurchasePrice: prod.avgPurchasePrice,
+                      fromRecipes: [selectedRecipeDetails.name],
+                      mainStoreId: prod.mainStoreId,
+                    });
+                  }
+                } else {
+                  missingShoppingItems.push({
+                    key: ri.id,
+                    productName: ri.customName || 'Ingrédient',
+                    productUnit: normRiUnit,
+                    toOrder: Math.round(qtyAjust * 1000) / 1000,
+                    needed: qtyAjust,
+                    inStock: 0,
+                    estimatedCost: qtyAjust * (ri.customCostPerUnit || 0),
+                    avgPurchasePrice: ri.customCostPerUnit || 0,
+                    fromRecipes: [selectedRecipeDetails.name],
+                    isUnlinked: true,
+                  });
+                }
+              });
+
+              const totalMissingCost = missingShoppingItems.reduce((acc, i) => acc + i.estimatedCost, 0);
+
+              return (
+                <ShoppingListPrint
+                  establishmentName={settings.businessName}
+                  selections={[{ recipeName: selectedRecipeDetails.name, portions: printPortions }]}
+                  toOrderItems={missingShoppingItems}
+                  groupBy="all"
+                  storeGroups={[]}
+                  totalEstimatedCost={totalMissingCost}
+                  currency={settings.currency}
+                  withCosts={printWithCosts}
+                />
+              );
+            })()
+          )}
+        </PrintPreviewModal>
       )}
     </div>
   );

@@ -1,6 +1,7 @@
 /* System de Design MarmiCout */
 
 @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap');
+@import './components/print/print.css';
 
 :root {
   /* Palette culinaire chaude (Terracotta / Sauge / Crème) */

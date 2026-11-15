@@ -14,8 +14,11 @@ import {
   PackageCheck,
   Plus,
   Store as StoreIcon,
-  ShoppingBag
+  ShoppingBag,
+  Printer
 } from 'lucide-react';
+import { PrintPreviewModal } from './print/PrintPreviewModal';
+import { ShoppingListPrint } from './print/ShoppingListPrint';
 import { Recipe, Production, Product, Purchase } from '../types';
 import { dbService } from '../services/db';
 import {
@@ -102,6 +105,10 @@ export const ShoppingListDrawer: React.FC<ShoppingListDrawerProps> = ({
 
   // Mode de regroupement : 'store' (par fournisseur) ou 'all' (liste globale)
   const [groupBy, setGroupBy] = useState<'store' | 'all'>('store');
+
+  // État du modal d'impression
+  const [isPrintOpen, setIsPrintOpen] = useState(false);
+  const [printWithCosts, setPrintWithCosts] = useState(true);
 
   // Articles cochés « achetés », mémorisés tant que la liste est ouverte
   const [checkedKeys, setCheckedKeys] = useState<Set<string>>(new Set());
@@ -1623,6 +1630,17 @@ export const ShoppingListDrawer: React.FC<ShoppingListDrawerProps> = ({
                 {copiedText ? <CheckCheck size={18} /> : <Copy size={18} />}
               </button>
 
+              {/* Imprimer la liste */}
+              <button
+                type="button"
+                className="btn btn-secondary"
+                style={{ height: '46px', padding: '0 14px', display: 'flex', alignItems: 'center', gap: '6px' }}
+                onClick={() => setIsPrintOpen(true)}
+                title="Imprimer la liste de courses"
+              >
+                <Printer size={18} />
+              </button>
+
               <button
                 type="button"
                 className="btn btn-secondary"
@@ -1742,6 +1760,51 @@ export const ShoppingListDrawer: React.FC<ShoppingListDrawerProps> = ({
             </form>
           </div>
         </div>
+      )}
+      {/* MODAL D'IMPRESSION DE LA LISTE DE COURSES */}
+      {isPrintOpen && (
+        <PrintPreviewModal
+          isOpen={isPrintOpen}
+          onClose={() => setIsPrintOpen(false)}
+          title="Liste de courses"
+          subtitle={`${toOrderItems.length} article(s) à commander`}
+          toolbarControls={
+            <>
+              <div className="toolbar-group">
+                <label className="toolbar-label">Regroupement :</label>
+                <select
+                  value={groupBy}
+                  onChange={(e) => setGroupBy(e.target.value as 'store' | 'all')}
+                  className="toolbar-input"
+                  style={{ fontWeight: '600' }}
+                >
+                  <option value="store">🏪 Par fournisseur</option>
+                  <option value="all">📋 Liste globale</option>
+                </select>
+              </div>
+
+              <label className="toolbar-checkbox-label">
+                <input
+                  type="checkbox"
+                  checked={printWithCosts}
+                  onChange={(e) => setPrintWithCosts(e.target.checked)}
+                />
+                <span>Inclure les coûts estimés</span>
+              </label>
+            </>
+          }
+        >
+          <ShoppingListPrint
+            establishmentName={settings.businessName}
+            selections={selections.map(s => ({ recipeName: s.recipe.name, portions: s.portions }))}
+            toOrderItems={toOrderItems}
+            groupBy={groupBy}
+            storeGroups={storeGroups}
+            totalEstimatedCost={totalEstimatedCost}
+            currency={settings.currency}
+            withCosts={printWithCosts}
+          />
+        </PrintPreviewModal>
       )}
     </>
   );
