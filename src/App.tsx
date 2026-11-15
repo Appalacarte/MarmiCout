@@ -16,13 +16,15 @@ import {
   Mail,
   ShieldCheck,
   LogOut,
-  Clock
+  Clock,
+  Calendar
 } from 'lucide-react';
 import './App.css'; // Nous allons vider ce fichier pour éviter les conflits
 import { getExpiringPurchases } from './utils/expiry';
 
 // Importation des composants
 import { Dashboard } from './components/Dashboard';
+import { Planning } from './components/Planning';
 import { Products } from './components/Products';
 import { Purchases } from './components/Purchases';
 import { Recipes } from './components/Recipes';
@@ -46,7 +48,7 @@ import { accessVerificationService } from './services/accessVerificationService'
 import { markTesterCodeIssued, isTesterCodeExpired, getTesterCodeExpiryDate } from './services/testerCodes';
 import { APP_VERSION } from './version';
 
-type Tab = 'Dashboard' | 'Produits' | 'Achats' | 'Recettes' | 'Production' | 'Ventes' | 'Magasins' | 'Paramètres' | 'Suggestions' | 'Devis' | 'Contact' | 'Mentions Légales';
+type Tab = 'Dashboard' | 'Planning' | 'Produits' | 'Achats' | 'Recettes' | 'Production' | 'Ventes' | 'Magasins' | 'Paramètres' | 'Suggestions' | 'Devis' | 'Contact' | 'Mentions Légales';
 
 type LegalRoute = '/mentions-legales' | '/confidentialite' | '/cgu';
 
@@ -102,7 +104,7 @@ const resolveCurrentRoute = (): RouteState => {
             window.history.replaceState(null, '', `/mentions-legales${cleanSearch}`);
             return { type: 'legal', path: '/mentions-legales' };
           }
-          const validTabs: Tab[] = ['Dashboard', 'Produits', 'Achats', 'Recettes', 'Production', 'Ventes', 'Magasins', 'Paramètres', 'Suggestions', 'Devis', 'Contact', 'Mentions Légales'];
+          const validTabs: Tab[] = ['Dashboard', 'Planning', 'Produits', 'Achats', 'Recettes', 'Production', 'Ventes', 'Magasins', 'Paramètres', 'Suggestions', 'Devis', 'Contact', 'Mentions Légales'];
           const found = validTabs.find(t => t.toLowerCase() === decoded.toLowerCase());
           if (found) return { type: 'app', tab: found };
         }
@@ -115,7 +117,7 @@ const resolveCurrentRoute = (): RouteState => {
     if (window.location.hash) {
       const raw = window.location.hash.replace('#', '');
       const decoded = decodeURIComponent(raw).trim();
-      const validTabs: Tab[] = ['Dashboard', 'Produits', 'Achats', 'Recettes', 'Production', 'Ventes', 'Magasins', 'Paramètres', 'Suggestions', 'Devis', 'Contact', 'Mentions Légales'];
+      const validTabs: Tab[] = ['Dashboard', 'Planning', 'Produits', 'Achats', 'Recettes', 'Production', 'Ventes', 'Magasins', 'Paramètres', 'Suggestions', 'Devis', 'Contact', 'Mentions Légales'];
       const found = validTabs.find(t => t.toLowerCase() === decoded.toLowerCase());
       if (found) return { type: 'app', tab: found };
     }
@@ -234,6 +236,7 @@ function App() {
   // Liste des liens de navigation principale
   const menuItems = [
     { id: 'Dashboard', label: 'Tableau de bord', icon: LayoutDashboard },
+    { id: 'Planning', label: 'Planning', icon: Calendar },
     { id: 'Produits', label: 'Produits & Stocks', icon: Package, badge: () => lowStockCount > 0 ? lowStockCount : undefined },
     { id: 'Achats', label: 'Achats & Entrées', icon: ShoppingCart, badge: () => expiryAlertCount > 0 ? expiryAlertCount : undefined },
     { id: 'Recettes', label: 'Recettes & Marges', icon: ChefHat },
@@ -254,6 +257,8 @@ function App() {
     switch (activeTab) {
       case 'Dashboard':
         return <Dashboard onNavigate={handleNavigate} />;
+      case 'Planning':
+        return <Planning onNavigate={handleNavigate} />;
       case 'Produits':
         return (
           <Products

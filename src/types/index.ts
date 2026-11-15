@@ -92,6 +92,18 @@ export interface Production {
   calculatedCost: number; // Coût réel calculé lors de la fabrication
 }
 
+export interface PlannedRecipe {
+  id: string;
+  date: string; // 'YYYY-MM-DD'
+  recipeId: string;
+  portions: number;
+  mealSlot?: 'midi' | 'soir' | 'journee' | string;
+  notes?: string;
+  isDone?: boolean;
+  productionId?: string;
+  createdAt?: string;
+}
+
 export interface Sale {
   id: string;
   date: string;

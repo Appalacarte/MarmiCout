@@ -20,6 +20,7 @@ import {
   Sale,
   StockMovement,
   Settings,
+  PlannedRecipe,
 } from '../types';
 
 export function isUUID(id?: string | null): boolean {
@@ -806,6 +807,77 @@ export class CloudDbService {
     await indexedDbService.setAll('stock_movements', filtered);
   }
 
+  // --- PLANNING ---
+  public async getPlanning(): Promise<PlannedRecipe[]> {
+    if (!this.isOnline()) {
+      return indexedDbService.getAll<PlannedRecipe>('planning');
+    }
+    const { data, error } = await supabase
+      .from('marmicout_planning')
+      .select('*')
+      .order('date');
+    if (error) {
+      console.warn('[CloudDbService] getPlanning fallback to cache:', error);
+      return indexedDbService.getAll<PlannedRecipe>('planning');
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const list: PlannedRecipe[] = (data || []).map((row: any) => ({
+      id: row.id,
+      date: row.date,
+      recipeId: row.recipe_id,
+      portions: Number(row.portions || 1),
+      mealSlot: row.meal_slot || 'journee',
+      notes: row.notes || '',
+      isDone: Boolean(row.is_done),
+      productionId: row.production_id || undefined,
+      createdAt: row.created_at || undefined,
+    }));
+    await indexedDbService.setAll('planning', list);
+    return list;
+  }
+
+  public async savePlannedRecipe(item: PlannedRecipe): Promise<string> {
+    if (!this.isOnline()) {
+      throw new Error('Hors connexion : consultation seule pendant 72 h.');
+    }
+    const estId = await this.ensureEstablishmentId();
+    const itemUUID = isUUID(item.id) ? item.id : generateUUID();
+    item.id = itemUUID;
+
+    const payload: Record<string, unknown> = {
+      id: itemUUID,
+      establishment_id: estId,
+      date: item.date,
+      recipe_id: item.recipeId,
+      portions: Number(item.portions || 1),
+      meal_slot: item.mealSlot || 'journee',
+      notes: item.notes ?? '',
+      is_done: Boolean(item.isDone),
+      production_id: item.productionId || null,
+      updated_at: new Date().toISOString(),
+    };
+
+    const { error } = await supabase.from('marmicout_planning').upsert(payload, { onConflict: 'id' });
+    if (error) {
+      notifyCloudError('Enregistrement du planning refusé', error.message);
+      throw new Error(`Erreur Supabase marmicout_planning (${error.code || 'RLS'}): ${error.message}`);
+    }
+    await indexedDbService.put('planning', item);
+    return itemUUID;
+  }
+
+  public async deletePlannedRecipe(id: string): Promise<void> {
+    if (!this.isOnline()) {
+      throw new Error('Hors connexion : consultation seule pendant 72 h.');
+    }
+    const { error } = await supabase.from('marmicout_planning').delete().eq('id', id);
+    if (error) {
+      notifyCloudError('Suppression du planning refusée', error.message);
+      throw new Error(`Erreur suppression planning: ${error.message}`);
+    }
+    await indexedDbService.delete('planning', id);
+  }
+
   // --- SETTINGS ---
   public async getSettings(): Promise<Settings | null> {
     if (!this.isOnline()) {
@@ -884,6 +956,7 @@ export class CloudDbService {
     stockMovements: StockMovement[];
     recipeIngredients: RecipeIngredient[];
     recipePackaging: RecipePackaging[];
+    planning: PlannedRecipe[];
     settings: Settings | null;
   }> {
     const [
@@ -896,6 +969,7 @@ export class CloudDbService {
       stockMovements,
       recipeIngredients,
       recipePackaging,
+      planning,
       settings,
     ] = await Promise.all([
       this.getRecipes(),
@@ -907,6 +981,7 @@ export class CloudDbService {
       this.getStockMovements(),
       this.getAllRecipeIngredients(),
       this.getAllRecipePackaging(),
+      this.getPlanning(),
       this.getSettings(),
     ]);
 
@@ -920,6 +995,7 @@ export class CloudDbService {
       stockMovements,
       recipeIngredients,
       recipePackaging,
+      planning,
       settings,
     };
   }

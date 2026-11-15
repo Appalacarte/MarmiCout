@@ -6,7 +6,7 @@
  */
 
 const DB_NAME = 'marmicout_local_db';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 export const INDEXEDDB_STORES = [
   'products',
@@ -18,6 +18,7 @@ export const INDEXEDDB_STORES = [
   'productions',
   'sales',
   'stock_movements',
+  'planning',
   'settings',
   'cache_meta',
 ] as const;

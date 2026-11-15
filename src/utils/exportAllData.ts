@@ -11,6 +11,7 @@ import {
   Sale,
   StockMovement,
   Settings,
+  PlannedRecipe,
 } from '../types';
 
 export interface MarmicoutFullExport {
@@ -27,6 +28,7 @@ export interface MarmicoutFullExport {
   productions: Production[];
   sales: Sale[];
   stock_movements: StockMovement[];
+  planning?: PlannedRecipe[];
   settings: Settings;
 }
 
@@ -49,6 +51,7 @@ export function exportAllDataAsJSON(): MarmicoutFullExport {
     productions: dbService.getProductions(),
     sales: dbService.getSales(),
     stock_movements: dbService.getStockMovements(),
+    planning: dbService.getPlanning(),
     settings: dbService.getSettings(),
   };
 
@@ -102,6 +105,9 @@ export function importAllDataFromJSON(
       dbService.setProductions(payload.productions || []);
       dbService.setSales(payload.sales || []);
       dbService.setStockMovements(payload.stock_movements || []);
+      if (payload.planning) {
+        dbService.setPlanning(payload.planning);
+      }
       if (payload.settings) {
         dbService.saveSettings(payload.settings);
       }
@@ -133,6 +139,10 @@ export function importAllDataFromJSON(
       dbService.setProductions(mergeById(existingProd, payload.productions || []));
       dbService.setSales(mergeById(existingSales, payload.sales || []));
       dbService.setStockMovements(mergeById(existingMovements, payload.stock_movements || []));
+      if (payload.planning) {
+        const existingPlanning = dbService.getPlanning();
+        dbService.setPlanning(mergeById(existingPlanning, payload.planning));
+      }
       if (payload.settings) {
         dbService.saveSettings(payload.settings);
       }

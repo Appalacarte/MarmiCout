@@ -8,7 +8,8 @@ import {
   Production,
   Sale,
   StockMovement,
-  Settings
+  Settings,
+  PlannedRecipe
 } from '../types';
 import {
   cloudDbService,
@@ -90,6 +91,7 @@ const KEYS = {
   PRODUCTIONS: `${prefix}marmicout_productions`,
   SALES: `${prefix}marmicout_sales`,
   STOCK_MOVEMENTS: `${prefix}marmicout_stock_movements`,
+  PLANNING: `${prefix}marmicout_planning`,
   SETTINGS: `${prefix}marmicout_settings`
 };
 
@@ -259,6 +261,7 @@ export const inMemoryCache: Record<string, unknown[]> = {
   productions: [],
   sales: [],
   stock_movements: [],
+  planning: [],
 };
 let inMemorySettings: Settings | null = null;
 
@@ -274,6 +277,7 @@ export async function loadCacheFromIndexedDb(): Promise<void> {
       productions,
       sales,
       stock_movements,
+      planning,
       settingsItems,
     ] = await Promise.all([
       indexedDbService.getAll<Product>('products'),
@@ -285,6 +289,7 @@ export async function loadCacheFromIndexedDb(): Promise<void> {
       indexedDbService.getAll<Production>('productions'),
       indexedDbService.getAll<Sale>('sales'),
       indexedDbService.getAll<StockMovement>('stock_movements'),
+      indexedDbService.getAll<PlannedRecipe>('planning'),
       indexedDbService.getAll<{ key: string; value: Settings }>('settings'),
     ]);
 
@@ -297,6 +302,7 @@ export async function loadCacheFromIndexedDb(): Promise<void> {
     inMemoryCache.productions = productions || [];
     inMemoryCache.sales = sales || [];
     inMemoryCache.stock_movements = stock_movements || [];
+    inMemoryCache.planning = planning || [];
 
     const appSettings = (settingsItems || []).find((s) => s.key === 'app_settings');
     if (appSettings && appSettings.value) {
@@ -395,6 +401,7 @@ export const dbService = {
     localStorage.setItem(KEYS.PRODUCTIONS, JSON.stringify([]));
     localStorage.setItem(KEYS.SALES, JSON.stringify([]));
     localStorage.setItem(KEYS.STOCK_MOVEMENTS, JSON.stringify([]));
+    localStorage.setItem(KEYS.PLANNING, JSON.stringify([]));
   },
 
   // --- SYNCHRONISATION CLOUD & FAÇADE ---
@@ -443,6 +450,7 @@ export const dbService = {
         indexedDbService.setAll('stock_movements', data.stockMovements || []),
         indexedDbService.setAll('recipe_ingredients', data.recipeIngredients || []),
         indexedDbService.setAll('recipe_packaging', data.recipePackaging || []),
+        indexedDbService.setAll('planning', data.planning || []),
       ]);
       if (data.settings) {
         await indexedDbService.put('settings', { key: 'app_settings', value: data.settings });
@@ -457,6 +465,7 @@ export const dbService = {
       inMemoryCache.stock_movements = data.stockMovements || [];
       inMemoryCache.recipe_ingredients = data.recipeIngredients || [];
       inMemoryCache.recipe_packaging = data.recipePackaging || [];
+      inMemoryCache.planning = data.planning || [];
       if (data.settings) inMemorySettings = data.settings;
 
       await indexedDbService.setLastSyncTimestamp(Date.now());
@@ -1412,6 +1421,72 @@ export const dbService = {
     indexedDbService.setAll('productions', productions);
   },
 
+  // --- PLANNING HEBDOMADAIRE (PLANNING) ---
+  getPlanning(): PlannedRecipe[] {
+    return getTableData<PlannedRecipe>('planning', KEYS.PLANNING);
+  },
+
+  getPlannedRecipe(id: string): PlannedRecipe | undefined {
+    return this.getPlanning().find((p) => p.id === id);
+  },
+
+  async savePlannedRecipe(item: PlannedRecipe): Promise<void> {
+    assertAccessKnown();
+    if (!isUUID(item.id)) {
+      item.id = generateUUID();
+    }
+    if (isCloudMode()) {
+      try {
+        await cloudDbService.savePlannedRecipe(item);
+      } catch (err: unknown) {
+        notifyCloudError('Enregistrement planning cloud refusé', err instanceof Error ? err.message : String(err));
+        throw err;
+      }
+      const list = (inMemoryCache.planning as PlannedRecipe[]).filter((p) => p.id !== item.id);
+      list.push(item);
+      inMemoryCache.planning = list;
+      await indexedDbService.put('planning', item);
+      return;
+    }
+    // Mode local (Essentiel)
+    const list = this.getPlanning();
+    const index = list.findIndex((p) => p.id === item.id);
+    if (index >= 0) {
+      list[index] = item;
+    } else {
+      list.push(item);
+    }
+    inMemoryCache.planning = list;
+    saveTable(KEYS.PLANNING, list);
+    await indexedDbService.put('planning', item);
+  },
+
+  async deletePlannedRecipe(id: string): Promise<void> {
+    assertAccessKnown();
+    if (isCloudMode()) {
+      try {
+        await cloudDbService.deletePlannedRecipe(id);
+      } catch (err: unknown) {
+        notifyCloudError('Suppression planning cloud refusée', err instanceof Error ? err.message : String(err));
+        throw err;
+      }
+      inMemoryCache.planning = (inMemoryCache.planning as PlannedRecipe[]).filter((p) => p.id !== id);
+      await indexedDbService.delete('planning', id);
+      return;
+    }
+    // Mode local (Essentiel)
+    const list = this.getPlanning().filter((p) => p.id !== id);
+    inMemoryCache.planning = list;
+    saveTable(KEYS.PLANNING, list);
+    await indexedDbService.delete('planning', id);
+  },
+
+  setPlanning(items: PlannedRecipe[]): void {
+    inMemoryCache.planning = items;
+    saveTable(KEYS.PLANNING, items);
+    indexedDbService.setAll('planning', items);
+  },
+
   // --- VENTES (SALES) ---
   getSales(): Sale[] {
     return getTableData<Sale>('sales', KEYS.SALES);
@@ -1564,6 +1639,7 @@ export const dbService = {
       PRODUCTIONS: () => dbService.getProductions() as unknown as Record<string, unknown>[],
       SALES: () => dbService.getSales() as unknown as Record<string, unknown>[],
       STOCK_MOVEMENTS: () => dbService.getStockMovements() as unknown as Record<string, unknown>[],
+      PLANNING: () => dbService.getPlanning() as unknown as Record<string, unknown>[],
       SETTINGS: () => [dbService.getSettings() as unknown as Record<string, unknown>],
     };
 
@@ -1858,6 +1934,7 @@ export const dbService = {
         PRODUCTIONS: 'productions',
         SALES: 'sales',
         STOCK_MOVEMENTS: 'stock_movements',
+        PLANNING: 'planning',
         SETTINGS: 'settings',
       };
       const storeName = storeNameMap[tableName];

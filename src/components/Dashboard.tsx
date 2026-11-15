@@ -697,6 +697,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
       {/* --- RACCOURCIS RAPIDES --- */}
       <h3 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '12px' }}>Raccourcis rapides</h3>
       <div className="quick-links" style={{ marginBottom: '28px' }}>
+        <button className="quick-link-btn" onClick={() => onNavigate('Planning')}>
+          <Calendar size={22} style={{ color: 'var(--color-primary)' }} />
+          <span>Planning Semaine</span>
+        </button>
         <button className="quick-link-btn" onClick={() => onNavigate('Achats', { triggerScan: true })}>
           <ShoppingCart size={22} style={{ color: 'var(--color-primary)' }} />
           <span>Scanner Achat</span>

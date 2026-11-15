@@ -4,6 +4,38 @@ Toutes les modifications notables apportées à ce projet sont documentées dans
 
 ---
 
+## [2.0.68] - 2026-11-15
+
+### Ajout de l'onglet Planning hebdomadaire, calcul des besoins en ingrédients et stocks, bouton Cuisiner et migration Supabase
+- **Nouvel onglet « Planning » (`src/components/Planning.tsx`)** :
+  - Vue de la semaine du lundi au dimanche avec sélecteur de semaine (précédente, aujourd'hui, suivante) et libellé calendaire dynamique.
+  - Placement de recettes sur chaque jour avec choix du nombre de portions, créneau repas (midi, soir, toute la journée) et notes facultatives.
+  - Grille réactive de 7 jours avec cartes de recettes planifiées, portions modulables et raccourci d'ajout rapide par jour.
+- **Indicateurs financiers prévisionnels de la semaine (`src/utils/planning.ts`)** :
+  - Calcul et affichage en temps réel du coût de revient prévu de la semaine (`costPerPortion * portions`).
+  - Calcul du chiffre d'affaires potentiel estimé selon la marge cible définie dans les paramètres.
+  - Calcul de la marge brute prévisionnelle et du taux de marge moyen.
+  - Taux de réalisation des fabrications prévues sur la semaine.
+- **Besoins totaux en ingrédients & détection des ruptures de stocks** :
+  - Calcul automatique et agrégation des ingrédients nécessaires pour toutes les recettes planifiées de la semaine.
+  - Prise en compte des conversions d'unités (équivalences g/ml, poids pièce).
+  - Comparaison avec les stocks réels actuels en magasin/atelier avec badges explicites (en stock ou manquant).
+  - Estimation du montant des achats nécessaires pour combler les ruptures de stocks.
+  - Bouton « Ouvrir la liste de courses » qui charge directement le tiroir existant (`ShoppingListDrawer`) avec l'ensemble des recettes et portions de la semaine.
+- **Bouton « Cuisiner » interactif** :
+  - Sur chaque recette planifiée non encore réalisée, un bouton « Cuisiner » lance la fabrication existante (`dbService.addProduction`).
+  - Déduction automatique des ingrédients et emballages des stocks avec enregistrement des mouvements de stock.
+  - Incrémentation du stock de produit fini de la recette.
+  - Marquage automatique de la recette planifiée comme « Cuisiné » avec badge vert de confirmation.
+- **Persistance locale & architecture hybride (`src/services/db.ts`, `src/services/indexedDbService.ts`, `src/services/cloudDbService.ts`)** :
+  - En mode local (Essentiel) : enregistrement exclusif sur l'appareil (IndexedDB `planning` v2 et `localStorage`).
+  - En mode Cloud (Pro / Pro Cloud) : intégration complète dans `cloudDbService` (`marmicout_planning`) avec gestion d'erreurs et mise en miroir locale.
+- **Migration Supabase (`supabase/migrations/20261115100000_add_planning.sql`)** :
+  - Écriture de la migration créant `marmicout_planning` (multi-tenant avec isolation stricte `establishment_id` et RLS) et `demo_marmicout_planning` (lecture seule démo).
+  - Prête à être appliquée dès accord de l'utilisateur.
+
+---
+
 ## [2.0.67] - 2026-11-15
 
 ### Impression navigateur (feuille de style dédiée) : fiche technique A4, étiquettes traçabilité/DLC et liste de courses
