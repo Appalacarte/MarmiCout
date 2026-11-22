@@ -1,5 +1,5 @@
-import React, { useState, useRef } from 'react';
-import { createWorker } from 'tesseract.js';
+import React, { useState, useRef, useEffect } from 'react';
+import { isLocalOcrSupported, preloadOcr, recognizeImage } from '../ocr/ocrService';
 import * as pdfjsLib from 'pdfjs-dist';
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.mjs?url';
 import { parseDecimalInput } from '../utils';
@@ -32,7 +32,14 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({ onClose, onSave,
   const [step, setStep] = useState<'idle' | 'analyzing' | 'validating'>('idle');
   const [sourceImage, setSourceImage] = useState<string | null>(null);
   const [confidence, setConfidence] = useState(0);
+  const [ocrStage, setOcrStage] = useState<'download' | 'detect' | 'recognize' | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Préparation de l'OCR local (téléchargement des modèles, démarrage des workers)
+  // dès l'ouverture du scanner, pendant que l'utilisateur choisit sa photo.
+  useEffect(() => {
+    if (!useCloudOcr) preloadOcr();
+  }, [useCloudOcr]);
   
   // Bulle d'aide
   const [showTip, setShowTip] = useState(() => localStorage.getItem('marmicout_hide_scanner_tip') !== 'true');
@@ -523,34 +530,77 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({ onClose, onSave,
     }
   };
 
-  // Lecture réelle d'une photo de facture par OCR
+  // Aperçu léger de la photo (JPEG ≤ 1600 px) pour l'écran de validation
+  const makePreview = async (file: File): Promise<string | null> => {
+    try {
+      const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' } as ImageBitmapOptions);
+      const scale = Math.min(1, 1600 / Math.max(bitmap.width, bitmap.height));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(bitmap.width * scale);
+      canvas.height = Math.round(bitmap.height * scale);
+      canvas.getContext('2d')?.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      bitmap.close();
+      return canvas.toDataURL('image/jpeg', 0.85);
+    } catch {
+      return null;
+    }
+  };
+
+  // Repli : Tesseract (si le navigateur ne peut pas faire tourner l'OCR local)
+  const analyzeImageWithTesseract = async (file: File) => {
+    const { createWorker } = await import('tesseract.js');
+    const processedBase64 = await preprocessImage(file);
+    const worker = await createWorker('fra', undefined, {
+      logger: m => {
+        if (typeof m.progress === 'number') setConfidence(Math.round(m.progress * 100));
+      }
+    });
+    const { data } = await worker.recognize(processedBase64);
+    await worker.terminate();
+    return { text: data.text, confidence: data.confidence };
+  };
+
+  // Lecture réelle d'une photo de facture par OCR, 100 % dans le navigateur (gratuit)
   const analyzeImage = async (file: File) => {
     setStep('analyzing');
     setConfidence(0);
+    setOcrStage(null);
 
     try {
-      // Étape 1 : Prétraitement de l'image
-      const processedBase64 = await preprocessImage(file);
+      const previewPromise = makePreview(file);
+      let text = '';
+      let ocrConfidence = 0;
 
-      // Conserver l'image source pour l'affichage (base64 compressé pour éviter de saturer la RAM)
-      const reader = new FileReader();
-      reader.onload = (e) => setSourceImage(e.target?.result as string);
-      reader.readAsDataURL(file);
-
-      // Étape 2 : Lancement de l'OCR
-      const worker = await createWorker('fra', undefined, {
-        logger: m => {
-          if (typeof m.progress === 'number') setConfidence(Math.round(m.progress * 100));
+      if (isLocalOcrSupported()) {
+        try {
+          const result = await recognizeImage(file, {
+            onProgress: (fraction, stage) => {
+              setOcrStage(stage);
+              setConfidence(Math.round(fraction * 100));
+            }
+          });
+          console.info(`[OCR] ${result.lines.length} lignes en ${Math.round(result.timings.totalMs)} ms`, result.timings);
+          text = result.text;
+          ocrConfidence = result.confidence;
+        } catch (err) {
+          console.warn('[OCR] Lecture locale impossible, repli sur Tesseract', err);
         }
-      });
-      const { data } = await worker.recognize(processedBase64);
-      await worker.terminate();
-      
-      finishAnalysis(file.name, data.text, processedBase64, data.confidence);
+      }
+
+      if (!text.trim()) {
+        setOcrStage(null);
+        const fallback = await analyzeImageWithTesseract(file);
+        text = fallback.text;
+        ocrConfidence = fallback.confidence;
+      }
+
+      finishAnalysis(file.name, text, await previewPromise, ocrConfidence);
     } catch (err) {
       console.error('Erreur OCR', err);
       alert("La lecture automatique (OCR) de la photo a échoué. Réessayez avec une photo plus nette.");
       setStep('idle');
+    } finally {
+      setOcrStage(null);
     }
   };
 
@@ -814,7 +864,11 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({ onClose, onSave,
             Analyse de la facture par IA / OCR...
           </h3>
           <p style={{ fontSize: '13px', color: 'var(--color-dark-light)', marginBottom: '24px' }}>
-            Lecture des lignes d'articles, quantités et prix
+            {ocrStage === 'download'
+              ? "Préparation de la lecture automatique (premier scan uniquement)…"
+              : ocrStage === 'detect'
+                ? "Repérage des lignes du document…"
+                : "Lecture des lignes d'articles, quantités et prix"}
           </p>
 
           <div style={{ maxWidth: '280px', margin: '0 auto', backgroundColor: 'var(--color-border)', height: '8px', borderRadius: '4px', overflow: 'hidden' }}>
@@ -826,7 +880,7 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({ onClose, onSave,
             }} />
           </div>
           <span style={{ display: 'block', fontSize: '12px', color: 'var(--color-primary)', fontWeight: 'bold', marginTop: '8px' }}>
-            Confiance de lecture : {confidence}%
+            {ocrStage ? `${confidence}%` : `Confiance de lecture : ${confidence}%`}
           </span>
 
           {sourceImage && (

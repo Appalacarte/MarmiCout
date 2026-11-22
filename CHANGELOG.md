@@ -4,6 +4,32 @@ Toutes les modifications notables apportées à ce projet sont documentées dans
 
 ---
 
+## [2.0.74] - 2026-11-22
+
+### OCR gratuit dans le navigateur (PaddleOCR) pour les factures et tickets
+- **Nouveau moteur `src/ocr/`** : PaddleOCR PP-OCRv5 mobile exécuté localement avec `onnxruntime-web` (WebAssembly), sans envoi au serveur ni coût par scan.
+  - `ocrService.ts` : pool de 1 à 3 Web Workers selon l'appareil, détection découpée en bandes et lecture des lignes réparties en parallèle, préchargement à l'ouverture du scanner, modèles gardés dans le Cache Storage.
+  - `ocr.worker.ts` : correction automatique du contraste, détection des zones, redressement des lignes, gestion des photos tournées (90°, 180°, 270°) avec le classifieur d'orientation.
+  - `ocrCore.ts` : post-traitement DB, découpes, décodage CTC, regroupement en lignes et corrections françaises courantes (tests dans `ocrCore.test.ts`).
+  - Modèles dans `src/ocr/models/` (Apache-2.0) ; reconnaissance réduite aux caractères latins (7,6 Mo au lieu de 16,5 Mo) via `scripts/ocr/prune_rec_latin.py`.
+- **Scanner de factures (`src/components/InvoiceScanner.tsx`)** : le scan classique utilise le nouveau moteur, avec repli automatique sur Tesseract (chargé à la demande) si le navigateur ne le supporte pas ; aperçu de la photo allégé ; étapes affichées pendant l'analyse.
+- **Configuration** : `vite.config.ts` (workers ES, `onnxruntime-web` exclu du pré-bundling), `vercel.json` (cache permanent des fichiers `/assets`), `public/sw.js` (cache `marmicout-app-shell-v3`, ne supprime plus le cache des modèles OCR et ne duplique pas les gros fichiers `.onnx`/`.ort`/`.wasm`).
+- **Synchronisation de version** : passage en `2.0.74` dans `package.json`, `package-lock.json`, `src/version.ts` et `CHANGELOG.md`.
+
+---
+
+## [2.0.73] - 2026-11-22
+
+### Suppression forcée d'un produit (bouton corbeille)
+- **Message « Suppression impossible » (`src/components/Products.tsx`)** : ajout d'un bouton corbeille « Supprimer quand même », avec une seconde confirmation « Supprimer définitivement » qui rappelle l'historique supprimé (achats, mouvements de stock).
+  - Bouton grisé si le produit est encore utilisé dans une recette : il faut d'abord l'en retirer.
+  - Retrait du terme technique `isActive = false` du message affiché.
+- **Service (`src/services/db.ts`)** : nouvelle fonction `deleteProductWithHistory()` qui supprime les achats et mouvements de stock du produit puis le produit (modes local et cloud).
+- **Cloud (`src/services/cloudDbService.ts`)** : nouvelle fonction `deleteProductHistory()` qui supprime dans Supabase les lignes `marmicout_stock_movements` et `marmicout_purchases` du produit.
+- **Synchronisation de version** : passage en `2.0.73` dans `package.json`, `package-lock.json`, `src/version.ts` et `CHANGELOG.md`.
+
+---
+
 ## [2.0.72] - 2026-11-22
 
 ### Redirection des forfaits vers App à la Carte

@@ -296,6 +296,27 @@ export class CloudDbService {
     await indexedDbService.delete('products', id);
   }
 
+  /** Supprime les mouvements de stock et les achats liés à un produit (avant sa suppression forcée). */
+  public async deleteProductHistory(productId: string): Promise<void> {
+    if (!this.isOnline()) {
+      throw new Error('Hors connexion : consultation seule pendant 72 h.');
+    }
+    const { error: smError } = await supabase.from('marmicout_stock_movements').delete().eq('product_id', productId);
+    if (smError) {
+      notifyCloudError('Suppression des mouvements de stock refusée', smError.message);
+      throw new Error(`Erreur suppression mouvements de stock: ${smError.message}`);
+    }
+    const { error: pError } = await supabase.from('marmicout_purchases').delete().eq('product_id', productId);
+    if (pError) {
+      notifyCloudError('Suppression des achats refusée', pError.message);
+      throw new Error(`Erreur suppression achats: ${pError.message}`);
+    }
+    const movements = await indexedDbService.getAll<StockMovement>('stock_movements');
+    await indexedDbService.setAll('stock_movements', movements.filter((m) => m.productId !== productId));
+    const purchases = await indexedDbService.getAll<Purchase>('purchases');
+    await indexedDbService.setAll('purchases', purchases.filter((p) => p.productId !== productId));
+  }
+
   // --- RECIPES ---
   public async getRecipes(): Promise<Recipe[]> {
     if (!this.isOnline()) {

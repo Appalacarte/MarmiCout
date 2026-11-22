@@ -655,6 +655,38 @@ export const dbService = {
     await indexedDbService.delete('products', id);
   },
 
+  /**
+   * Suppression forcée : supprime le produit ET ses achats et mouvements de stock.
+   * Refusée si le produit est encore utilisé dans une recette (il faut d'abord l'en retirer).
+   */
+  async deleteProductWithHistory(id: string): Promise<void> {
+    assertAccessKnown();
+    const usedInRecipes = this.getAllRecipeIngredients().filter(ri => ri.productId === id).length;
+    if (usedInRecipes > 0) {
+      throw new Error(`Ce produit est encore utilisé dans ${usedInRecipes} ingrédient(s) de recette. Retirez-le d'abord de ces recettes.`);
+    }
+    if (isCloudMode()) {
+      try {
+        await cloudDbService.deleteProductHistory(id);
+      } catch (err: unknown) {
+        notifyCloudError('Suppression historique produit cloud refusée', err instanceof Error ? err.message : String(err));
+        throw err;
+      }
+      inMemoryCache.stock_movements = (inMemoryCache.stock_movements as StockMovement[]).filter(m => m.productId !== id);
+      inMemoryCache.purchases = (inMemoryCache.purchases as Purchase[]).filter(p => p.productId !== id);
+    } else {
+      const movements = this.getStockMovements().filter(m => m.productId !== id);
+      inMemoryCache.stock_movements = movements;
+      saveTable(KEYS.STOCK_MOVEMENTS, movements);
+      await indexedDbService.setAll('stock_movements', movements);
+      const purchases = this.getPurchases().filter(p => p.productId !== id);
+      inMemoryCache.purchases = purchases;
+      saveTable(KEYS.PURCHASES, purchases);
+      await indexedDbService.setAll('purchases', purchases);
+    }
+    await this.deleteProduct(id);
+  },
+
   // --- ACHATS (PURCHASES) ---
   getPurchases(): Purchase[] {
     return getTableData<Purchase>('purchases', KEYS.PURCHASES);

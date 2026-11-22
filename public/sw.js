@@ -4,7 +4,9 @@
  * Ne modifie en aucune manière le stockage des données utilisateur (localStorage / IndexedDB).
  */
 
-const CACHE_NAME = 'marmicout-app-shell-v2';
+const CACHE_NAME = 'marmicout-app-shell-v3';
+// Cache géré par l'OCR local (modèles) : ne jamais le supprimer ici
+const OCR_CACHE_PREFIX = 'marmicout-ocr-';
 const APP_SHELL_RESOURCES = [
   '/',
   '/index.html',
@@ -41,7 +43,7 @@ self.addEventListener('activate', (event) => {
     caches.keys().then((keys) => {
       return Promise.all(
         keys.map((key) => {
-          if (key !== CACHE_NAME) {
+          if (key !== CACHE_NAME && !key.startsWith(OCR_CACHE_PREFIX)) {
             console.log('[Service Worker] Suppression ancien cache :', key);
             return caches.delete(key);
           }
@@ -67,6 +69,12 @@ self.addEventListener('fetch', (event) => {
 
   // En local (localhost / 127.0.0.1) : ne jamais intercepter ni mettre en cache pour éviter les versions obsolètes
   if (url.hostname === 'localhost' || url.hostname === '127.0.0.1') {
+    return;
+  }
+
+  // Gros fichiers de l'OCR local (modèles, moteur WebAssembly) : déjà mis en cache
+  // par le service OCR et par le navigateur, inutile de les dupliquer ici
+  if (/\.(onnx|ort|wasm)$/.test(url.pathname)) {
     return;
   }
 

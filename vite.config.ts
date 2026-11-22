@@ -21,5 +21,12 @@ export default defineConfig({
   ],
   server: {
     host: true
+  },
+  // OCR local : workers en modules ES (code partagé + onnxruntime-web)
+  worker: {
+    format: 'es'
+  },
+  optimizeDeps: {
+    exclude: ['onnxruntime-web']
   }
 })

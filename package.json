@@ -1,11 +1,11 @@
 {
   "name": "appli-marmicout",
   "private": true,
-  "version": "2.0.72",
+  "version": "2.0.74",
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "test": "node --experimental-strip-types src/utils/units.test.ts && node --experimental-strip-types src/utils/productDuplicate.test.ts && node --experimental-strip-types src/utils/expiry.test.ts && node --experimental-strip-types src/utils/dashboardPeriod.test.ts && node --experimental-strip-types src/utils/purchasePriceAlert.test.ts && node --experimental-strip-types src/utils/recipeMarginAlert.test.ts && node --experimental-strip-types src/utils/shoppingList.test.ts && node --experimental-strip-types src/utils/allergens.test.ts && node --experimental-strip-types src/utils/planning.test.ts && node --experimental-strip-types src/services/pricingService.test.ts",
+    "test": "node --experimental-strip-types src/utils/units.test.ts && node --experimental-strip-types src/utils/productDuplicate.test.ts && node --experimental-strip-types src/utils/expiry.test.ts && node --experimental-strip-types src/utils/dashboardPeriod.test.ts && node --experimental-strip-types src/utils/purchasePriceAlert.test.ts && node --experimental-strip-types src/utils/recipeMarginAlert.test.ts && node --experimental-strip-types src/utils/shoppingList.test.ts && node --experimental-strip-types src/utils/allergens.test.ts && node --experimental-strip-types src/utils/planning.test.ts && node --experimental-strip-types src/services/pricingService.test.ts && node --experimental-strip-types src/ocr/ocrCore.test.ts",
     "check:legal": "node scripts/sync-legal-from-central.mjs && node scripts/verify-legal.mjs",
     "build": "node scripts/sync-legal-from-central.mjs && node scripts/verify-legal.mjs && tsc -b && vite build",
     "lint": "eslint .",
@@ -21,6 +21,7 @@
     "html5-qrcode": "^2.3.8",
     "lucide-react": "^1.18.0",
     "mammoth": "^1.12.0",
+    "onnxruntime-web": "^1.31.1",
     "pdfjs-dist": "^6.1.200",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",

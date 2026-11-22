@@ -142,6 +142,9 @@ export const Products: React.FC<ProductsProps> = ({
     usageReasons: string[];
   }>({ isOpen: false, canHardDelete: true, usageReasons: [] });
   const [isDeletingOrDeactivating, setIsDeletingOrDeactivating] = useState(false);
+  // Suppression forcée (corbeille) depuis le message « Suppression impossible »
+  const [recipeUsageCount, setRecipeUsageCount] = useState(0);
+  const [isForceDeleteConfirmOpen, setIsForceDeleteConfirmOpen] = useState(false);
 
   // Charger les données au montage
   const loadData = () => {
@@ -451,6 +454,8 @@ export const Products: React.FC<ProductsProps> = ({
       usageReasons.push(`${usedInMovements.length} mouvement(s) de stock`);
     }
 
+    setRecipeUsageCount(usedInRecipes.length);
+    setIsForceDeleteConfirmOpen(false);
     setDeleteDialogState({
       isOpen: true,
       canHardDelete: usageReasons.length === 0,
@@ -499,6 +504,27 @@ export const Products: React.FC<ProductsProps> = ({
           ? err.message
           : 'Échec de la suppression ou désactivation du produit.'
       );
+    } finally {
+      setIsDeletingOrDeactivating(false);
+    }
+  };
+
+  // Suppression forcée : produit + achats + mouvements de stock (bouton corbeille)
+  const handleForceDeleteProduct = async () => {
+    if (!editingProduct) return;
+    setIsDeletingOrDeactivating(true);
+    setSaveError(null);
+    try {
+      await dbService.deleteProductWithHistory(editingProduct.id);
+      if (selectedProductDetails?.id === editingProduct.id) {
+        setSelectedProductDetails(null);
+      }
+      setDeleteDialogState({ isOpen: false, canHardDelete: true, usageReasons: [] });
+      setIsFormOpen(false);
+      loadData();
+    } catch (err: unknown) {
+      console.error('Erreur suppression forcée produit:', err);
+      setSaveError(err instanceof Error ? err.message : 'Échec de la suppression du produit.');
     } finally {
       setIsDeletingOrDeactivating(false);
     }
@@ -1008,7 +1034,7 @@ export const Products: React.FC<ProductsProps> = ({
                     « {editingProduct.name} » est référencé dans : <strong>{deleteDialogState.usageReasons.join(', ')}</strong>. Le supprimer fausserait vos coûts de recettes et votre historique.
                   </div>
                   <div style={{ color: '#78350f', marginBottom: '12px' }}>
-                    Vous pouvez en revanche <strong>désactiver ce produit</strong> (<code>isActive = false</code>) afin qu'il n'apparaisse plus dans les sélections actives tout en préservant l'historique.
+                    Vous pouvez en revanche <strong>désactiver ce produit</strong> afin qu'il n'apparaisse plus dans les sélections actives tout en préservant l'historique.
                   </div>
                   <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
                     <button
@@ -1029,7 +1055,52 @@ export const Products: React.FC<ProductsProps> = ({
                     >
                       {isDeletingOrDeactivating ? 'Désactivation...' : 'Désactiver ce produit'}
                     </button>
+                    <button
+                      type="button"
+                      className="btn"
+                      title={recipeUsageCount > 0 ? 'Retirez d\'abord ce produit des recettes qui l\'utilisent' : 'Supprimer quand même ce produit et son historique'}
+                      style={{ height: '32px', padding: '0 12px', fontSize: '12px', backgroundColor: '#fff', color: '#dc2626', border: '1px solid #dc2626', display: 'inline-flex', alignItems: 'center', gap: '6px', opacity: recipeUsageCount > 0 ? 0.5 : 1 }}
+                      onClick={() => setIsForceDeleteConfirmOpen(true)}
+                      disabled={isDeletingOrDeactivating || recipeUsageCount > 0}
+                    >
+                      <Trash2 size={14} /> Supprimer quand même
+                    </button>
                   </div>
+                  {recipeUsageCount > 0 && (
+                    <div style={{ marginTop: '8px', fontSize: '12px', color: '#78350f' }}>
+                      Pour pouvoir le supprimer, retirez-le d'abord des recettes qui l'utilisent.
+                    </div>
+                  )}
+                  {isForceDeleteConfirmOpen && recipeUsageCount === 0 && (
+                    <div style={{ marginTop: '12px', padding: '12px', background: '#fef2f2', border: '1px solid #ef4444', borderRadius: '8px' }}>
+                      <div style={{ fontWeight: 700, color: '#991b1b', marginBottom: '6px' }}>
+                        Supprimer définitivement « {editingProduct.name} » ?
+                      </div>
+                      <div style={{ color: '#7f1d1d', marginBottom: '12px' }}>
+                        Le produit sera supprimé ainsi que tout son historique : <strong>{deleteDialogState.usageReasons.join(', ')}</strong>. Cette action est irréversible et peut modifier vos totaux d'achats passés.
+                      </div>
+                      <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                        <button
+                          type="button"
+                          className="btn btn-secondary"
+                          style={{ height: '32px', padding: '0 12px', fontSize: '12px' }}
+                          onClick={() => setIsForceDeleteConfirmOpen(false)}
+                          disabled={isDeletingOrDeactivating}
+                        >
+                          Annuler
+                        </button>
+                        <button
+                          type="button"
+                          className="btn"
+                          style={{ height: '32px', padding: '0 12px', fontSize: '12px', backgroundColor: '#dc2626', color: '#fff', border: 'none', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                          onClick={handleForceDeleteProduct}
+                          disabled={isDeletingOrDeactivating}
+                        >
+                          <Trash2 size={14} /> {isDeletingOrDeactivating ? 'Suppression...' : 'Supprimer définitivement'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </>
               )}
             </div>
