@@ -26,10 +26,14 @@ import {
   getFallbackPlans, 
   isSamePlanCode 
 } from '../services/pricingService';
+import { buildSubscribeUrl } from '../services/appalacarteLink';
+import { AppalacarteRedirectModal } from './AppalacarteRedirectModal';
 
 interface PricingSectionProps {
   currentPlanId?: PlanId;
+  /** @deprecated Plus appelé : tout clic sur un forfait redirige vers App à la Carte. */
   onSelectPlan?: (planId: PlanId, interval: BillingInterval) => void;
+  /** @deprecated Plus appelé : l'essai gratuit se demande sur App à la Carte. */
   onStartTrial?: () => void;
   showArguments?: boolean;
   showFaq?: boolean;
@@ -38,8 +42,6 @@ interface PricingSectionProps {
 
 export const PricingSection: React.FC<PricingSectionProps> = ({
   currentPlanId,
-  onSelectPlan,
-  onStartTrial,
   showArguments = true,
   showFaq = true,
   isInsideSettings = false
@@ -56,6 +58,9 @@ export const PricingSection: React.FC<PricingSectionProps> = ({
   const [isWaitlistOpen, setIsWaitlistOpen] = useState(false);
   const [waitlistEmail, setWaitlistEmail] = useState('');
   const [waitlistStatus, setWaitlistStatus] = useState<{ message: string; success?: boolean } | null>(null);
+
+  // Popup « Vous allez être redirigé vers App à la Carte »
+  const [redirectPlan, setRedirectPlan] = useState<MergedPricingPlan | null>(null);
 
   // Chargement des forfaits depuis Supabase (table plans liée à marmicout-stock-restauration)
   useEffect(() => {
@@ -82,24 +87,14 @@ export const PricingSection: React.FC<PricingSectionProps> = ({
     subscriptionService.setBillingIntervalPreference(newInterval);
   };
 
+  // Tout clic sur un forfait (essai compris) passe par App à la Carte, l'application de vente :
+  // une popup prévient le client, puis il est redirigé vers la page de Marmicout sur appalacarte.fr.
   const handlePlanCta = (plan: MergedPricingPlan) => {
-    if (plan.isTrial) {
-      if (onStartTrial) {
-        onStartTrial();
-      } else if (onSelectPlan) {
-        onSelectPlan(plan.code, interval);
-      }
-      return;
-    }
-
-    if (plan.code === 'pro_cloud' && !PRICING_CONFIG.flags.cloudSyncEnabled) {
+    if (!plan.isTrial && plan.code === 'pro_cloud' && !PRICING_CONFIG.flags.cloudSyncEnabled) {
       setIsWaitlistOpen(true);
       return;
     }
-
-    if (onSelectPlan) {
-      onSelectPlan(plan.code, interval);
-    }
+    setRedirectPlan(plan);
   };
 
   const handleWaitlistSubmit = (e: React.FormEvent) => {
@@ -839,6 +834,15 @@ export const PricingSection: React.FC<PricingSectionProps> = ({
       )}
 
       {/* Modale Collecte Email « Être prévenu » pour Pro Cloud */}
+      {redirectPlan && (
+        <AppalacarteRedirectModal
+          planName={redirectPlan.name}
+          isTrial={redirectPlan.isTrial}
+          targetUrl={buildSubscribeUrl(redirectPlan.code, interval)}
+          onCancel={() => setRedirectPlan(null)}
+        />
+      )}
+
       {isWaitlistOpen && (
         <div style={{
           position: 'fixed',
