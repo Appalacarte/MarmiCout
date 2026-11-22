@@ -4,6 +4,16 @@ Toutes les modifications notables apportées à ce projet sont documentées dans
 
 ---
 
+## [2.0.72] - 2026-11-22
+
+### Redirection des forfaits vers App à la Carte
+- **Nouveau service `src/services/appalacarteLink.ts`** : construction du lien de souscription vers la page de l'appli sur App à la Carte (`/souscrire/marmicout-stock-restauration`), avec le forfait (`plan`, essai = `demo_14j`) et la périodicité (`cycle`) choisis.
+- **Nouvelle popup `src/components/AppalacarteRedirectModal.tsx`** : prévient le client qu'il va être redirigé vers App à la Carte pour créer son profil et finaliser son essai ou son abonnement.
+- **Section tarifs (`src/components/PricingSection.tsx`)** : tout clic sur un forfait ouvre la popup puis redirige vers App à la Carte ; forfaits chargés depuis Supabase avec repli hors connexion. Les props `onSelectPlan` / `onStartTrial` sont marquées obsolètes.
+- **Synchronisation de version** : passage en `2.0.72` dans `package.json`, `package-lock.json`, `src/version.ts` et `CHANGELOG.md`.
+
+---
+
 ## [2.0.71] - 2026-11-15
 
 ### Suppression de l'onglet Devis et envoi direct des formulaires Contact et Suggestions vers l'API centrale
