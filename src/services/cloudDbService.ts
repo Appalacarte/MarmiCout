@@ -9,6 +9,9 @@
 
 import { supabase } from './supabaseClient';
 import { indexedDbService } from './indexedDbService';
+
+// Les tables Marmicout sont dans le schéma Postgres « marmicout » (rangement Supabase du 22/11/2026).
+const mdb = () => supabase.schema('marmicout');
 import {
   Product,
   Store,
@@ -112,7 +115,7 @@ export class CloudDbService {
 
     // Récupérer depuis les membres Supabase si non initialisé en mémoire
     try {
-      const { data: member, error } = await supabase
+      const { data: member, error } = await mdb()
         .from('marmicout_members')
         .select('establishment_id')
         .eq('status', 'active')
@@ -125,7 +128,7 @@ export class CloudDbService {
       }
 
       // Fallback direct sur les établissements accessibles
-      const { data: est } = await supabase
+      const { data: est } = await mdb()
         .from('marmicout_establishments')
         .select('id')
         .limit(1)
@@ -147,7 +150,7 @@ export class CloudDbService {
     if (!this.isOnline()) {
       return indexedDbService.getAll<Store>('stores');
     }
-    const { data, error } = await supabase
+    const { data, error } = await mdb()
       .from('marmicout_stores')
       .select('*')
       .order('name');
@@ -187,7 +190,7 @@ export class CloudDbService {
       notes: store.notes ?? '',
     };
 
-    const { error } = await supabase.from('marmicout_stores').upsert(payload, { onConflict: 'id' });
+    const { error } = await mdb().from('marmicout_stores').upsert(payload, { onConflict: 'id' });
     if (error) {
       notifyCloudError('Enregistrement du magasin refusé', error.message);
       throw new Error(`Erreur Supabase marmicout_stores (${error.code || 'RLS'}): ${error.message}`);
@@ -200,7 +203,7 @@ export class CloudDbService {
     if (!this.isOnline()) {
       throw new Error('Hors connexion : consultation seule pendant 72 h.');
     }
-    const { error } = await supabase.from('marmicout_stores').delete().eq('id', id);
+    const { error } = await mdb().from('marmicout_stores').delete().eq('id', id);
     if (error) {
       notifyCloudError('Suppression du magasin refusée', error.message);
       throw new Error(`Erreur suppression magasin: ${error.message}`);
@@ -213,7 +216,7 @@ export class CloudDbService {
     if (!this.isOnline()) {
       return indexedDbService.getAll<Product>('products');
     }
-    const { data, error } = await supabase
+    const { data, error } = await mdb()
       .from('marmicout_products')
       .select('*')
       .order('name');
@@ -275,7 +278,7 @@ export class CloudDbService {
       allergens: Array.isArray(product.allergens) ? product.allergens : null,
     };
 
-    const { error } = await supabase.from('marmicout_products').upsert(payload, { onConflict: 'id' });
+    const { error } = await mdb().from('marmicout_products').upsert(payload, { onConflict: 'id' });
     if (error) {
       notifyCloudError('Enregistrement du produit refusé', error.message);
       throw new Error(`Erreur Supabase marmicout_products (${error.code || 'RLS'}): ${error.message}`);
@@ -288,7 +291,7 @@ export class CloudDbService {
     if (!this.isOnline()) {
       throw new Error('Hors connexion : consultation seule pendant 72 h.');
     }
-    const { error } = await supabase.from('marmicout_products').delete().eq('id', id);
+    const { error } = await mdb().from('marmicout_products').delete().eq('id', id);
     if (error) {
       notifyCloudError('Suppression du produit refusée', error.message);
       throw new Error(`Erreur suppression produit: ${error.message}`);
@@ -301,12 +304,12 @@ export class CloudDbService {
     if (!this.isOnline()) {
       throw new Error('Hors connexion : consultation seule pendant 72 h.');
     }
-    const { error: smError } = await supabase.from('marmicout_stock_movements').delete().eq('product_id', productId);
+    const { error: smError } = await mdb().from('marmicout_stock_movements').delete().eq('product_id', productId);
     if (smError) {
       notifyCloudError('Suppression des mouvements de stock refusée', smError.message);
       throw new Error(`Erreur suppression mouvements de stock: ${smError.message}`);
     }
-    const { error: pError } = await supabase.from('marmicout_purchases').delete().eq('product_id', productId);
+    const { error: pError } = await mdb().from('marmicout_purchases').delete().eq('product_id', productId);
     if (pError) {
       notifyCloudError('Suppression des achats refusée', pError.message);
       throw new Error(`Erreur suppression achats: ${pError.message}`);
@@ -322,7 +325,7 @@ export class CloudDbService {
     if (!this.isOnline()) {
       return indexedDbService.getAll<Recipe>('recipes');
     }
-    const { data, error } = await supabase
+    const { data, error } = await mdb()
       .from('marmicout_recipes')
       .select('*')
       .order('name');
@@ -362,7 +365,7 @@ export class CloudDbService {
     if (!this.isOnline()) {
       return indexedDbService.getAll<RecipeIngredient>('recipe_ingredients');
     }
-    const { data, error } = await supabase
+    const { data, error } = await mdb()
       .from('marmicout_recipe_ingredients')
       .select('*');
     if (error) {
@@ -388,7 +391,7 @@ export class CloudDbService {
     if (!this.isOnline()) {
       return indexedDbService.getAll<RecipePackaging>('recipe_packaging');
     }
-    const { data, error } = await supabase
+    const { data, error } = await mdb()
       .from('marmicout_recipe_packaging')
       .select('*');
     if (error) {
@@ -444,7 +447,7 @@ export class CloudDbService {
     if (recipe.videoUrl) payload.video_url = recipe.videoUrl;
     if (recipe.sourceUrl) payload.source_url = recipe.sourceUrl;
 
-    const { error: recipeErr } = await supabase
+    const { error: recipeErr } = await mdb()
       .from('marmicout_recipes')
       .upsert(payload, { onConflict: 'id' });
 
@@ -455,7 +458,7 @@ export class CloudDbService {
 
     // Ingrédients
     if (ingredients) {
-      await supabase.from('marmicout_recipe_ingredients').delete().eq('recipe_id', recipeUUID);
+      await mdb().from('marmicout_recipe_ingredients').delete().eq('recipe_id', recipeUUID);
       if (ingredients.length > 0) {
         const ingPayloads = ingredients.map((ing) => ({
           id: generateUUID(),
@@ -467,7 +470,7 @@ export class CloudDbService {
           unit: ing.unit || 'g',
           custom_cost_per_unit: Number(ing.customCostPerUnit ?? 0),
         }));
-        const { error: ingErr } = await supabase.from('marmicout_recipe_ingredients').insert(ingPayloads);
+        const { error: ingErr } = await mdb().from('marmicout_recipe_ingredients').insert(ingPayloads);
         if (ingErr) {
           console.error('[Supabase recipe_ingredients error]', ingErr);
           notifyCloudError('Erreur ingrédients recette', ingErr.message);
@@ -478,7 +481,7 @@ export class CloudDbService {
 
     // Emballages
     if (packagings) {
-      await supabase.from('marmicout_recipe_packaging').delete().eq('recipe_id', recipeUUID);
+      await mdb().from('marmicout_recipe_packaging').delete().eq('recipe_id', recipeUUID);
       if (packagings.length > 0) {
         const packPayloads = packagings.map((pack) => ({
           id: generateUUID(),
@@ -488,7 +491,7 @@ export class CloudDbService {
           qty_used: Number(pack.qtyUsed ?? 1),
           cost_per_unit: Number(pack.costPerUnit ?? 0),
         }));
-        const { error: packErr } = await supabase.from('marmicout_recipe_packaging').insert(packPayloads);
+        const { error: packErr } = await mdb().from('marmicout_recipe_packaging').insert(packPayloads);
         if (packErr) {
           console.error('[Supabase recipe_packaging error]', packErr);
           notifyCloudError('Erreur emballages recette', packErr.message);
@@ -505,7 +508,7 @@ export class CloudDbService {
     if (!this.isOnline()) {
       throw new Error('Hors connexion : consultation seule pendant 72 h.');
     }
-    const { error } = await supabase.from('marmicout_recipes').delete().eq('id', id);
+    const { error } = await mdb().from('marmicout_recipes').delete().eq('id', id);
     if (error) {
       notifyCloudError('Suppression de la recette refusée', error.message);
       throw new Error(`Erreur suppression recette: ${error.message}`);
@@ -530,7 +533,7 @@ export class CloudDbService {
       unit: ingredient.unit || 'g',
       custom_cost_per_unit: Number(ingredient.customCostPerUnit ?? 0),
     };
-    const { error } = await supabase.from('marmicout_recipe_ingredients').upsert(payload, { onConflict: 'id' });
+    const { error } = await mdb().from('marmicout_recipe_ingredients').upsert(payload, { onConflict: 'id' });
     if (error) {
       notifyCloudError('Enregistrement ingrédient refusé', error.message);
       throw new Error(`Erreur Supabase marmicout_recipe_ingredients: ${error.message}`);
@@ -554,7 +557,7 @@ export class CloudDbService {
       qty_used: Number(pack.qtyUsed ?? 1),
       cost_per_unit: Number(pack.costPerUnit ?? 0),
     };
-    const { error } = await supabase.from('marmicout_recipe_packaging').upsert(payload, { onConflict: 'id' });
+    const { error } = await mdb().from('marmicout_recipe_packaging').upsert(payload, { onConflict: 'id' });
     if (error) {
       notifyCloudError('Enregistrement emballage refusé', error.message);
       throw new Error(`Erreur Supabase marmicout_recipe_packaging: ${error.message}`);
@@ -568,7 +571,7 @@ export class CloudDbService {
     if (!this.isOnline()) {
       return indexedDbService.getAll<Purchase>('purchases');
     }
-    const { data, error } = await supabase
+    const { data, error } = await mdb()
       .from('marmicout_purchases')
       .select('*')
       .order('purchase_date', { ascending: false });
@@ -618,7 +621,7 @@ export class CloudDbService {
       notes: purchase.notes ?? '',
     };
 
-    const { error } = await supabase.from('marmicout_purchases').upsert(payload, { onConflict: 'id' });
+    const { error } = await mdb().from('marmicout_purchases').upsert(payload, { onConflict: 'id' });
     if (error) {
       notifyCloudError('Enregistrement de l\'achat refusé', error.message);
       throw new Error(`Erreur Supabase marmicout_purchases (${error.code || 'RLS'}): ${error.message}`);
@@ -631,7 +634,7 @@ export class CloudDbService {
     if (!this.isOnline()) {
       throw new Error('Hors connexion : consultation seule pendant 72 h.');
     }
-    const { error } = await supabase.from('marmicout_purchases').delete().eq('id', id);
+    const { error } = await mdb().from('marmicout_purchases').delete().eq('id', id);
     if (error) {
       notifyCloudError('Suppression de l\'achat refusée', error.message);
       throw new Error(`Erreur suppression achat: ${error.message}`);
@@ -644,7 +647,7 @@ export class CloudDbService {
     if (!this.isOnline()) {
       return indexedDbService.getAll<Production>('productions');
     }
-    const { data, error } = await supabase
+    const { data, error } = await mdb()
       .from('marmicout_productions')
       .select('*')
       .order('production_date', { ascending: false });
@@ -685,7 +688,7 @@ export class CloudDbService {
       notes: production.notes ?? '',
     };
 
-    const { error } = await supabase.from('marmicout_productions').upsert(payload, { onConflict: 'id' });
+    const { error } = await mdb().from('marmicout_productions').upsert(payload, { onConflict: 'id' });
     if (error) {
       notifyCloudError('Enregistrement de fabrication refusé', error.message);
       throw new Error(`Erreur Supabase marmicout_productions (${error.code || 'RLS'}): ${error.message}`);
@@ -698,7 +701,7 @@ export class CloudDbService {
     if (!this.isOnline()) {
       throw new Error('Hors connexion : consultation seule pendant 72 h.');
     }
-    const { error } = await supabase.from('marmicout_productions').delete().eq('id', id);
+    const { error } = await mdb().from('marmicout_productions').delete().eq('id', id);
     if (error) {
       notifyCloudError('Suppression de fabrication refusée', error.message);
       throw new Error(`Erreur suppression fabrication: ${error.message}`);
@@ -711,7 +714,7 @@ export class CloudDbService {
     if (!this.isOnline()) {
       return indexedDbService.getAll<Sale>('sales');
     }
-    const { data, error } = await supabase
+    const { data, error } = await mdb()
       .from('marmicout_sales')
       .select('*')
       .order('sale_date', { ascending: false });
@@ -756,7 +759,7 @@ export class CloudDbService {
       notes: sale.notes ?? '',
     };
 
-    const { error } = await supabase.from('marmicout_sales').upsert(payload, { onConflict: 'id' });
+    const { error } = await mdb().from('marmicout_sales').upsert(payload, { onConflict: 'id' });
     if (error) {
       notifyCloudError('Enregistrement de vente refusé', error.message);
       throw new Error(`Erreur Supabase marmicout_sales (${error.code || 'RLS'}): ${error.message}`);
@@ -769,7 +772,7 @@ export class CloudDbService {
     if (!this.isOnline()) {
       throw new Error('Hors connexion : consultation seule pendant 72 h.');
     }
-    const { error } = await supabase.from('marmicout_sales').delete().eq('id', id);
+    const { error } = await mdb().from('marmicout_sales').delete().eq('id', id);
     if (error) {
       notifyCloudError('Suppression de vente refusée', error.message);
       throw new Error(`Erreur suppression vente: ${error.message}`);
@@ -782,7 +785,7 @@ export class CloudDbService {
     if (!this.isOnline()) {
       return indexedDbService.getAll<StockMovement>('stock_movements');
     }
-    const { data, error } = await supabase
+    const { data, error } = await mdb()
       .from('marmicout_stock_movements')
       .select('*')
       .order('movement_date', { ascending: false });
@@ -825,7 +828,7 @@ export class CloudDbService {
       notes: movement.notes ?? '',
     };
 
-    const { error } = await supabase.from('marmicout_stock_movements').upsert(payload, { onConflict: 'id' });
+    const { error } = await mdb().from('marmicout_stock_movements').upsert(payload, { onConflict: 'id' });
     if (error) {
       notifyCloudError('Mouvement de stock refusé', error.message);
       throw new Error(`Erreur Supabase marmicout_stock_movements (${error.code || 'RLS'}): ${error.message}`);
@@ -838,7 +841,7 @@ export class CloudDbService {
     if (!this.isOnline()) {
       throw new Error('Hors connexion : consultation seule pendant 72 h.');
     }
-    const { error } = await supabase.from('marmicout_stock_movements').delete().eq('ref_id', refId);
+    const { error } = await mdb().from('marmicout_stock_movements').delete().eq('ref_id', refId);
     if (error) {
       notifyCloudError('Suppression des mouvements de stock refusée', error.message);
       throw new Error(`Erreur suppression mouvements de stock: ${error.message}`);
@@ -853,7 +856,7 @@ export class CloudDbService {
     if (!this.isOnline()) {
       return indexedDbService.getAll<PlannedRecipe>('planning');
     }
-    const { data, error } = await supabase
+    const { data, error } = await mdb()
       .from('marmicout_planning')
       .select('*')
       .order('date');
@@ -911,7 +914,7 @@ export class CloudDbService {
       updated_at: new Date().toISOString(),
     };
 
-    const { error } = await supabase.from('marmicout_planning').upsert(payload, { onConflict: 'id' });
+    const { error } = await mdb().from('marmicout_planning').upsert(payload, { onConflict: 'id' });
     if (error) {
       notifyCloudError('Enregistrement du planning refusé', error.message);
       throw new Error(formatSubscriptionErrorMessage('enregistrement du planning', error));
@@ -924,7 +927,7 @@ export class CloudDbService {
     if (!this.isOnline()) {
       throw new Error('Hors connexion : consultation seule pendant 72 h.');
     }
-    const { error } = await supabase.from('marmicout_planning').delete().eq('id', id);
+    const { error } = await mdb().from('marmicout_planning').delete().eq('id', id);
     if (error) {
       notifyCloudError('Suppression du planning refusée', error.message);
       throw new Error(formatSubscriptionErrorMessage('suppression du planning', error));
@@ -939,7 +942,7 @@ export class CloudDbService {
       const items = await indexedDbService.getAll<any>('settings');
       return items.find((i) => i.key === 'app_settings')?.value || null;
     }
-    const { data, error } = await supabase
+    const { data, error } = await mdb()
       .from('marmicout_settings')
       .select('*')
       .limit(1)
@@ -988,7 +991,7 @@ export class CloudDbService {
       google_web_app_url: settings.googleWebAppUrl ?? '',
     };
 
-    const { error } = await supabase
+    const { error } = await mdb()
       .from('marmicout_settings')
       .upsert(payload, { onConflict: 'establishment_id' });
 
